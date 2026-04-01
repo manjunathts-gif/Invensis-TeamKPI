@@ -2838,7 +2838,7 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
-          <option>No Manifest</option>
+          <option>No Manfiest</option>
         </select>
       </div>
       <div class="fpg">
@@ -19845,6 +19845,8 @@ function _fmt(ms){
 // ── Main idle check — every 30s ──
 function _checkIdle(){
   if(!CU || _idleShown) return;
+  // Skip idle tracking for Client role — view-only users
+  if(CU.role==='Client' || CU.task==='Client') return;
   const gap = Date.now() - _lastAct;
   const badge = document.getElementById('idleTopBadge');
   const badgeTime = document.getElementById('idleTopTime');
@@ -19920,7 +19922,7 @@ async function submitIdle(){
   const durMins  = Math.max(1, Math.round((endTime-startTime)/60000));
 
   const rec = {
-    user_name    : CU.name,
+    user_name    : CU.name || CU.empName || CU.username || '',
     username     : CU.username,
     task         : CU.task,
     team         : CU.team||'—',
