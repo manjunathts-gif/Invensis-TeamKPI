@@ -4304,10 +4304,10 @@ function startBgPoll(){
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle fetch recent 200 records
-          const sortCol = TABLE_SORT_COL[tbl]||'id';
+          // FULL PATH: every 6th cycle — order by id (always set) not sortCol
+          // sortCol can be NULL for many records → wrong ordering → data loss
           const {data:fullRows} = await _supa.from(tbl).select('*')
-            .order(sortCol,{ascending:false}).range(0,199);
+            .order('id',{ascending:false}).limit(5000);
           rows = fullRows||[];
         }
         if(!rows || rows.length === 0) continue;
@@ -4321,18 +4321,30 @@ function startBgPoll(){
         const hasNewRows = freshRows.some(r=>r.id && !localIds.has(String(r.id)));
 
         if(hasNewRows){
-          // Only pass RAW DB rows to _applyTaskData
-          // Do NOT mix in already-mapped current rows — mapper runs again and loses field values
-          // Keep optimistic rows (no _dbid) only if not yet in DB
-          const dbIds = new Set(freshRows.map(r=>String(r.id)));
-          const pendingLocal = (current||[]).filter(r=>!r._dbid && !dbIds.has(String(r.id||'')));
-          // pendingLocal are optimistic rows not yet confirmed by DB — keep them displayed
-          // but run them through identity (they're already mapped — use raw-compatible passthrough)
-          // Simplest fix: just use freshRows only — optimistic rows appear briefly then replaced
-          _applyTaskData(tbl, freshRows);
+          if(_latestId > 0 && cycle % 6 !== 0){
+            // FAST PATH: ADD new records to existing — DO NOT replace entire array
+            // freshRows only has NEW records; replacing would wipe existing data
+            const mapperFn = {
+              'lvs':mapLVS,'cls':mapCLS,'comp':mapCOMP,'pars_docs':mapPARSDocs,
+              'ocean_docs':mapOceanDocs,'part_lot':mapPartLot,'release':mapRelease,
+              'ocean_tt':mapOceanTT,'b2_entries':mapB2,'audit':mapAudit
+            }[tbl];
+            if(mapperFn && current){
+              const existIds = new Set(current.map(r=>String(r._dbid||r.id||'')).filter(Boolean));
+              const newMapped = freshRows.map(mapperFn)
+                .filter(r => !existIds.has(String(r._dbid||r.id||'')));
+              if(newMapped.length > 0){
+                current.unshift(...newMapped);
+                _sortAllTaskArrays();
+              }
+            }
+          } else {
+            // FULL PATH: full clean replace with all records (ordered by id, limit 5000)
+            _applyTaskData(tbl, freshRows);
+          }
           changed = true;
         } else if(current && freshRows.length !== current.length){
-          // Count changed (delete/archive happened) — do full replace
+          // Deletion/change detected — full replace
           _applyTaskData(tbl, freshRows);
           changed = true;
         }
