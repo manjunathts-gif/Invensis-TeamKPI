@@ -3220,6 +3220,7 @@ function _makeSupaClient(){
     const SESSION_MAX_MS = 8 * 60 * 60 * 1000;
     if(awayMs > SESSION_MAX_MS){
       sessionStorage.removeItem('kpi_session');
+  window._dbLoaded = false;
       sessionStorage.removeItem('kpi_session_ts');
       console.log('Session expired after 8 hours — re-login required');
       return;
@@ -3944,6 +3945,7 @@ async function loadAllFromSupabase(){
     }
 
     console.log('✅ Role-based load complete for',CU?.role,CU?.task);
+    window._dbLoaded = true; // mark DB as loaded — prevent cache from overwriting fresh data
     // Always save clients to localStorage so session restore has them immediately
     try{ if(DB.clients&&DB.clients.length>0) localStorage.setItem('kpi_clients_cache', JSON.stringify(DB.clients)); }catch(e){}
     _saveTaskCache(); // cache for fast restore on refresh
@@ -8330,7 +8332,9 @@ function bootApp(){
     if(ico) ico.textContent = parts[0];
     if(lbl) lbl.textContent = parts.slice(1).join(' ');
   }
-  _restoreTaskCache(); // show data instantly while DB loads in background
+  // Only restore cache if DB not yet loaded (empty arrays = pre-DB state)
+  // After DB loads, NEVER overwrite fresh data with stale cache
+  if(!window._dbLoaded) _restoreTaskCache();
   setTimeout(_initTATReasons, 1500);
   setTimeout(_checkArchiveNotification, 4000); // Archive reminder
   // Apply client-role class for CSS-based hiding
