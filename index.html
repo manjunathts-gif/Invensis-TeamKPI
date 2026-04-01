@@ -12345,7 +12345,7 @@ async function saveLoginUser(){
     lu.password=_hp3;
   }
     if(_supaAdmin&&lu._dbid){
-      const patch={emp_name:empName,name:empName,task_username:uname,username:uname,login_name:loginName,task,role,shift};
+      const patch={emp_name:empName,task_username:uname,login_name:loginName,task,role,shift};
       if(pass){
       let _hp2=pass;
       try{const _b2=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
@@ -12364,7 +12364,7 @@ async function saveLoginUser(){
     const _pbuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass));
     _hashedPass = Array.from(new Uint8Array(_pbuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }catch(he){ _hashedPass = pass; }
-  const row={emp_name:empName,name:empName,task_username:uname,username:uname,login_name:loginName,password:_hashedPass,app_login_password:_hashedPass,task,role,shift,active:true,team:''};
+  const row={emp_name:empName,task_username:uname,login_name:loginName,password:_hashedPass,app_login_password:_hashedPass,task,role,shift,active:true,team:''};
     if(_supa){
       let r=null, insertErr=null;
       try{ r=await dbInsertAdmin('login_users',row); }
