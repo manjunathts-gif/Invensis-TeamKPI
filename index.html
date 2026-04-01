@@ -3955,20 +3955,27 @@ async function loadAllFromSupabase(){
 
 // Apply raw DB rows to the correct DB.xxx array based on table name
 function _applyTaskData(tbl,rows){
-  // Always filter out locally-deleted records so they never come back from DB poll
+  // Filter out locally-deleted records
   const _safe = (arr) => {
     if(!window._deletedIds || !window._deletedIds.size) return arr;
     return arr.filter(r => !window._deletedIds.has(String(r.id||r._dbid||'')));
   };
-  if(tbl==='lvs')          { DB.lvs=_safe(rows.map(mapLVS));       DB.lvs.forEach((r,i)=>r._idx=i); }
-  else if(tbl==='cls')     { DB.cls=_safe(rows.map(mapCLS));       DB.cls.forEach((r,i)=>r._idx=i); }
-  else if(tbl==='comp')    { DB.comp=_safe(rows.map(mapCOMP));     DB.comp.forEach((r,i)=>r._idx=i); }
-  else if(tbl==='pars_docs')  { DB.parsDocs=_safe(rows.map(mapPARSDocs)); }
-  else if(tbl==='ocean_docs') { DB.oceanDocs=_safe(rows.map(mapOceanDocs)); }
-  else if(tbl==='part_lot')   { DB.partLot=_safe(rows.map(mapPartLot)); }
-  else if(tbl==='release') { DB.release2=_safe(rows.map(mapRelease)); DB.release2.forEach((r,i)=>r._idx=i); }
-  else if(tbl==='ocean_tt')   { DB.oceanTT=_safe(rows.map(mapOceanTT)); }
-  else if(tbl==='b2_entries') { DB.b2entries=_safe(rows.map(mapB2)); }
+  // Get existing array to preserve pending optimistic rows (submitted but not yet in DB)
+  const _withPending = (dbArr, mapped) => {
+    // Optimistic rows have no _dbid (not confirmed by DB yet)
+    const dbIds = new Set(mapped.map(r => String(r._dbid||r.id||'')).filter(Boolean));
+    const pending = (dbArr||[]).filter(r => !r._dbid && !dbIds.has(String(r.id||'')));
+    return _safe([...pending, ...mapped]);
+  };
+  if(tbl==='lvs')          { const m=rows.map(mapLVS);       DB.lvs=_withPending(DB.lvs,m);       DB.lvs.forEach((r,i)=>r._idx=i); }
+  else if(tbl==='cls')     { const m=rows.map(mapCLS);       DB.cls=_withPending(DB.cls,m);       DB.cls.forEach((r,i)=>r._idx=i); }
+  else if(tbl==='comp')    { const m=rows.map(mapCOMP);      DB.comp=_withPending(DB.comp,m);     DB.comp.forEach((r,i)=>r._idx=i); }
+  else if(tbl==='pars_docs')  { const m=rows.map(mapPARSDocs);  DB.parsDocs=_withPending(DB.parsDocs,m); }
+  else if(tbl==='ocean_docs') { const m=rows.map(mapOceanDocs); DB.oceanDocs=_withPending(DB.oceanDocs,m); }
+  else if(tbl==='part_lot')   { const m=rows.map(mapPartLot);   DB.partLot=_withPending(DB.partLot,m); }
+  else if(tbl==='release') { const m=rows.map(mapRelease);   DB.release2=_withPending(DB.release2,m); DB.release2.forEach((r,i)=>r._idx=i); }
+  else if(tbl==='ocean_tt')   { const m=rows.map(mapOceanTT);   DB.oceanTT=_withPending(DB.oceanTT,m); }
+  else if(tbl==='b2_entries') { const m=rows.map(mapB2);        DB.b2entries=_withPending(DB.b2entries,m); }
 }
 
 // ── Refresh current page after DB write ─────────────────────
@@ -4313,9 +4320,15 @@ function startBgPoll(){
         const hasNewRows = freshRows.some(r=>r.id && !localIds.has(String(r.id)));
 
         if(hasNewRows){
-          // FAST MERGE: prepend only new records instead of replacing whole array
-          const newOnly = freshRows.filter(r=>r.id && !localIds.has(String(r.id)));
-          _applyTaskData(tbl, [...freshRows, ...(current||[])]);
+          // Only pass RAW DB rows to _applyTaskData
+          // Do NOT mix in already-mapped current rows — mapper runs again and loses field values
+          // Keep optimistic rows (no _dbid) only if not yet in DB
+          const dbIds = new Set(freshRows.map(r=>String(r.id)));
+          const pendingLocal = (current||[]).filter(r=>!r._dbid && !dbIds.has(String(r.id||'')));
+          // pendingLocal are optimistic rows not yet confirmed by DB — keep them displayed
+          // but run them through identity (they're already mapped — use raw-compatible passthrough)
+          // Simplest fix: just use freshRows only — optimistic rows appear briefly then replaced
+          _applyTaskData(tbl, freshRows);
           changed = true;
         } else if(current && freshRows.length !== current.length){
           // Count changed (delete/archive happened) — do full replace
@@ -4396,10 +4409,13 @@ function startETAPoll(){
       // Check for new unacknowledged assignments for this user
       const myLogin = CU.username || '';
       const myName  = CU.name || '';
+      // Query ALL unacknowledged assignments — no date filter
+      // sessionStorage tracks which ones already shown this session
       const {data} = await _supa.from('eta_assignments')
         .select('*')
         .eq('acknowledged', false)
-        .gte('created_at', _etaLastChecked);
+        .order('created_at', {ascending: false})
+        .limit(50);
 
       if(!data || !data.length) return;
 
