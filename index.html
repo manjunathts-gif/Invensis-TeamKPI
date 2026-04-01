@@ -3471,12 +3471,23 @@ async function dbInsert(table,row){
       }
       return null;
     }
-    console.error('Insert '+table,error);
-    showToast('⚠️ DB save failed ('+table+'): '+emsg,true);
+    console.error('Insert '+table, error.code, emsg);
+    // Show persistent error banner - not just a toast that disappears
+    showToast('❌ Save FAILED ('+table+'): '+emsg, true);
+    // Also show a sticky alert the user cannot miss
+    const _errBanner = document.createElement('div');
+    _errBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#dc2626;color:#fff;padding:14px 20px;font-size:14px;font-weight:700;text-align:center;cursor:pointer';
+    _errBanner.innerHTML = '❌ DB SAVE FAILED: '+emsg+' &nbsp; <span style="text-decoration:underline">Click to dismiss</span>';
+    _errBanner.onclick = function(){ this.remove(); };
+    document.body.appendChild(_errBanner);
+    setTimeout(()=>{ if(_errBanner.parentNode) _errBanner.remove(); }, 15000);
     return null;
   }
   // data is always an array [{...}] — return first row for single inserts
-  return Array.isArray(data)?data[0]??data:data;
+  const result = Array.isArray(data)?data[0]??data:data;
+  // Log successful saves so user can verify in DevTools
+  console.log('✅ SAVED to DB:', table, 'id=', result?.id||'?');
+  return result;
 }
 
 // Admin insert — uses service_role key, bypasses RLS
