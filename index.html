@@ -8413,6 +8413,11 @@ async function retryConnection(){
       Promise.race([_supa.from('users').select('*'), new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),10000))]),
     ]);
     if(luData.error) throw luData.error;
+    // If new DB has empty login_users, fall back to cache (don't crash)
+    if(luData.data && luData.data.length === 0){
+      const cachedLU = localStorage.getItem('kpi_lu_cache');
+      if(cachedLU){ const parsed = JSON.parse(cachedLU); if(parsed.length > 0){ luData.data = parsed.map(u=>({...u,_cached:true})); } }
+    }
     if(luData.data) DB.loginUsers = luData.data.map(mapLoginUser);
     if(usersData.data) DB.users = usersData.data.map(mapUser);
     try{ localStorage.setItem('kpi_lu_cache', JSON.stringify(_sanitizeForCache(DB.loginUsers))); } catch(e){}
@@ -18951,8 +18956,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     if(statusEl) statusEl.innerHTML=
       '<span style="color:#3b82f6">🔄 '+(attempt>1?'Retrying... (attempt '+attempt+'/2)':'Connecting to database...')+'</span>';
     const [luData, usersData, clientsData] = await Promise.all([
-      withTimeout(_supa.from('login_users').select('*').eq('active',true), 7000),
-      withTimeout(_supa.from('users').select('*'), 7000),
+      withTimeout(_supa.from('login_users').select('*').eq('active',true), 15000),
+      withTimeout(_supa.from('users').select('*'), 15000),
       dbLoad('clients'),
     ]);
     if(luData.error) throw luData.error;
@@ -19021,8 +19026,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       }
     }catch(e){}
     if(cacheLoaded){
+      // Check if DB responded with empty data (new project) vs truly unreachable
+      const _isNewDB = e && e.message && (e.message.includes('timed out') || e.message.includes('Failed to fetch'));
       if(statusEl) statusEl.innerHTML=
-        '<span style="color:#f59e0b">⚠️ DB unreachable — using saved credentials ('+DB.loginUsers.length+' users). Data may not sync until connection is restored.</span>';
+        '<span style="color:#f59e0b">⚠️ ' + (_isNewDB ? 'DB not responding' : 'DB empty — import login_users data') + ' — using saved credentials ('+DB.loginUsers.length+' users).</span>';
     } else {
       if(statusEl) statusEl.innerHTML=
         '<span style="color:#ef4444">⚠️ Cannot reach database &amp; no saved credentials. Check your internet/network. Error: '+e.message+'</span>';
