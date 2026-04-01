@@ -2838,7 +2838,7 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
-          <option>No Manfiest</option>
+          <option>No Manifest</option>
         </select>
       </div>
       <div class="fpg">
@@ -4424,13 +4424,15 @@ function startETAPoll(){
       // Check for new unacknowledged assignments for this user
       const myLogin = CU.username || '';
       const myName  = CU.name || '';
-      // Query ALL unacknowledged assignments — no date filter
-      // sessionStorage tracks which ones already shown this session
+      // Query ALL unacknowledged assignments for this user
+      // Use both login identifiers since stored value varies
+      const myEmpNamePoll = CU.empName || CU.name || '';
+      const myUsernamePoll = CU.username || CU.loginName || '';
       const {data} = await _supa.from('eta_assignments')
         .select('*')
         .eq('acknowledged', false)
         .order('created_at', {ascending: false})
-        .limit(50);
+        .limit(100);
 
       if(!data || !data.length) return;
 
@@ -4452,15 +4454,22 @@ function startETAPoll(){
         }
 
         // Is this assignment for ME?
+        // Match by any known identifier for this user
+        const myTaskUsername = CU.task_username || CU.username || '';
+        const myEmpName = CU.empName || CU.name || '';
+        const myLoginName = CU.loginName || CU.login_name || '';
         const isForMe = row.assigned_to === myLogin ||
                         row.assigned_to === myName ||
+                        row.assigned_to === myTaskUsername ||
+                        row.assigned_to === myLoginName ||
+                        row.assigned_to_name === myEmpName ||
                         row.assigned_to_name === myName ||
                         row.assigned_to_name === myLogin;
 
         if(isForMe){
           // POPUP STUCK FIX: skip if already acknowledged this session
           const _ackedThisSession = JSON.parse(sessionStorage.getItem('eta_acked_txns')||'[]');
-          if(_ackedThisSession.includes(row.txn)) return; // already acked — skip
+          if(_ackedThisSession.includes(String(row.txn))) return; // already acked — skip
           // Also skip if window._etaAssignments already marked as acknowledged
           if(window._etaAssignments && window._etaAssignments[row.txn]?.acknowledged) return;
 
@@ -5273,7 +5282,7 @@ async function _etaAssignUser(txn, userId, userName){
     acknowledged: false,
     ackNote: ''
   };
-  window._etaAssignments[txn] = assignment;
+  window._etaAssignments[String(txn)] = assignment;
 
   // Persist to Supabase eta_assignments table
   // Resolve loginName from loginUsers so it matches CU.username on receiving end
@@ -5285,15 +5294,21 @@ async function _etaAssignUser(txn, userId, userName){
 
   if(_supa){
     try{
-      await dbInsert('eta_assignments', {
-        txn,
+      const savedEta = await dbInsert('eta_assignments', {
+        txn: String(txn),          // DB column is TEXT
         assigned_to: _loginName,
         assigned_to_name: userName,
         assigned_by: CU.name,
         acknowledged: false,
         ack_note: null,
-        created_at: new Date().toISOString()
+        created_at: nowISOET()     // ET timestamp
       });
+      if(savedEta && savedEta.id){
+        window._etaAssignments[txn]._dbid = savedEta.id;
+        console.log('[ETA] Saved to DB, id='+savedEta.id);
+      } else {
+        console.warn('[ETA] DB save returned no id');
+      }
     } catch(e){ console.warn('eta_assignments save failed:', e.message); }
   }
 
@@ -5424,7 +5439,7 @@ async function _etaAcknowledge(txn, notifId, noteParam){
         const asnDbid = window._etaAssignments[txn]?._dbid;
         let rowId = asnDbid;
         if(!rowId){
-          const {data} = await _supa.from('eta_assignments').select('id').eq('txn', txn).limit(1);
+          const {data} = await _supa.from('eta_assignments').select('id').eq('txn', String(txn)).limit(1);
           rowId = data && data.length > 0 ? data[0].id : null;
         }
         if(rowId){
@@ -5821,8 +5836,8 @@ function renderETAMonitor(c){
     dbLoad('eta_assignments').then(rows => {
       if(rows && rows.length){
         rows.forEach(r => {
-          if(!window._etaAssignments[r.txn]){
-            window._etaAssignments[r.txn] = {
+          if(!window._etaAssignments[String(r.txn)]){
+            window._etaAssignments[String(r.txn)] = {
               userId: r.assigned_to,
               userName: r.assigned_to_name||r.assigned_to,
               assignedBy: r.assigned_by,
@@ -5849,7 +5864,7 @@ function renderETAMonitor(c){
   const rows = records.length === 0
     ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3);">No PARS Truck/Rail transactions with ETA in next 2 hours today</td></tr>`
     : records.map((r, i) => {
-      const asgn = window._etaAssignments[r.txn];
+      const asgn = window._etaAssignments[String(r.txn)]||window._etaAssignments[r.txn];
       const ackBadge = asgn?.acknowledged
         ? `<span style="background:#065f46;color:#6ee7b7;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;">✅ Acknowledged</span>`
         : asgn
@@ -5956,14 +5971,14 @@ function _etaDoAssign(txn){
 }
 
 function _etaReassign(txn){
-  delete window._etaAssignments[txn];
+  delete window._etaAssignments[String(txn)];
   renderETAMonitor(document.getElementById('pc'));
 }
 
 // Remove from ETA Monitor when Release record is submitted
 function _etaMarkSubmitted(txn){
   // When a TXN is submitted in Release, remove its assignment
-  if(window._etaAssignments[txn]) delete window._etaAssignments[txn];
+  if(window._etaAssignments[String(txn)]) delete window._etaAssignments[String(txn)];
 }
 
 // ══════════════════════════════════════════════════════════════════════
