@@ -2838,6 +2838,7 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
+          <option>No Manfiest</option>
         </select>
       </div>
       <div class="fpg">
@@ -4685,15 +4686,28 @@ function nowISOET(){
 }
 
 function todayStrET(){
-  // Returns yyyy-MM-dd in Eastern Canada time (for date comparisons)
-  const d = nowET();
-  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  // Returns yyyy-MM-dd in Eastern Canada time (America/Toronto)
+  // Uses Intl to get correct ET date regardless of user's local timezone
+  const parts = new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Toronto',
+    year:'numeric', month:'2-digit', day:'2-digit'
+  }).formatToParts(new Date());
+  const p = {};
+  parts.forEach(({type,value})=>{ p[type]=value; });
+  return p.year+'-'+p.month+'-'+p.day;
 }
 
 function todayDateStringET(){
-  // Returns today's date string in ET timezone (for .toDateString() comparisons)
-  // Uses ET wall-clock to avoid midnight crossover issues for users in different timezones
-  return nowET().toDateString();
+  // Returns today's date as toDateString() equivalent but in ET timezone
+  // Used for dashboard "today" comparisons
+  const parts = new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Toronto',
+    weekday:'short', year:'numeric', month:'short', day:'2-digit'
+  }).formatToParts(new Date());
+  const p = {};
+  parts.forEach(({type,value})=>{ p[type]=value; });
+  // Match toDateString format: "Wed Apr 01 2026"
+  return p.weekday+' '+p.month+' '+p.day+' '+p.year;
 }
 function calcDuration(startDate,endDate){
   if(!startDate||!endDate)return'00:00:00';
