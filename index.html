@@ -9543,17 +9543,20 @@ function calcTAT(){
   if(!releaseDate){
     tatOk.style.display='none';tatNo.style.display='none';tatNeutral.style.display='block';return;
   }
-  const now=nowET();
-  const curYear=now.getFullYear();
-  const curMonth=now.getMonth(); // 0-based
-  const relYear=releaseDate.getFullYear();
-  const relMonth=releaseDate.getMonth(); // 0-based
+  // Use ET date components for accurate TAT — not local timezone
+  const _etNow = isoToETLocalDate(new Date());
+  const curYear  = _etNow.getFullYear();
+  const curMonth = _etNow.getMonth(); // 0-based
+  const relYear  = releaseDate.getFullYear();
+  const relMonth = releaseDate.getMonth(); // 0-based
 
   // Calculate how many months ago the release date is
-  const monthsDiff=(curYear-relYear)*12+(curMonth-relMonth);
+  const monthsDiff = (curYear - relYear) * 12 + (curMonth - relMonth);
 
-  // Deadline = 24th of current (submission) month
-  const deadline=new Date(curYear,curMonth,24,23,59,59);
+  // Deadline = 24th of CURRENT ET month at 23:59:59 ET
+  // isoToETLocalDate gives us ET components in local Date → consistent comparison
+  const deadline = new Date(curYear, curMonth, 24, 23, 59, 59);
+  const now = _etNow; // use ET now for comparison
 
   let reached=false;
   let msg='';
@@ -14769,7 +14772,7 @@ function renderAudit(c){
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audited</div><div class="sv">${done.length}</div><div class="sf">${pct}% complete</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div><div class="sf">${teamRecords.length?100-pct:0}% remaining</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Today Pending</div><div class="sv">${(()=>{const tAdd=teamRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;const tDoneToday=done.filter(r=>new Date(DB.audit.find(a=>a.txn===r.txn)?._created||0).toDateString()===today).length;return Math.max(0,tAdd-tDoneToday);})()}</div><div class="sf">Added today, not audited</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Today Pending</div><div class="sv">${(()=>{const tAdd=teamRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;const tDoneToday=done.filter(r=>(parseAppDate(DB.audit.find(a=>a.txn===r.txn)?._created||'')||new Date(0)).toDateString()===today).length;return Math.max(0,tAdd-tDoneToday);})()}</div><div class="sf">Added today, not audited</div></div>
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">⭐</div><div class="sl">Avg Quality</div><div class="sv">${avgScore}%</div><div class="sf">All audited</div></div>
   </div>
 
