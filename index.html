@@ -3302,19 +3302,19 @@ const NO_CREATED_AT=['clients','users','login_users','productivity_log','cls','l
 const TABLE_SORT_COL={
   eta_assignments:  'created_at',
   productivity_log: 'logged_at',
-  lvs:          'submitted_time',   // ★ LVS  — submitted_time
-  cls:          'submitted_time',   // ★ CLS  — submitted_time
-  comp:         'completed_time',   // ★ COMP — completed_time
-  pars_docs:    'created_time',     // ★ PARS — created_time
-  ocean_docs:   'created_time',     // ★ OCEAN DOCS — created_time
-  part_lot:     'created_at',        // ★ PART LOT — use created_at (completed_time renamed)
-  release:      'submitted',        // ★ RELEASE — submitted
-  ocean_tt:     'created_at',       // ★ OCEAN TT — use created_at (complete renamed)
-  b2_entries:   'completed',        // ★ B2 — completed
-  audit:        'submitted',        // ★ AUDIT — submitted
-  client_errors:'created_at',       // uses created_at
-  instructions: 'created_at',       // uses created_at
-  idle_log:     'created_at',       // uses created_at
+  lvs:          'submitted_time',
+  cls:          'submitted_time',
+  comp:         'completed_time',
+  pars_docs:    'created_time',
+  ocean_docs:   'created_time',
+  part_lot:     'completed_time',
+  release:      'submitted',
+  ocean_tt:     'complete_time',
+  b2_entries:   'completed',
+  audit:        'submitted',
+  client_errors:'created_at',
+  instructions: 'created_at',
+  idle_log:     'created_at',
 };
 
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
