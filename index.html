@@ -2838,7 +2838,6 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
-          <option>No Manfiest</option>
         </select>
       </div>
       <div class="fpg">
@@ -3685,7 +3684,7 @@ function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.erro
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
-function mapLoginUser(r){return{id:r.id,empName:r.emp_name||r.name||'',username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:r.active!==false,_dbid:r.id};}
+function mapLoginUser(r){const _n=r.emp_name||r.name||'';return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:r.active!==false,_dbid:r.id};}
 function mapClient(r){return{id:parseInt(r.id)||r.id,name:r.name,team:r.team||''};}
 
 // ── Sanitize loginUsers before caching — mask passwords ──
