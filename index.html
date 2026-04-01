@@ -3322,22 +3322,23 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 // Load only recent rows — last N days (keeps payload small for large teams)
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
-  const since=nowET();
-  since.setDate(since.getDate()-days);
-  const sinceISO=since.toISOString();
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-  // SPEED FIX: single query with hard 5000 limit — no while(true) pagination loop
-  // 30 days of task data never exceeds 5000 records for this app
+  // Load by ORDER + LIMIT only — no date filter
+  // Date filter caused empty results when sort column was NULL in DB
+  // For 60 users this app never exceeds 5000 records per table
   const {data,error} = await _supa.from(table).select('*')
-    .gte(dateCol, sinceISO)
     .order(dateCol, {ascending:false})
     .limit(5000);
   if(error){
-    console.warn('dbLoadRecent '+table+' error: '+error.message);
-    return [];
+    // If sort column doesn't exist, fall back to id
+    console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying on id');
+    const {data:d2, error:e2} = await _supa.from(table).select('*')
+      .order('id', {ascending:false}).limit(5000);
+    if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return []; }
+    return d2 || [];
   }
   const rows = data || [];
-  console.log('dbLoadRecent('+table+','+days+'d): '+rows.length+' rows');
+  console.log('dbLoadRecent('+table+'): '+rows.length+' rows');
   return rows;
 }
 
@@ -12344,7 +12345,7 @@ async function saveLoginUser(){
     lu.password=_hp3;
   }
     if(_supaAdmin&&lu._dbid){
-      const patch={emp_name:empName,name:empName,task_username:uname,username:uname,login_name:loginName,task,role,shift};
+      const patch={emp_name:empName,task_username:uname,login_name:loginName,task,role,shift};
       if(pass){
       let _hp2=pass;
       try{const _b2=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
@@ -12363,7 +12364,7 @@ async function saveLoginUser(){
     const _pbuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass));
     _hashedPass = Array.from(new Uint8Array(_pbuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }catch(he){ _hashedPass = pass; }
-  const row={emp_name:empName,name:empName,task_username:uname,username:uname,login_name:loginName,password:_hashedPass,task,role,shift,active:true,team:''};
+  const row={emp_name:empName,task_username:uname,login_name:loginName,password:_hashedPass,app_login_password:_hashedPass,task,role,shift,active:true,team:''};
     if(_supa){
       let r=null, insertErr=null;
       try{ r=await dbInsertAdmin('login_users',row); }
