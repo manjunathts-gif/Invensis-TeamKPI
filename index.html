@@ -2838,6 +2838,7 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
+          <option>No Manfiest</option>
         </select>
       </div>
       <div class="fpg">
@@ -3307,9 +3308,9 @@ const TABLE_SORT_COL={
   comp:         'completed_time',   // ★ COMP — completed_time
   pars_docs:    'created_time',     // ★ PARS — created_time
   ocean_docs:   'created_time',     // ★ OCEAN DOCS — created_time
-  part_lot:     'completed_time',   // ★ PART LOT — completed_time
+  part_lot:     'created_at',        // ★ PART LOT — use created_at (completed_time renamed)
   release:      'submitted',        // ★ RELEASE — submitted
-  ocean_tt:     'complete_time',    // ★ OCEAN TT — complete_time
+  ocean_tt:     'created_at',       // ★ OCEAN TT — use created_at (complete renamed)
   b2_entries:   'completed',        // ★ B2 — completed
   audit:        'submitted',        // ★ AUDIT — submitted
   client_errors:'created_at',       // uses created_at
