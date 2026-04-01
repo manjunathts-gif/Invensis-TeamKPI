@@ -2838,7 +2838,6 @@ body.role-client [data-col="clientname"]{
           <option>ATA</option>
           <option>Not Found</option>
           <option>Rush ETA</option>
-          <option>No Manfiest</option>
         </select>
       </div>
       <div class="fpg">
@@ -7075,6 +7074,7 @@ async function _loadAttendanceMonth(year, month){
     .lte('date', endDate)
     .order('date', {ascending: true});
   if(error){ console.warn('[Attendance] Load failed:', error.message); return []; }
+  console.log('[Attendance] Loaded:', (data||[]).length, 'rows for', startDate, 'to', endDate);
   return data || [];
 }
 
