@@ -5018,9 +5018,13 @@ function _stepRefreshAll(){
 }
 
 function isPanelOpen(){
-  // Returns true if any slide panel is currently open
+  // Returns true if any slide panel OR the audit modal is currently open
   const overlay=document.getElementById('overlay');
-  return overlay&&overlay.classList.contains('open');
+  if(overlay&&overlay.classList.contains('open')) return true;
+  // Also treat the audit modal as an open panel so showPage() won't re-render under it
+  const auditPanel=document.getElementById('auditPanel');
+  if(auditPanel&&auditPanel.style.display!=='none') return true;
+  return false;
 }
 function openPanel(id){
   document.getElementById('overlay').classList.add('open');
@@ -14324,6 +14328,7 @@ function importErrorCSV(input){
 // AUDIT PAGE — Team Lead audits Release shipments by team
 // ══════════════════════════════════════════════════════════
 let auditActiveIdx=null; // index into DB.release2 currently being audited
+let auditActiveTxn=null;  // txn string — stable key even after DB refresh
 let auditStartTime=null;
 
 // ══════════════════════════════════════════════════════════
@@ -15382,7 +15387,7 @@ function renderAuditTab(tab){
           <td class="mono" style="font-size:11px">${r.submitted||'—'}</td>
           <td colspan="6" style="text-align:center;color:var(--text3);font-size:11px">— Not yet audited —</td>
           <td>
-            <button class="btn-add" style="padding:5px 12px;font-size:11px;background:var(--primary)" onclick="startAudit(${r._idx})">🔍 Audit</button>
+            <button class="btn-add" style="padding:5px 12px;font-size:11px;background:var(--primary)" onclick="startAudit('${_esc(String(r.txn))}')">🔍 Audit</button>
             ${isAdmin()?`<button onclick="adminDeleteRecord('release2','${r._dbid||r.id}','${r.txn}')" style="padding:4px 8px;background:var(--rose-bg);color:var(--rose);border:1px solid rgba(225,29,72,.2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;margin-left:4px">🗑</button>`:''}
           </td>
         </tr>`;
@@ -15391,11 +15396,18 @@ function renderAuditTab(tab){
   </table></div>`;
 }
 
-function startAudit(rlIdx){
-  const r=DB.release2[rlIdx];
-  if(!r){showToast('⚠️ Record not found',true);return;}
+function startAudit(rlIdxOrTxn){
+  // Accept either a txn string (stable) or numeric _idx (legacy)
+  let r;
+  if(typeof rlIdxOrTxn === 'string'){
+    r = DB.release2.find(rec => String(rec.txn) === String(rlIdxOrTxn));
+  } else {
+    r = DB.release2[rlIdxOrTxn];
+  }
+  if(!r){showToast('⚠️ Record not found — please refresh and try again',true);return;}
   if(DB.audit.find(a=>a.txn===r.txn)){showToast('⚠️ Already audited',true);return;}
-  auditActiveIdx=rlIdx;
+  auditActiveTxn = String(r.txn);
+  auditActiveIdx = DB.release2.indexOf(r);
   auditStartTime=nowET();
   const startStr=nowStr();
   document.getElementById('auditPanelBody').innerHTML=`
@@ -15504,14 +15516,17 @@ function auditDoubleSignChanged(){
 function closeAuditPanel(){
   document.getElementById('auditPanel').style.display='none';
   document.getElementById('auditPanelBg').style.display='none';
-  auditActiveIdx=null;auditStartTime=null;auditEndTime=null;
+  auditActiveIdx=null;auditActiveTxn=null;auditStartTime=null;auditEndTime=null;
   window._auditReturnTo=null;
 }
 
 function submitAudit(){
-  if(auditActiveIdx===null){showToast('⚠️ No record selected',true);return;}
-  const r=DB.release2[auditActiveIdx];
-  if(!r){showToast('⚠️ Record not found',true);return;}
+  // Always resolve by txn (stable) — auditActiveIdx can drift after background refresh
+  if(!auditActiveTxn && auditActiveIdx===null){showToast('⚠️ No record selected',true);return;}
+  const r = auditActiveTxn
+    ? DB.release2.find(rec => String(rec.txn) === auditActiveTxn)
+    : DB.release2[auditActiveIdx];
+  if(!r){showToast('⚠️ Record not found — please close and reselect the transaction',true);return;}
   const auditor=document.getElementById('audit_by').value;
   const errorType=document.getElementById('audit_errtype').value;
   const scoreVal=document.getElementById('audit_score').value;
@@ -15552,14 +15567,19 @@ function submitAudit(){
   };
   console.log('[KPI] Audit row to insert:', JSON.stringify(_auditRow));
   const _finishAudit=()=>{
-    const rlRec=DB.release2[auditActiveIdx];
+    // Resolve by txn (stable) in case DB.release2 was refreshed since panel opened
+    const rlRec = auditActiveTxn
+      ? DB.release2.find(rec => String(rec.txn) === auditActiveTxn)
+      : DB.release2[auditActiveIdx];
     if(rlRec) rlRec.qualityScore=score;
     // Also update quality_score in Supabase release row
     if(_supa&&rlRec?._dbid) dbUpdate('release',rlRec._dbid,{quality_score:score});
     closeAuditPanel();
     showToast(`✅ Audit complete — Error: ${errorType} → Score: ${score}%`);
     window._auditReturnTo=null;
-    showPage('audit'); // always re-render audit so pending/done update
+    // Force re-render so pending/done counts update immediately (even if already on audit page)
+    window._forceRefresh = true;
+    showPage('audit');
   };
   // Build a local fallback record in case insert returns null
   const _localAuditRec={txn:r.txn,auditor,errorType,score,doubleSign,comments:_auditRow.comments,startTime:_auditRow.start_time,endTime:_auditRow.end_time,duration:_auditRow.duration,mode:r.mode,clientname:r.clientname,client:r.client,team:r.team,user:r.user,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.status,rlTat:r.tat,_created:nowISOET()};
