@@ -17443,7 +17443,7 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
     // TAT Reached: submitted within 2 hours BEFORE ETA or at/before ETA
     // i.e., 0 <= minsBeforeEta <= 120  (submitted between ETA-2h and ETA)
     const minsBeforeEta=(eta-submittedDate)/60000;
-    return (minsBeforeEta>=0&&minsBeforeEta<=120)?'TAT Reached':'TAT Not Reached';
+    return (minsBeforeEta<=0&&minsBeforeEta<=120)?'TAT Reached':'TAT Not Reached';
   } else {
     // Ocean/Air/Rail: submitted on or before ETA date (compare date only, end of ETA day)
     const etaEndOfDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
