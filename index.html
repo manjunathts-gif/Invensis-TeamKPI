@@ -14485,8 +14485,8 @@ function runTATAnalyzer(){
         if(mode==='Truck'){
           const minsBeforeEta=(eta-submitted)/60000;
           diffMins=minsBeforeEta;
-          // TAT Reached = submitted within 2 hours BEFORE ETA (0 <= mins <= 120)
-          const reached=(minsBeforeEta>=0&&minsBeforeEta<=120);
+          // TAT Reached = submitted on or before ETA
+          const reached=submitted<=eta;
           tatStatus=reached?'TAT Reached':'TAT Not Reached ❌';
 
           // ── Full timeline analysis ──
@@ -14527,13 +14527,12 @@ function runTATAnalyzer(){
           };
 
           if(reached){
-            note=`✅ Truck TAT Reached — submitted ${fmtMins(minsBeforeEta)} before ETA (within 2h window).`;
+            note=`✅ Truck TAT Reached — submitted ${minsBeforeEta>=0?fmtMins(minsBeforeEta)+' before ETA':'at ETA'}. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
           } else if(submitted>eta){
             const late=(submitted-eta)/60000;
-            note=`❌ Truck TAT Not Reached — submitted ${fmtMins(late)} AFTER ETA (must submit ≥2 hours BEFORE ETA). ETA: ${r.eta}, Submitted: ${r.submitted}.`;
+            note=`❌ Truck TAT Not Reached — submitted ${fmtMins(late)} AFTER ETA. Must submit on or before ETA. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
           } else {
-            const tooLate=120-minsBeforeEta;
-            note=`❌ Truck TAT Not Reached — submitted ${minsBeforeEta<0?fmtMins(-minsBeforeEta)+' AFTER ETA':'only '+fmtMins(minsBeforeEta)+' before ETA (need within 2h window)'}. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
+            note=`❌ Truck TAT Not Reached — submitted after ETA. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
           }
         } else {
           // Ocean/Air/Rail: must submit by end of ETA day
@@ -17440,10 +17439,8 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
   if(mode==='Truck'){
-    // TAT Reached: submitted within 2 hours BEFORE ETA or at/before ETA
-    // i.e., 0 <= minsBeforeEta <= 120  (submitted between ETA-2h and ETA)
-    const minsBeforeEta=(eta-submittedDate)/60000;
-    return (minsBeforeEta>=0&&minsBeforeEta<=120)?'TAT Reached':'TAT Not Reached';
+    // TAT Reached: submitted on or before ETA (release sent before or at ETA time)
+    return submittedDate<=eta?'TAT Reached':'TAT Not Reached';
   } else {
     // Ocean/Air/Rail: submitted on or before ETA date (compare date only, end of ETA day)
     const etaEndOfDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
@@ -18927,7 +18924,18 @@ function _adminRecalcTAT(taskKey){
   }
 
   // Update TAT badge
-  const tatBadgeEl = document.querySelector('#adminEditModal [style*="TAT"]');
+  const tatBadgeEl = document.querySelector('#adminEditModal [id="aedit_tat"]');
+  // Find and update the visible badge span (sibling of the hidden input)
+  const tatRow = document.getElementById('aedit_tat')?.closest('div[style*="display:flex"]');
+  if(tatRow){
+    const badgeSpan = tatRow.querySelector('span[style*="border-radius:8px"]');
+    if(badgeSpan){
+      const isReached2 = newTat === 'TAT Reached';
+      badgeSpan.innerHTML = isReached2 ? '✅ TAT Reached' : '❌ TAT Not Reached';
+      badgeSpan.style.background = isReached2 ? '#f0fdf4' : '#fff1f2';
+      badgeSpan.style.color = isReached2 ? '#065f46' : '#e11d48';
+    }
+  }
   showToast('TAT recalculated: ' + newTat);
 }
 
@@ -19007,13 +19015,13 @@ function _recalcTAT(taskKey, r){
     }
 
     if(taskKey==='release2'){
-      // Rule: Truck = submitted ≥ 120 min before ETA; Ocean/Air/Rail = submitted ≤ ETA end-of-day
+      // Rule: Truck = submitted on or before ETA; Ocean/Air/Rail = submitted ≤ ETA end-of-day
       const eta=_pd(r.eta)||_pdISO(r.eta);
       const sub=_pd(r.submitted)||_pdISO(r.submitted);
       const mode=(r.mode||'').toLowerCase();
       if(!eta||!sub) return null;
       if(mode==='truck'){
-        return ((eta-sub)/60000)>=120?'TAT Reached':'TAT Not Reached';
+        return sub<=eta?'TAT Reached':'TAT Not Reached';
       } else {
         const etaEOD=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
         return sub<=etaEOD?'TAT Reached':'TAT Not Reached';
