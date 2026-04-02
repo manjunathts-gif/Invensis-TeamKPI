@@ -5531,189 +5531,251 @@ function _prodRecordSubmit(username, taskName){
 }
 
 function renderProductivity(c){
-  const canView = CU.role==='Manager'||CU.role==='Supervisor'||
-                  CU.role==='Team Lead'||CU.task==='Manager'||
-                  CU.username===ADMIN_UNAME;
+  const canView=CU.role==='Manager'||CU.role==='Supervisor'||
+                CU.role==='Team Lead'||CU.task==='Manager'||
+                CU.username===ADMIN_UNAME;
   if(!canView){
     c.innerHTML='<div class="ph"><div class="pt">📈 Productivity</div></div><div style="padding:40px;text-align:center;color:var(--text3)">Access restricted.</div>';
     return;
   }
 
-  // Merge DB historical data into in-memory tracking for display
-  if(_supa && !window._prodDBLoaded && !window._prodManualCleared){
-    window._prodDBLoaded = true;
-    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading productivity data...</div>';
-    // Get today's date in Eastern Time for filtering
-    const _etNow = new Date(new Date().getTime() - 5*3600000);
-    const _todayET = _etNow.toISOString().slice(0,10); // YYYY-MM-DD
-    dbLoad('productivity_log').then(rows => {
-      if(rows && rows.length){
-        // Filter to TODAY only
-        const todayRows = rows.filter(r => {
-          if(!r.logged_at) return false;
-          const rowDate = new Date(r.logged_at).toISOString().slice(0,10);
-          return rowDate === _todayET;
-        });
-        todayRows.forEach(r => {
-          if(!window._prodTracking) window._prodTracking = {};
-          if(!window._prodTracking[r.username]){
-            window._prodTracking[r.username] = {lastSubmit: null, gaps: [], task: r.task};
-          }
-          window._prodTracking[r.username].gaps.push({
-            gapMin: parseFloat(r.gap_minutes)||0,
-            at: r.logged_at||new Date().toISOString(),
-            fromDB: true
+  // Load from DB if not done
+  if(_supa&&!window._prodDBLoaded&&!window._prodManualCleared){
+    window._prodDBLoaded=true;
+    c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading productivity data...</div>';
+    const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
+    dbLoad('productivity_log').then(rows=>{
+      if(rows&&rows.length){
+        rows.filter(r=>r.logged_at&&new Date(r.logged_at).toISOString().slice(0,10)===_etToday)
+          .forEach(r=>{
+            if(!window._prodTracking) window._prodTracking={};
+            if(!window._prodTracking[r.username]) window._prodTracking[r.username]={lastSubmit:null,gaps:[],task:r.task};
+            window._prodTracking[r.username].gaps.push({gapMin:parseFloat(r.gap_minutes)||0,at:r.logged_at||new Date().toISOString(),fromDB:true});
           });
-        });
       }
-      const _pc = document.getElementById('pc');
+      const _pc=document.getElementById('pc');
       if(_pc) renderProductivity(_pc);
-    }).catch(() => { const _pc=document.getElementById('pc'); if(_pc) renderProductivity(_pc); });
+    }).catch(()=>{const _pc=document.getElementById('pc');if(_pc) renderProductivity(_pc);});
     return;
   }
 
-  const data = window._prodTracking || {};
-  // Filter to TODAY only — remove any gaps from previous days
-  const _etToday = new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-  Object.keys(data).forEach(u => {
-    if(data[u].gaps){
-      data[u].gaps = data[u].gaps.filter(g => {
-        if(!g.at) return true; // keep if no date
-        return new Date(g.at).toISOString().slice(0,10) === _etToday;
-      });
-    }
+  const data=window._prodTracking||{};
+  const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
+  // Filter to today only
+  Object.keys(data).forEach(u=>{
+    if(data[u].gaps) data[u].gaps=data[u].gaps.filter(g=>!g.at||new Date(g.at).toISOString().slice(0,10)===_etToday);
   });
-  const users = Object.keys(data).filter(u => {
-    // Only show users who have activity today
-    const t = data[u];
-    return (t.gaps && t.gaps.length > 0) || (t.lastSubmit && new Date(t.lastSubmit).toISOString().slice(0,10) === _etToday);
+
+  const now=new Date();
+  const hours=['08','09','10','11','12','13','14','15','16','17','18','19','20'];
+  const nowH=String(now.getHours()).padStart(2,'0');
+
+  // Build per-user data from both _prodTracking AND DB task records
+  // Merge task submissions with productivity gaps to get a full hourly picture
+  const allTaskDBs = [
+    {db:DB.lvs,      fld:'assignedTo', task:'LVS'},
+    {db:DB.cls,      fld:'assignedTo', task:'Classifier'},
+    {db:DB.comp,     fld:'assignedTo', task:'Compliance'},
+    {db:DB.parsDocs, fld:'user',       task:'PARS Docs'},
+    {db:DB.oceanDocs,fld:'user',       task:'Ocean Docs'},
+    {db:DB.partLot,  fld:'user',       task:'Part Lot'},
+    {db:DB.release2, fld:'user',       task:'Release'},
+    {db:DB.oceanTT,  fld:'user',       task:'Ocean T&T'},
+    {db:DB.b2entries,fld:'user',       task:'B2 Entries'},
+  ];
+
+  // Build user map from task records
+  const userMap={};
+  const todayStr=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
+
+  allTaskDBs.forEach(({db,fld,task})=>{
+    (db||[]).forEach(r=>{
+      const created=parseAppDate(r._created)||new Date(0);
+      if(created.toISOString().slice(0,10)!==todayStr) return;
+      const uName=r[fld]||'';
+      if(!uName) return;
+      if(!userMap[uName]) userMap[uName]={name:uName,task,records:[],gaps:[]};
+      userMap[uName].records.push({time:created, r});
+    });
   });
-  const now = new Date();
 
-  // Summary cards
-  const totalUsers = users.length;
-  const flagged = users.filter(u => (data[u].gaps||[]).some(g => g.gapMin > PROD_IDLE_THRESHOLD_MIN)).length;
-  const totalRecords = users.reduce((s,u) => s + (data[u].gaps||[]).length + 1, 0);
+  // Merge productivity gap data
+  Object.keys(data).forEach(username=>{
+    if(!userMap[username]) userMap[username]={name:username,task:data[username].task||'—',records:[],gaps:[]};
+    userMap[username].gaps=(data[username].gaps||[]).map(g=>({gapMin:g.gapMin,at:new Date(g.at||now)}));
+  });
 
-  // Build rows
-  const rows = users.length === 0
-    ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text3)">
-        No activity recorded yet this session.<br>
-        <span style="font-size:12px;">Data appears here as users submit records.</span>
-      </td></tr>`
-    : users.map(username => {
-        const t = data[username];
-        const gaps = t.gaps || [];
-        const recordCount = gaps.length + 1;
-        const avgGap = gaps.length ? (gaps.reduce((s,g)=>s+g.gapMin,0)/gaps.length).toFixed(1) : '—';
-        const maxGap = gaps.length ? Math.max(...gaps.map(g=>g.gapMin)).toFixed(1) : '—';
-        const flaggedGaps = gaps.filter(g=>g.gapMin > PROD_IDLE_THRESHOLD_MIN);
-        const lastSubmit = t.lastSubmit ? _fmtTimeAgo(t.lastSubmit) : '—';
-        const idleSince = t.lastSubmit ? Math.round((now - t.lastSubmit)/60000) : null;
-        const isIdle = idleSince !== null && idleSince > PROD_IDLE_THRESHOLD_MIN;
+  const users=Object.keys(userMap).sort();
+  const totalUsers=users.length;
+  const totalRecords=users.reduce((s,u)=>s+userMap[u].records.length,0);
+  const flagged=users.filter(u=>(userMap[u].gaps||[]).some(g=>g.gapMin>PROD_IDLE_THRESHOLD_MIN)).length;
 
-        const statusBadge = isIdle
-          ? `<span style="background:rgba(239,68,68,.15);color:var(--rose);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ Idle ${idleSince}m</span>`
-          : `<span style="background:rgba(16,185,129,.12);color:var(--emerald);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Active</span>`;
+  // ── Per-user hourly record count matrix ──
+  const getHour=r=>String((parseAppDate(r._created)||new Date(0)).getHours()).padStart(2,'0');
+  const getUserHourCount=(recs,h)=>recs.filter(r=>getHour(r.r||r)===h).length;
+  const heatClass=n=>n===0?'h0':n===1?'h1':n<=3?'h2':n<=5?'h3':'h4';
 
-        const flagBadge = flaggedGaps.length > 0
-          ? `<span style="background:rgba(245,158,11,.15);color:var(--amber);padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-left:4px;">⚠️ ${flaggedGaps.length} gaps</span>`
-          : '';
+  if(!users.length){
+    c.innerHTML=`
+    <div class="ph"><div><div class="pt">📈 Productivity Tracker <span class="pbadge">Live</span></div>
+      <div class="ps">Per-user hourly breakdown — records submitted each hour · gaps flagged</div></div>
+      <button onclick="renderProductivity(document.getElementById('pc'))" style="padding:7px 14px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
+    </div>
+    <div style="text-align:center;padding:60px 20px;color:var(--text3)">
+      <div style="font-size:48px;margin-bottom:12px">📊</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px">No activity recorded today yet</div>
+      <div style="font-size:13px">Data appears as users submit records throughout the day</div>
+    </div>`;
+    return;
+  }
 
-        return `<tr>
-          <td style="font-weight:600;">${username}</td>
-          <td><span style="background:rgba(107,33,168,.1);color:var(--primary);padding:2px 8px;border-radius:20px;font-size:11px;">${t.task||'—'}</span></td>
-          <td style="text-align:center;font-weight:700;">${recordCount}</td>
-          <td style="text-align:center;">${avgGap === '—' ? '—' : avgGap+'m'}</td>
-          <td style="text-align:center;color:${parseFloat(maxGap)>PROD_IDLE_THRESHOLD_MIN?'var(--rose)':'var(--text1)'};">${maxGap === '—' ? '—' : maxGap+'m'}</td>
-          <td>${lastSubmit}</td>
-          <td>${statusBadge}${flagBadge}</td>
-        </tr>`;
-      }).join('');
+  const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
 
-  // Gap detail table for selected user
-  const gapRows = users.flatMap(username => {
-    const t = data[username];
-    return (t.gaps||[])
-      .filter(g => g.gapMin > PROD_IDLE_THRESHOLD_MIN)
-      .map(g => `<tr>
-        <td style="font-weight:600;">${username}</td>
-        <td>${t.task||'—'}</td>
-        <td style="color:var(--rose);font-weight:700;">${g.gapMin}m</td>
-        <td style="font-size:11px;color:var(--text3);">${new Date(g.at).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'})}</td>
-      </tr>`);
+  // ── Hourly heatmap header ──
+  const hourHeaders=hours.map(h=>`<th style="text-align:center;min-width:38px;font-size:10px;padding:6px 2px;font-family:var(--mono);${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
+
+  // ── Per-user rows ──
+  const tableRows=users.map((u,ui)=>{
+    const ud=userMap[u];
+    const col=palColors[ui%palColors.length];
+    const totalRecs=ud.records.length;
+    const gaps=ud.gaps||[];
+    const flaggedGaps=gaps.filter(g=>g.gapMin>PROD_IDLE_THRESHOLD_MIN);
+    const lastRec=ud.records.length?ud.records[ud.records.length-1]:null;
+    const lastRecTime=lastRec?parseAppDate(lastRec.r._created||''):null;
+    const idleSince=lastRecTime?Math.round((now-lastRecTime)/60000):null;
+    const isIdle=idleSince!==null&&idleSince>PROD_IDLE_THRESHOLD_MIN;
+
+    const heatCells=hours.map(h=>{
+      const cnt=getUserHourCount(ud.records,h);
+      return `<td class="hcell ${heatClass(cnt)}" style="text-align:center;min-width:38px;padding:6px 2px;font-size:13px">${cnt||'—'}</td>`;
+    }).join('');
+
+    const statusBadge=isIdle
+      ?`<span style="font-size:10px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">⏸ Idle ${idleSince}m</span>`
+      :`<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">✅ Active</span>`;
+
+    const lastTime=lastRecTime?lastRecTime.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Toronto'}):'—';
+
+    return `<tr onclick="(function(el){el.style.display=el.style.display==='none'?'table-row':'none'})(document.getElementById('prod_det_${ui}'))" style="cursor:pointer" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">
+      <td style="padding:10px 14px;min-width:160px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div>
+          <div><div style="font-weight:700;font-size:12px">${_esc(u)}</div><div style="font-size:10px;color:var(--text3)">${_esc(ud.task)}</div></div>
+        </div>
+      </td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${totalRecs}</td>
+      <td style="text-align:center">${statusBadge}</td>
+      <td style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--text3)">${lastTime}</td>
+      <td style="text-align:center">${flaggedGaps.length?`<span style="font-size:10px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">⚠️ ${flaggedGaps.length} gap${flaggedGaps.length>1?'s':''}</span>`:`<span style="font-size:10px;color:var(--text3)">—</span>`}</td>
+      ${heatCells}
+    </tr>
+    <tr id="prod_det_${ui}" style="display:none;background:#fafbff">
+      <td colspan="${5+hours.length}" style="padding:0">
+        <div style="padding:12px 18px 12px 52px;border-top:1px solid var(--border)">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <!-- Record timeline -->
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Records Today (${totalRecs})</div>
+              ${ud.records.length===0?'<div style="font-size:12px;color:var(--text3);padding:8px">No records today</div>':
+                ud.records.slice().sort((a,b)=>(parseAppDate(a.r._created)||0)-(parseAppDate(b.r._created)||0))
+                .map((rec,ri)=>{
+                  const t=(parseAppDate(rec.r._created)||new Date(0)).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Toronto'});
+                  const txn=rec.r.txn||rec.r.subject||'—';
+                  const client=rec.r.clientName||rec.r.clientname||rec.r.client||'—';
+                  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);margin-bottom:4px">
+                    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--primary);white-space:nowrap">${t}</span>
+                    <span style="font-size:11px;color:var(--text1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(txn))}</span>
+                    <span style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(client))}</span>
+                  </div>`;
+                }).join('')
+              }
+            </div>
+            <!-- Gap timeline -->
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏱️ Gaps Between Records</div>
+              ${gaps.length===0?'<div style="font-size:12px;color:var(--text3);padding:8px">No gaps recorded</div>':
+                gaps.map(g=>{
+                  const t=g.at instanceof Date?g.at.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false}):new Date(g.at).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false});
+                  const isFlagged=g.gapMin>PROD_IDLE_THRESHOLD_MIN;
+                  const barC=g.gapMin>=60?'#ef4444':g.gapMin>=30?'#f97316':'#f59e0b';
+                  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:${isFlagged?'#fff7ed':'var(--surface)'};border:1px solid ${isFlagged?'#fcd34d':'var(--border)'};margin-bottom:4px">
+                    <span style="font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap">${t}</span>
+                    <div style="flex:1;background:var(--border);border-radius:3px;height:4px;overflow:hidden"><div style="width:${Math.min(100,Math.round(g.gapMin/60*100))}%;height:100%;background:${barC};border-radius:3px"></div></div>
+                    <span style="font-family:var(--mono);font-weight:800;font-size:11px;color:${isFlagged?'#d97706':'var(--text3)'};white-space:nowrap">${g.gapMin}m ${isFlagged?'⚠️':''}</span>
+                  </div>`;
+                }).join('')
+              }
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>`;
   }).join('');
 
-  c.innerHTML = `
+  c.innerHTML=`
   <div class="ph">
     <div>
-      <div class="pt">📈 Productivity Tracker <span class="pbadge">Live Session</span></div>
-      <div class="ps">Tracks time between records per user — flags idle gaps over ${PROD_IDLE_THRESHOLD_MIN} minutes &nbsp;|&nbsp;
-        <span style="color:var(--primary);font-weight:700;">
-          📅 ${new Date().toLocaleDateString('en-CA',{weekday:'short',year:'numeric',month:'short',day:'numeric',timeZone:'America/Toronto'})}
-        </span>
-      </div>
+      <div class="pt">📈 Productivity Tracker <span class="pbadge">Live</span></div>
+      <div class="ps">Per-user hourly record count · ★ = current hour · click row to see full timeline</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button onclick="renderProductivity(document.getElementById('pc'))"
-        style="background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
+        style="padding:7px 14px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
       <button onclick="_prodClearData()"
-        style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);padding:6px 14px;border-radius:20px;font-size:11px;cursor:pointer;">🗑️ Clear</button>
+        style="padding:7px 14px;border-radius:8px;background:var(--surface2);color:var(--text2);border:1.5px solid var(--border);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑️ Clear</button>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px 16px 0;">
-    <div class="sc c-blue"><div class="si">👥</div><div class="sl">Active Users</div><div class="sv">${totalUsers}</div><div class="sf">This session</div></div>
-    <div class="sc c-em"><div class="si">📝</div><div class="sl">Records Saved</div><div class="sv">${totalRecords}</div><div class="sf">All tasks</div></div>
-    <div class="sc ${flagged>0?'c-ro':'c-teal'}"><div class="si">${flagged>0?'⚠️':'✅'}</div><div class="sl">Users Flagged</div><div class="sv">${flagged}</div><div class="sf">Idle > ${PROD_IDLE_THRESHOLD_MIN} min</div></div>
+  <!-- Summary cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">👥</div><div class="sl">Active Users</div><div class="sv">${totalUsers}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Records Today</div><div class="sv">${totalRecords}</div></div>
+    <div class="sc ${flagged>0?'c-ro':'c-em'}"><div class="sc-top"></div><div class="si">${flagged>0?'⚠️':'✅'}</div><div class="sl">Users Flagged</div><div class="sv">${flagged}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">🕐</div><div class="sl">Idle Threshold</div><div class="sv">${PROD_IDLE_THRESHOLD_MIN}m</div></div>
   </div>
 
-  <div style="padding:16px;">
-    <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">User Activity</div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:var(--surface2);">
-            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">User</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Task</th>
-            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Records</th>
-            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Avg Gap</th>
-            <th style="padding:10px 14px;text-align:center;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Max Gap</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Last Submit</th>
-            <th style="padding:10px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Status</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
+  <!-- Hourly breakdown table -->
+  <div class="tw">
+    <div class="th2">
+      <div class="tt">⏰ Hourly Record Count — Today</div>
+      <div class="tc">Records submitted per hour per user · ★ = current · click row for full detail</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="dt">
+        <thead><tr>
+          <th style="min-width:160px">User</th>
+          <th style="text-align:center;min-width:60px">Total</th>
+          <th style="text-align:center;min-width:80px">Status</th>
+          <th style="text-align:center;min-width:60px">Last Rec</th>
+          <th style="text-align:center;min-width:70px">Gaps</th>
+          ${hourHeaders}
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
       </table>
     </div>
-
-    ${gapRows ? `
-    <div style="font-size:12px;font-weight:700;color:var(--rose);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">⚠️ Flagged Idle Gaps (> ${PROD_IDLE_THRESHOLD_MIN} min)</div>
-    <div style="background:var(--surface);border:1px solid rgba(239,68,68,.3);border-radius:12px;overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:rgba(239,68,68,.06);">
-            <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;">User</th>
-            <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;">Task</th>
-            <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--rose);font-weight:700;">Gap</th>
-            <th style="padding:8px 14px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;">Time</th>
-          </tr>
-        </thead>
-        <tbody>${gapRows}</tbody>
-      </table>
-    </div>` : ''}
-
-    <div style="margin-top:12px;padding:12px 14px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--text3);">
-      ℹ️ Data tracks the <b>current browser session only</b> — resets on page reload. 
-      A gap is the time between a user's consecutive record submissions.
-      Users are flagged if any gap exceeds <b>${PROD_IDLE_THRESHOLD_MIN} minutes</b>.
+    <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--surface2);display:flex;gap:12px;flex-wrap:wrap;font-size:11px;align-items:center">
+      <span style="font-weight:700;color:var(--text3)">HEAT (records/hour):</span>
+      <span class="hcell h0" style="border-radius:4px;padding:3px 10px">— = none</span>
+      <span class="hcell h1" style="border-radius:4px;padding:3px 10px">1</span>
+      <span class="hcell h2" style="border-radius:4px;padding:3px 10px">2–3</span>
+      <span class="hcell h3" style="border-radius:4px;padding:3px 10px">4–5</span>
+      <span class="hcell h4" style="border-radius:4px;padding:3px 10px">6+</span>
+      <span style="margin-left:auto;color:var(--text3)">👆 Click row for record timeline + gap detail</span>
     </div>
+  </div>
+
+  <div style="margin-top:10px;padding:11px 14px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--text3)">
+    ℹ️ <b>How it works:</b> Hourly counts come from today's task records (LVS, Release, etc). 
+    Gaps track time between consecutive submissions per user. 
+    Users flagged ⚠️ if any gap exceeds <b>${PROD_IDLE_THRESHOLD_MIN} minutes</b>. 
+    Data refreshes automatically every minute.
   </div>`;
 
-  // Auto-refresh every 30s while on this page
+  // Auto-refresh every 60s
   if(window._prodPageInterval) clearInterval(window._prodPageInterval);
-  window._prodPageInterval = setInterval(() => {
-    if(_currentPage === 'productivity') renderProductivity(document.getElementById('pc'));
+  window._prodPageInterval=setInterval(()=>{
+    if(_currentPage==='productivity') renderProductivity(document.getElementById('pc'));
     else clearInterval(window._prodPageInterval);
   }, 60000);
 }
@@ -10927,73 +10989,210 @@ function renderDashboardAnalytics(allDB, today, todayAll){
   }
 }
 function renderIdleLogPage(c){
-  if(!isAdmin()&&CU.role!=='Supervisor'&&CU.role!=='Team Lead'){c.innerHTML='<div class="ph"><div class="pt">🚫 Access Denied</div><div class="ps">This page is for Admin / Manager / Supervisor / Team Lead only.</div></div>';return;}
-  // Load fresh data then render
-  loadIdleLog().then(()=>{
-    const b=document.getElementById('idlelog_body');
-    if(b) b.innerHTML=buildIdleRows(document.getElementById('idlelog_fd')?.value||todayStrET(),'');
-  });
+  if(!isAdmin()&&CU.role!=='Supervisor'&&CU.role!=='Team Lead'){
+    c.innerHTML='<div class="ph"><div class="pt">🚫 Access Denied</div><div class="ps">Admin / Manager / Supervisor / Team Lead only.</div></div>';
+    return;
+  }
   c.innerHTML=`
   <div class="ph">
     <div>
       <div class="pt">⏸️ Idle / Inactivity Log</div>
-      <div class="ps">All staff idle periods — Admin view only</div>
+      <div class="ps">When team members were inactive · hourly heatmap · click row to expand</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button onclick="loadIdleLog().then(()=>{const b=document.getElementById('idlelog_body');if(b)b.innerHTML=buildIdleRows(document.getElementById('idlelog_fd')?.value||todayStrET(),'');});showToast('✅ Refreshed')" style="padding:8px 16px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
-      <button onclick="exportIdleLog()" style="padding:8px 16px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">⬇️ Export CSV</button>
-    </div>
-  </div>
-
-  <div class="tw" style="margin-bottom:16px">
-    <div class="th2">
-      <div class="tt">🔍 Filter</div>
-    </div>
-    <div style="display:flex;gap:12px;align-items:center;padding:14px 18px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:8px">
-        <label for="idlelog_fd" style="font-size:12px;font-weight:700;color:var(--text3)">📅 Date</label>
-        <input type="date" id="idlelog_fd" value="${todayStrET()}"
-          style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--border);font-family:var(--font);font-size:13px;outline:none"
-          onchange="(function(){const b=document.getElementById('idlelog_body');const q=document.getElementById('idlelog_fq')?.value||'';if(b)b.innerHTML=buildIdleRows(document.getElementById('idlelog_fd').value,q);})()"/>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <label for="idlelog_fq" style="font-size:12px;font-weight:700;color:var(--text3)">🔍 Search</label>
-        <input id="idlelog_fq" placeholder="User name / reason…"
-          style="padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:var(--font);font-size:13px;outline:none;min-width:200px"
-          oninput="(function(){const b=document.getElementById('idlelog_body');const q=document.getElementById('idlelog_fq').value;const d=document.getElementById('idlelog_fd')?.value||'';if(b)b.innerHTML=buildIdleRows(d,q);})()"/>
-      </div>
-      <button onclick="(function(){const fd=document.getElementById('idlelog_fd');const fq=document.getElementById('idlelog_fq');if(fd)fd.value=todayStrET();if(fq)fq.value='';const b=document.getElementById('idlelog_body');if(b)b.innerHTML=buildIdleRows(todayStrET(),'');})()"
-        style="padding:7px 14px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">✕ Clear</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="date" id="idle_date" value="${todayStrET()}"
+        style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:var(--font);font-size:13px;background:var(--surface2);color:var(--text1)"
+        onchange="_renderIdleContent()">
+      <input type="text" id="idle_search" placeholder="🔍 Search name / reason..."
+        style="padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);font-family:var(--font);font-size:13px;background:var(--surface2);color:var(--text1);min-width:180px"
+        oninput="_renderIdleContent()">
+      <button onclick="loadIdleLog().then(()=>_renderIdleContent());showToast('✅ Refreshed')"
+        style="padding:8px 16px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
+      <button onclick="exportIdleLog()"
+        style="padding:8px 16px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">⬇️ Export CSV</button>
     </div>
   </div>
-
-  <div class="tw">
-    <div class="th2">
-      <div class="tt">⏸️ Idle Records</div>
-      <div class="tc" id="idlelog_count">${DB.idleLog.length} total</div>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="dt">
-        <thead><tr>
-          <th style="width:40px">#</th>
-          <th>User</th><th>Task</th><th>Team</th>
-          <th>Idle Start</th><th>Idle End</th>
-          <th style="text-align:center">Duration</th>
-          <th>Reason</th><th>Date</th>
-        </tr></thead>
-        <tbody id="idlelog_body">${buildIdleRows(todayStrET(),'')}</tbody>
-      </table>
-    </div>
-    <div style="padding:10px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
-      💡 Idle popup fires after 30 minutes of no activity. Duration ≥ 60 min is highlighted in red.
-    </div>
-  </div>
-  `;
+  <div id="idle_summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px"></div>
+  <div id="idle_heatmap_wrap" style="margin-bottom:16px"></div>
+  <div id="idle_cards_wrap"></div>`;
+  loadIdleLog().then(()=>_renderIdleContent());
 }
 
-// ══════════════════════════════════════════════════════════
-// USERS PAGE
-// ══════════════════════════════════════════════════════════
+function _renderIdleContent(){
+  const dateStr = document.getElementById('idle_date')?.value || todayStrET();
+  const q = (document.getElementById('idle_search')?.value||'').toLowerCase().trim();
+
+  let data = [...(DB.idleLog||[])];
+  if(dateStr) data = data.filter(r=>(r.log_date||r.created_at||'').slice(0,10)===dateStr);
+  if(q) data = data.filter(r=>
+    (r.user_name||'').toLowerCase().includes(q)||
+    (r.reason||'').toLowerCase().includes(q)||
+    (r.task||'').toLowerCase().includes(q)
+  );
+
+  const totalMins  = data.reduce((s,r)=>s+(r.duration_mins||0),0);
+  const longIdles  = data.filter(r=>(r.duration_mins||0)>=45).length;
+  const uniqueUsers= new Set(data.map(r=>r.user_name).filter(Boolean)).size;
+  const avgMins    = data.length ? Math.round(totalMins/data.length) : 0;
+
+  // Summary cards
+  const sumEl = document.getElementById('idle_summary');
+  if(sumEl) sumEl.innerHTML=`
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Entries</div><div class="sv">${data.length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">👥</div><div class="sl">Users Logged</div><div class="sv">${uniqueUsers}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏱️</div><div class="sl">Total Idle</div><div class="sv">${Math.floor(totalMins/60)>0?Math.floor(totalMins/60)+'h ':''}${totalMins%60}m</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">Long Idles 45m+</div><div class="sv">${longIdles}</div></div>`;
+
+  if(!data.length){
+    const hw = document.getElementById('idle_heatmap_wrap');
+    const cw = document.getElementById('idle_cards_wrap');
+    if(hw) hw.innerHTML='';
+    if(cw) cw.innerHTML=`<div style="text-align:center;padding:60px 20px;color:var(--text3)"><div style="font-size:48px;margin-bottom:12px">✅</div><div style="font-size:16px;font-weight:700;margin-bottom:6px">No idle records for this date</div><div style="font-size:13px">All team members were active!</div></div>`;
+    return;
+  }
+
+  // ── Hourly Heatmap Table ──
+  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
+  const byUser={};
+  data.forEach(r=>{
+    const u=r.user_name||r.username||'Unknown';
+    if(!byUser[u]) byUser[u]={name:u,task:r.task||'—',team:r.team||'—',sessions:[]};
+    byUser[u].sessions.push(r);
+  });
+
+  // compute per-user per-hour idle minutes
+  const userList = Object.values(byUser).sort((a,b)=>{
+    const ta=a.sessions.reduce((s,r)=>s+(r.duration_mins||0),0);
+    const tb=b.sessions.reduce((s,r)=>s+(r.duration_mins||0),0);
+    return tb-ta;
+  });
+
+  const getUserHourMins = (sessions, h) => {
+    return sessions.filter(s=>{
+      const st = s.idle_start||'';
+      const m = st.match(/(\d{2}):(\d{2})/);
+      return m && String(parseInt(m[1])).padStart(2,'0')===h;
+    }).reduce((sum,s)=>sum+(s.duration_mins||0),0);
+  };
+
+  const heatClass = m => m===0?'h0':m<15?'h1':m<30?'h2':m<45?'h3':'h4';
+
+  const heatRows = userList.map((u,ui)=>{
+    const total=u.sessions.reduce((s,r)=>s+(r.duration_mins||0),0);
+    const sC=total>=90?'#dc2626':total>=45?'#d97706':'#059669';
+    const sL=total>=90?'🔴 High':total>=45?'🟠 Mod':'🟢 OK';
+    const cols=hours.map(h=>{
+      const m=getUserHourMins(u.sessions,h);
+      return `<td class="hcell ${heatClass(m)}" style="text-align:center;min-width:38px;padding:6px 2px;font-size:12px;font-family:var(--mono)">${m||'·'}</td>`;
+    }).join('');
+    const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
+    const col=palColors[ui%palColors.length];
+    return `<tr onclick="(function(el){el.style.display=el.style.display==='none'?'table-row':'none'})(document.getElementById('idl_sess_${ui}'))" style="cursor:pointer" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">
+      <td style="padding:10px 14px;min-width:180px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;flex-shrink:0">${(u.name||'?')[0].toUpperCase()}</div>
+          <div><div style="font-weight:700;font-size:13px">${_esc(u.name)}</div><div style="font-size:10px;color:var(--text3)">${_esc(u.task)}</div></div>
+        </div>
+      </td>
+      <td style="padding:10px 14px;text-align:center"><span style="font-family:var(--mono);font-weight:800;font-size:13px;color:${sC}">${Math.floor(total/60)>0?Math.floor(total/60)+'h ':''} ${total%60}m</span></td>
+      <td style="padding:10px 14px;text-align:center"><span style="font-size:11px;font-weight:700;background:${total>=90?'#fee2e2':total>=45?'#fff7ed':'#f0fdf4'};color:${sC};padding:3px 9px;border-radius:20px">${sL}</span></td>
+      ${cols}
+    </tr>
+    <tr id="idl_sess_${ui}" style="display:none;background:#fafbff">
+      <td colspan="${3+hours.length}" style="padding:0">
+        <div style="padding:12px 18px 12px 58px;border-top:1px solid var(--border)">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Sessions — ${_esc(u.name)}</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${u.sessions.map(s=>{
+              const m=s.duration_mins||0;
+              const barW=Math.min(100,Math.round(m/90*100));
+              const barC=m>=60?'#ef4444':m>=45?'#f97316':m>=30?'#f59e0b':'#10b981';
+              return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--surface);border-radius:8px;border:1px solid var(--border);flex-wrap:wrap">
+                <span style="font-family:var(--mono);font-weight:700;font-size:12px;color:var(--text1);white-space:nowrap">${s.idle_start||'—'} → ${s.idle_end||'—'}</span>
+                <div style="flex:1;min-width:80px"><div style="background:var(--border);border-radius:3px;height:5px;overflow:hidden"><div style="width:${barW}%;height:100%;background:${barC};border-radius:3px"></div></div></div>
+                <span style="font-family:var(--mono);font-weight:800;font-size:12px;color:${barC};white-space:nowrap">${m} min</span>
+                <span style="font-size:11px;color:var(--text3);flex:1;min-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(s.reason||'No reason')}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const hw = document.getElementById('idle_heatmap_wrap');
+  if(hw) hw.innerHTML=`
+    <div class="tw">
+      <div class="th2">
+        <div class="tt">🕐 Hourly Idle Heatmap — ${dateStr}</div>
+        <div class="tc">Minutes idle per hour · darker = more idle · click row to expand sessions</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="dt">
+          <thead><tr>
+            <th style="min-width:180px">User</th>
+            <th style="text-align:center;min-width:70px">Total</th>
+            <th style="text-align:center;min-width:70px">Status</th>
+            ${hours.map(h=>`<th style="text-align:center;min-width:38px;font-size:10px;padding:6px 2px;font-family:var(--mono)">${h}:00</th>`).join('')}
+          </tr></thead>
+          <tbody>${heatRows}</tbody>
+        </table>
+      </div>
+      <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--surface2);display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px">
+        <span style="font-weight:700;color:var(--text3)">HEAT KEY (minutes):</span>
+        <span class="hcell h0" style="border-radius:4px;padding:3px 10px">· = none</span>
+        <span class="hcell h1" style="border-radius:4px;padding:3px 10px">1–14</span>
+        <span class="hcell h2" style="border-radius:4px;padding:3px 10px">15–29</span>
+        <span class="hcell h3" style="border-radius:4px;padding:3px 10px">30–44</span>
+        <span class="hcell h4" style="border-radius:4px;padding:3px 10px">45+</span>
+        <span style="margin-left:auto;color:var(--text3)">👆 Click any row to see session breakdown</span>
+      </div>
+    </div>`;
+
+  // Per-person cards below the table
+  const cards = userList.map((u,ui)=>{
+    const total=u.sessions.reduce((s,r)=>s+(r.duration_mins||0),0);
+    const sC=total>=90?'#dc2626':total>=45?'#d97706':'#059669';
+    const sBg=total>=90?'#fee2e2':total>=45?'#fff7ed':'#f0fdf4';
+    const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
+    const col=palColors[ui%palColors.length];
+    return `<div class="tw" style="margin-bottom:12px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-bottom:1px solid var(--border);background:var(--surface2)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex-shrink:0">${(u.name||'?')[0].toUpperCase()}</div>
+          <div><div style="font-weight:800;font-size:14px">${_esc(u.name)}</div><div style="font-size:11px;color:var(--text3)">${_esc(u.task)} · ${_esc(u.team)}</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="text-align:right"><div style="font-family:var(--mono);font-weight:800;font-size:17px;color:${sC}">${Math.floor(total/60)>0?Math.floor(total/60)+'h ':''} ${total%60}m</div><div style="font-size:10px;color:var(--text3)">${u.sessions.length} session${u.sessions.length>1?'s':''}</div></div>
+          <span style="font-size:11px;font-weight:700;background:${sBg};color:${sC};padding:4px 10px;border-radius:20px;border:1px solid ${sC}30">${total>=90?'🔴 High Idle':total>=45?'🟠 Moderate':'🟢 Normal'}</span>
+        </div>
+      </div>
+      ${u.sessions.map((s,si)=>{
+        const m=s.duration_mins||0;
+        const barW=Math.min(100,Math.round(m/90*100));
+        const barC=m>=60?'#ef4444':m>=45?'#f97316':m>=30?'#f59e0b':'#10b981';
+        return `<div style="padding:12px 16px;${si<u.sessions.length-1?'border-bottom:1px solid var(--border)':''}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:var(--text1)">${s.idle_start||'—'} → ${s.idle_end||'—'}</div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(s.reason||'No reason provided')}</div>
+            </div>
+            <span style="font-family:var(--mono);font-weight:800;font-size:12px;color:${barC};background:${barC}18;padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-left:12px">${m} min</span>
+          </div>
+          <div style="background:var(--border);border-radius:3px;height:4px;overflow:hidden">
+            <div style="width:${barW}%;height:100%;background:${barC};border-radius:3px"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+
+  const cw = document.getElementById('idle_cards_wrap');
+  if(cw) cw.innerHTML = cards;
+}
+
+function buildIdleRows(dateStr,q){return '';}
+
 function renderUsers(c){
   const rc={Manager:'#e11d48','Co-ordinator':'#2563eb','Team Member':'#0d9488','Team Lead':'#7c3aed','Supervisor':'#d97706','Co-Ordinator':'#2563eb'};
   const re={Manager:'👑','Co-ordinator':'📋','Team Member':'👤','Team Lead':'🎯','Supervisor':'⭐','Co-Ordinator':'📋'};
@@ -13128,150 +13327,202 @@ function renderGDrive(c){
 // MY STATUS PAGE — personal production view for Co-Ordinators
 // ══════════════════════════════════════════════════════════
 function renderMyStatus(c){
-  // Full 24-hour range
-  const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-  const today=todayDateStringET();
-  const now=nowET();
-
-  // Get all tasks matching current user's task
+  const isTL=CU.role==='Team Lead';
   const taskMap={
-    'LVS':{db:DB.lvs,fld:'assignedTo',label:'LVS'},
-    'Classifier':{db:DB.cls,fld:'assignedTo',label:'Classifier'},
-    'Compliance':{db:DB.comp,fld:'assignedTo',label:'Compliance'},
-    'PARS Docs Clerk':{db:DB.parsDocs,fld:'user',label:'PARS Docs'},
-    'Ocean Docs Clerk':{db:DB.oceanDocs,fld:'user',label:'Ocean Docs'},
-    'Part Lot':{db:DB.partLot,fld:'user',label:'Part Lot'},
-    'Release':{db:DB.release2,fld:'user',label:'Release'},
-    'B2 Entries':{db:DB.b2entries,fld:'user',label:'B2 Entries'},
-    'Ocean T&T':{db:DB.oceanTT,fld:'user',label:'Ocean T&T'},
+    'LVS':{db:DB.lvs,fld:'assignedTo',label:'LVS',icon:'📋'},
+    'Classifier':{db:DB.cls,fld:'assignedTo',label:'Classifier',icon:'🗂️'},
+    'Compliance':{db:DB.comp,fld:'assignedTo',label:'Compliance',icon:'✅'},
+    'PARS Docs Clerk':{db:DB.parsDocs,fld:'user',label:'PARS Docs',icon:'📄'},
+    'Ocean Docs Clerk':{db:DB.oceanDocs,fld:'user',label:'Ocean Docs',icon:'🌊'},
+    'Part Lot':{db:DB.partLot,fld:'user',label:'Part Lot',icon:'📦'},
+    'Release':{db:DB.release2,fld:'user',label:'Release',icon:'🚀'},
+    'B2 Entries':{db:DB.b2entries,fld:'user',label:'B2 Entries',icon:'📝'},
+    'Ocean T&T':{db:DB.oceanTT,fld:'user',label:'Ocean T&T',icon:'🔍'},
   };
-
   const tm=taskMap[CU.task];
-  if(!tm){c.innerHTML='<div class="empty"><div class="empty-ico">📊</div><div class="empty-t">No data for your task</div></div>';return;}
+  if(!tm){c.innerHTML='<div class="empty"><div class="empty-ico">📊</div><div class="empty-t">No task data available</div></div>';return;}
 
-  const myRecords=tm.db.filter(r=>r[tm.fld]===CU.name);
-  const todayRecs=myRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
-  const monthRecs=myRecords.filter(r=>{const d=parseAppDate(r._created);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();});
+  const today=todayDateStringET();
+  const now=new Date();
+  const myName=CU.name||CU.empName||CU.username||'';
+  const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
+  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
+  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not'));
+  const tatPct=myRecs.length?Math.round(tatOkArr.length/myRecs.length*100):0;
+  const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
-  // Hourly breakdown today
-  // Use submittedTime → _submitRaw → _created in that order for accuracy
-  const getRecHour=r=>{
-    if(r._submitRaw) return new Date(r._submitRaw).getHours();
-    if(r.submittedTime) return new Date(r.submittedTime).getHours();
-    if(r.submitted) return new Date(r.submitted).getHours();
-    if(r.created) return new Date(r.created).getHours();
-    if(r._created) return (parseAppDate(r._created)||new Date(0)).getHours();
-    return -1;
-  };
-  const hourCounts={}; hours.forEach(h=>hourCounts[h]=0);
-  todayRecs.forEach(r=>{ const h=pad(getRecHour(r)); if(hourCounts[h]!==undefined) hourCounts[h]++; });
-  const maxHourCnt=Math.max(...Object.values(hourCounts),1);
-  const hourCells=hours.map(h=>{
-    const cnt=hourCounts[h];
-    const cls=heatClass(cnt);
-    const pct=Math.round((cnt/maxHourCnt)*100);
-    return`<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:32px;font-size:11px">
-      <div style="font-size:13px">${cnt||'—'}</div>
-      ${cnt>0?`<div style="height:3px;background:rgba(255,255,255,.5);border-radius:2px;margin-top:3px;width:${pct}%"></div>`:''}
-    </td>`;
-  }).join('');
+  // Team data (TL only)
+  const teamRecs=tm.db||[];
+  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
+  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not'));
+  const teamTatPct=teamRecs.length?Math.round(teamTatOk.length/teamRecs.length*100):0;
+  const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
+  const usersArr=[...allUsersSet].sort();
 
-  // Daily breakdown (last 10 days)
+  // Hourly heatmap (today)
+  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
+  const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
+  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
+  const nowH=String(now.getHours()).padStart(2,'0');
+  const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
+  const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
+
+  // Daily rows (last 7)
   const dailyRows=[];
-  for(let d=0;d<10;d++){
+  for(let d=0;d<7;d++){
     const dd=new Date(now);dd.setDate(dd.getDate()-d);
-    const cnt=myRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===new Date(dd).toDateString()).length;
+    const cnt=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===dd.toDateString()).length;
     if(cnt>0||d<3){
-      dailyRows.push(`<tr>
-        <td style="padding:8px 14px;font-weight:600">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td>
-        <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:16px">${cnt}</td>
-        <td style="padding:8px 14px"><div style="height:8px;background:var(--primary);border-radius:4px;width:${Math.min(cnt*12,200)}px;max-width:200px;min-width:4px;transition:.3s"></div></td>
-      </tr>`);
+      dailyRows.push(`<tr><td style="padding:8px 14px;font-weight:${d===0?800:600};font-size:12px;color:${d===0?'var(--text1)':'var(--text2)'}">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${cnt}</td><td style="padding:8px 14px;min-width:80px"><div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/Math.max(todayRecs.length,1)*100):0)}%"></div></td></tr>`);
     }
   }
 
-  // Monthly breakdown (last 6 months)
-  const monthRows=[];
-  for(let m=0;m<6;m++){
-    const mDate=new Date(now.getFullYear(),now.getMonth()-m,1);
-    const cnt=myRecords.filter(r=>{const d=parseAppDate(r._created);return d.getMonth()===mDate.getMonth()&&d.getFullYear()===mDate.getFullYear();}).length;
-    monthRows.push(`<tr>
-      <td style="padding:8px 14px;font-weight:600">${mDate.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--indigo);font-size:16px">${cnt}</td>
-      <td style="padding:8px 14px"><div style="height:8px;background:var(--indigo);border-radius:4px;width:${Math.min(cnt*8,200)}px;max-width:200px;min-width:4px"></div></td>
-    </tr>`);
-  }
+  // Recent records (last 20)
+  const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
+  const recentRecs=myRecs.slice(0,20);
+  const recRows=recentRecs.map((r,i)=>{
+    const tat=r.tat||'';
+    const tatB=tat.toLowerCase().includes('not reached')?'<span style="font-size:10px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 7px;border-radius:20px">❌ Not Reached</span>':tat.toLowerCase().includes('reached')?'<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 7px;border-radius:20px">✅ Reached</span>':'<span style="color:var(--text3);font-size:11px">—</span>';
+    const stB=(r.status||'').toLowerCase()==='completed'?'<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 7px;border-radius:20px">Completed</span>':(r.status||'').toLowerCase()==='hold'?'<span style="font-size:10px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 7px;border-radius:20px">Hold</span>':`<span style="font-size:11px;color:var(--text2)">${_esc(r.status||'—')}</span>`;
+    const dateDisp=(parseAppDate(r._created)||new Date(0)).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+    return `<tr><td style="color:var(--text3);font-size:11px;padding:9px 12px">${i+1}</td><td style="font-family:var(--mono);font-weight:700;color:#0891b2;font-size:12px;padding:9px 12px;white-space:nowrap">${_esc(String(r.txn||r.subject||'—'))}</td><td style="font-size:12px;padding:9px 12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(r.clientName||r.clientname||r.client||'—'))}</td><td style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:9px 12px;white-space:nowrap">${dateDisp}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:9px 12px;white-space:nowrap">${r.submittedTime||r.submitted||r.created||'—'}</td><td style="font-family:var(--mono);font-size:12px;padding:9px 12px">${r.duration||'—'}</td><td style="padding:9px 12px">${stB}</td><td style="padding:9px 12px">${tatB}</td></tr>`;
+  }).join('');
 
-  // My errors
-  const myErrors=DB.errors.filter(e=>e.userName===CU.name);
+  // Team member stats (TL only)
+  const memberStats=usersArr.map((u,ui)=>{
+    const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
+    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
+    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
+    const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
+    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;
+    const uTatPct=uRecs.length?Math.round(uTatOk/uRecs.length*100):0;
+    const isMe=u===myName;
+    const col=palColors[ui%palColors.length];
+    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
+    const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
+    return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
+  }).join('');
+
+  const taskColors={'LVS':'#2563eb','Classifier':'#7c3aed','Compliance':'#059669','PARS Docs Clerk':'#0891b2','Ocean Docs Clerk':'#0891b2','Part Lot':'#d97706','Release':'#e11d48','B2 Entries':'#4f46e5','Ocean T&T':'#059669'};
+  const taskColor=taskColors[CU.task]||'#2563eb';
+  const viewMode=window._myStatusView||'me';
 
   c.innerHTML=`
-  <div class="ph"><div><div class="pt">📊 My Status — ${CU.name}</div><div class="ps">${tm.label} · Personal production view</div></div></div>
-
-  <div class="sg" style="margin-bottom:20px">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv">${myRecords.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${todayRecs.length}</div><div class="sf">${now.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv">${monthRecs.length}</div><div class="sf">${now.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</div></div>
-    ${myErrors.length>0?`<div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">My Errors</div><div class="sv">${myErrors.length}</div><div class="sf">On record</div></div>`:''}
+  <div class="ph">
+    <div><div class="pt">📊 My Status — ${_esc(myName)}</div><div class="ps">${tm.icon} ${tm.label} · ${_esc(CU.role||'Team Member')}</div></div>
+    ${isTL?`<div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button onclick="window._myStatusView='me';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='me'?'var(--primary)':'var(--surface2)'};color:${viewMode==='me'?'#fff':'var(--text2)'}">👤 My Records</button>
+      <button onclick="window._myStatusView='team';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='team'?'var(--primary)':'var(--surface2)'};color:${viewMode==='team'?'#fff':'var(--text2)'}">👥 Team View</button>
+    </div>`:''}
   </div>
 
-  <div class="tw" style="margin-bottom:20px">
-    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc">${todayRecs.length} entries</div></div>
+  <!-- Profile Banner -->
+  <div style="background:linear-gradient(135deg,#1e1b4b,${taskColor}dd);border-radius:14px;padding:20px 24px;color:#fff;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0">${(myName||'?')[0].toUpperCase()}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:16px;font-weight:800">${_esc(myName)}</div>
+      <div style="font-size:11px;opacity:.75;margin-top:2px">${tm.icon} ${tm.label} · ${_esc(CU.role||'Team Member')}</div>
+      <div style="margin-top:6px"><span style="background:rgba(255,255,255,.18);padding:2px 10px;border-radius:20px;font-size:10px">${_esc(CU.loginName||CU.username||'')}</span></div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${todayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Today</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${monthRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Month</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${tatPct}%</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">TAT</div></div>
+      ${isTL?`<div style="text-align:center;border-left:1px solid rgba(255,255,255,.2);padding-left:16px"><div style="font-size:24px;font-weight:800">${teamTodayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Team Today</div></div>`:''}
+    </div>
+  </div>
+
+  ${viewMode==='team'&&isTL?`
+  <!-- TL Team View -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">👥</div><div class="sl">Team Today</div><div class="sv">${teamTodayRecs.length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">Team Month</div><div class="sv">${teamMonthRecs.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${teamHold.length}</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Team TAT%</div><div class="sv">${teamTatPct}%</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Members</div><div class="sv">${allUsersSet.size}</div></div>
+  </div>
+  <div class="tw" style="margin-bottom:14px">
+    <div class="th2"><div class="tt">👥 Team Members — ${tm.label}</div><div class="tc">${allUsersSet.size} members · today vs month</div></div>
+    <div style="overflow-x:auto"><table class="dt"><thead><tr><th>Member</th><th style="text-align:center">Today</th><th style="text-align:center">Month</th><th style="text-align:center">Hold</th><th style="text-align:center">TAT%</th><th>Progress (today)</th></tr></thead>
+    <tbody>${memberStats||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">No members found</td></tr>'}</tbody></table></div>
+  </div>
+  <div class="tw">
+    <div class="th2"><div class="tt">📋 All ${tm.label} Records — Today</div><div class="tc">${teamTodayRecs.length} entries · all team members</div></div>
     <div style="overflow-x:auto"><table class="dt">
-      <thead><tr>${hours.map(h=>{
-        const isNow=pad(now.getHours())===h;
-        return`<th style="text-align:center;min-width:32px;font-size:10px;padding:5px 2px;${isNow?'background:var(--primary);color:#fff;border-radius:6px':''}">${h}${isNow?' ◀':''}</th>`;
-      }).join('')}</tr></thead>
-      <tbody><tr>${hourCells}</tr></tbody>
-    </table></div>
-    <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:12px;font-size:11px;color:var(--text3)">
+      <thead><tr><th>#</th><th>User</th><th>TXN / Subject</th><th>Client</th><th>Submitted</th><th>Duration</th><th>Status</th><th>TAT</th></tr></thead>
+      <tbody>${teamTodayRecs.slice(0,50).map((r,i)=>{
+        const u=r[tm.fld]||'—';const ui2=usersArr.indexOf(u);const col=palColors[ui2>=0?ui2%palColors.length:0];
+        const tat=r.tat||'';const tatB=tat.toLowerCase().includes('not reached')?'<span style="font-size:10px;background:var(--ro-bg);color:var(--rose);padding:2px 6px;border-radius:20px">❌</span>':tat.toLowerCase().includes('reached')?'<span style="font-size:10px;background:var(--em-bg);color:var(--emerald);padding:2px 6px;border-radius:20px">✅</span>':'<span style="color:var(--text3)">—</span>';
+        const stB=(r.status||'').toLowerCase()==='completed'?'<span style="font-size:10px;background:var(--em-bg);color:var(--emerald);padding:2px 6px;border-radius:20px">Done</span>':(r.status||'').toLowerCase()==='hold'?'<span style="font-size:10px;background:var(--am-bg);color:var(--amber);padding:2px 6px;border-radius:20px">Hold</span>':`<span style="font-size:11px;color:var(--text2)">${_esc(r.status||'—')}</span>`;
+        return `<tr><td style="color:var(--text3);font-size:11px;padding:8px 10px">${i+1}</td><td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px"><div style="width:22px;height:22px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><span style="font-size:12px;font-weight:600">${_esc(u)}</span></div></td><td style="font-family:var(--mono);font-weight:700;color:#0891b2;font-size:12px;padding:8px 10px;white-space:nowrap">${_esc(String(r.txn||r.subject||'—'))}</td><td style="font-size:12px;padding:8px 10px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(r.clientName||r.clientname||r.client||'—'))}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:8px 10px;white-space:nowrap">${r.submittedTime||r.submitted||r.created||'—'}</td><td style="font-family:var(--mono);font-size:12px;padding:8px 10px">${r.duration||'—'}</td><td style="padding:8px 10px">${stB}</td><td style="padding:8px 10px">${tatB}</td></tr>`;
+      }).join('')||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3)">No records today</td></tr>'}
+      ${teamTodayRecs.length>50?`<tr><td colspan="8" style="text-align:center;padding:10px;color:var(--text3);font-size:12px">… ${teamTodayRecs.length-50} more records</td></tr>`:''}
+      </tbody></table></div>
+  </div>
+  `:`
+  <!-- My Records View -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv">${myRecs.length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${todayRecs.length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv">${monthRecs.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${holdRecs.length}</div></div>
+    <div class="sc ${tatPct>=80?'c-em':tatPct>=60?'c-am':'c-ro'}"><div class="sc-top"></div><div class="si">✅</div><div class="sl">TAT Rate</div><div class="sv">${tatPct}%</div></div>
+    ${myErrors.length?`<div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">My Errors</div><div class="sv">${myErrors.length}</div></div>`:''}
+  </div>
+
+  <!-- Hourly Heatmap -->
+  <div class="tw" style="margin-bottom:14px">
+    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc">${todayRecs.length} entries · ★ = current hour</div></div>
+    <div style="overflow-x:auto"><table class="dt"><thead><tr>${hourCells}</tr></thead><tbody><tr>${dataCells}</tr></tbody></table></div>
+    <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:10px;font-size:11px;color:var(--text3);align-items:center;background:var(--surface2)">
       <span>HEAT:</span>
       <span class="hcell h1" style="border-radius:4px;padding:2px 8px">1</span>
-      <span class="hcell h2" style="border-radius:4px;padding:2px 8px">2</span>
-      <span class="hcell h3" style="border-radius:4px;padding:2px 8px">3</span>
-      <span class="hcell h4" style="border-radius:4px;padding:2px 8px">4+</span>
+      <span class="hcell h2" style="border-radius:4px;padding:2px 8px">2–3</span>
+      <span class="hcell h3" style="border-radius:4px;padding:2px 8px">4–5</span>
+      <span class="hcell h4" style="border-radius:4px;padding:2px 8px">6+</span>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <!-- Daily + Monthly -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
     <div class="tw">
-      <div class="th2"><div class="tt">📅 Daily Count — Last 10 Days</div></div>
+      <div class="th2"><div class="tt">📅 Last 7 Days</div></div>
       <table class="dt"><thead><tr><th>Date</th><th style="text-align:center">Count</th><th>Bar</th></tr></thead>
-      <tbody>${dailyRows.join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text3)">No data yet</td></tr>'}</tbody></table>
+      <tbody>${dailyRows.join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text3)">No data yet</td></tr>'}</tbody>
+      </table>
     </div>
     <div class="tw">
-      <div class="th2"><div class="tt">📆 Monthly Count — Last 6 Months</div></div>
+      <div class="th2"><div class="tt">📆 Monthly Totals</div></div>
       <table class="dt"><thead><tr><th>Month</th><th style="text-align:center">Count</th><th>Bar</th></tr></thead>
-      <tbody>${monthRows.join('')}</tbody></table>
+      <tbody>${(()=>{const rows=[];for(let m=0;m<4;m++){const mDate=new Date(now.getFullYear(),now.getMonth()-m,1);const cnt=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getMonth()===mDate.getMonth()&&d.getFullYear()===mDate.getFullYear();}).length;rows.push(`<tr><td style="padding:8px 14px;font-weight:${m===0?700:500};font-size:12px;color:${m===0?'var(--text1)':'var(--text2)'}">${mDate.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--indigo);font-size:15px">${cnt}</td><td style="padding:8px 14px"><div style="height:6px;background:var(--indigo);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/200*100):0)}%"></div></td></tr>`);}return rows.join('');})()}</tbody>
+      </table>
     </div>
   </div>
+
+  <!-- Recent Records -->
+  <div class="tw">
+    <div class="th2"><div class="tt">📋 My ${tm.label} Records — Recent 20</div><div class="tc">${myRecs.length} total records</div></div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr><th>#</th><th>TXN / Subject</th><th>Client</th><th>Date</th><th>Submitted</th><th>Duration</th><th>Status</th><th>TAT</th></tr></thead>
+      <tbody>${recRows||'<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text3)">No records yet — submit your first entry!</td></tr>'}</tbody>
+    </table></div>
+  </div>
+
   ${myErrors.length>0?`
-  <div class="tw" style="margin-top:16px">
+  <div class="tw" style="margin-top:14px">
     <div class="th2"><div class="tt">⚠️ My Error Records</div><div class="tc">${myErrors.length} errors</div></div>
     <div style="overflow-x:auto"><table class="dt">
-      <thead><tr><th>#</th><th>Date</th><th>Error Type</th><th>Txn No</th><th>Client</th><th>Mode</th><th>%</th><th>Comments</th></tr></thead>
-      <tbody>${myErrors.map((e,i)=>`<tr>
-        <td class="mono" style="color:var(--text3)">${i+1}</td>
-        <td class="mono" style="font-size:11px">${e.date||e._created?.slice(0,10)||'—'}</td>
-        <td><span class="badge b-ro">${e.errorType||'—'}</span></td>
-        <td class="mono" style="color:var(--teal)">${e.txn||'—'}</td>
-        <td class="hide-client">${e.clientName||e.client||'—'}</td>
-        <td>${e.mode||'—'}</td>
-        <td class="mono" style="color:var(--amber)">${e.percentage!=null?e.percentage+'%':'—'}</td>
-        <td style="font-size:12px;color:var(--text2);max-width:150px;overflow:hidden;text-overflow:ellipsis">${e.clientComments||e.userComments||'—'}</td>
-      </tr>`).join('')}</tbody>
+      <thead><tr><th>#</th><th>Date</th><th>Error Type</th><th>TXN</th><th>Client</th><th>%</th><th>Comment</th></tr></thead>
+      <tbody>${myErrors.map((e,i)=>`<tr><td style="color:var(--text3);font-size:11px;padding:8px 12px">${i+1}</td><td style="font-size:11px;font-family:var(--mono);padding:8px 12px;color:var(--text3)">${e.date||''}</td><td style="padding:8px 12px"><span class="badge b-ro" style="font-size:10px">${_esc(e.errorType||'—')}</span></td><td style="font-family:var(--mono);font-size:12px;padding:8px 12px;color:var(--teal)">${e.txn||'—'}</td><td style="font-size:12px;padding:8px 12px">${_esc(e.clientName||'—')}</td><td style="font-family:var(--mono);font-size:12px;padding:8px 12px;color:var(--amber)">${e.percentage!=null?e.percentage+'%':'—'}</td><td style="font-size:11px;padding:8px 12px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(e.clientComments||e.userComments||'—')}</td></tr>`).join('')}</tbody>
     </table></div>
-  </div>`:''}`;
+  </div>`:''}
+  `}`;
 }
 
-// ══════════════════════════════════════════════════════════
-// ERROR REPORT PAGE
-// ══════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
-// ERROR ACKNOWLEDGEMENT SYSTEM
-// ══════════════════════════════════════════════════════════
-
-// Returns hours since error was created
 function errAgeH(e){ return (Date.now()-new Date(e._created||e.date||0))/3600000; }
 
 // Status classifier for an error record
@@ -14234,8 +14485,8 @@ function runTATAnalyzer(){
         if(mode==='Truck'){
           const minsBeforeEta=(eta-submitted)/60000;
           diffMins=minsBeforeEta;
-          // TAT Reached = submitted at least 2 hours (120 mins) BEFORE ETA
-          const reached=minsBeforeEta>=120;
+          // TAT Reached = submitted within 2 hours BEFORE ETA (0 <= mins <= 120)
+          const reached=(minsBeforeEta>=0&&minsBeforeEta<=120);
           tatStatus=reached?'TAT Reached':'TAT Not Reached ❌';
 
           // ── Full timeline analysis ──
@@ -14276,13 +14527,13 @@ function runTATAnalyzer(){
           };
 
           if(reached){
-            note=`✅ Truck TAT Reached — submitted ${fmtMins(minsBeforeEta)} before ETA (target: ≥2 hours before ETA).`;
+            note=`✅ Truck TAT Reached — submitted ${fmtMins(minsBeforeEta)} before ETA (within 2h window).`;
           } else if(submitted>eta){
             const late=(submitted-eta)/60000;
             note=`❌ Truck TAT Not Reached — submitted ${fmtMins(late)} AFTER ETA (must submit ≥2 hours BEFORE ETA). ETA: ${r.eta}, Submitted: ${r.submitted}.`;
           } else {
             const tooLate=120-minsBeforeEta;
-            note=`❌ Truck TAT Not Reached — submitted only ${fmtMins(minsBeforeEta)} before ETA (need ≥2h before ETA). Short by ${fmtMins(tooLate)}. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
+            note=`❌ Truck TAT Not Reached — submitted ${minsBeforeEta<0?fmtMins(-minsBeforeEta)+' AFTER ETA':'only '+fmtMins(minsBeforeEta)+' before ETA (need within 2h window)'}. ETA: ${r.eta}, Submitted: ${r.submitted}.`;
           }
         } else {
           // Ocean/Air/Rail: must submit by end of ETA day
@@ -14519,7 +14770,7 @@ function runTATAnalyzer(){
                 <div style="background:#fff;border-radius:6px;padding:7px 9px;border:1px solid var(--border);">
                   <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">✅ Submitted</div>
                   <div style="font-size:11px;font-weight:800;color:var(--navy);margin-top:2px;word-break:break-all;">${tl.submitted}</div>
-                  ${tl.minsBeforeEta!==null?`<div style="font-size:9px;color:${tl.minsBeforeEta>=120?'var(--emerald)':tl.minsBeforeEta>=0?'var(--amber)':'var(--rose)'};margin-top:2px;font-weight:700;">${tl.minsBeforeEta>=0?fmtMins(tl.minsBeforeEta)+' before ETA':fmtMins(Math.abs(tl.minsBeforeEta))+' AFTER ETA'}</div>`:''}
+                  ${tl.minsBeforeEta!==null?`<div style="font-size:9px;color:${tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120?'var(--emerald)':tl.minsBeforeEta>=0?'var(--amber)':'var(--rose)'};margin-top:2px;font-weight:700;">${tl.minsBeforeEta>=0?fmtMins(tl.minsBeforeEta)+' before ETA':fmtMins(Math.abs(tl.minsBeforeEta))+' AFTER ETA'}</div>`:''}
                 </div>
               </div>
               <!-- Mail→ETA timeframe verdict -->
@@ -14539,10 +14790,10 @@ function runTATAnalyzer(){
                 <div style="background:#fff;border-radius:6px;padding:7px 9px;border:1px solid var(--border);">
                   <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">🎯 Submit vs 2h Target</div>
                   <div style="font-size:12px;font-weight:900;color:${tl.minsBeforeEta>=120?'var(--emerald)':tl.minsBeforeEta>=0?'var(--amber)':'var(--rose)'};margin-top:3px;">
-                    ${tl.minsBeforeEta>=120?'✅ On Time':tl.minsBeforeEta>=0?'⚠️ Late (within ETA)':'❌ Past ETA'}
+                    ${tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120?'✅ On Time':tl.minsBeforeEta>=0?'⚠️ Late (within ETA)':'❌ Past ETA'}
                   </div>
                   <div style="font-size:10px;color:var(--text3);margin-top:1px;">
-                    ${tl.minsBeforeEta>=120?fmtMins(tl.minsBeforeEta-120)+' buffer':tl.minsBeforeEta>=0?'Short by '+fmtMins(120-tl.minsBeforeEta):fmtMins(Math.abs(tl.minsBeforeEta))+' overdue'}
+                    ${(tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120)?fmtMins(120-tl.minsBeforeEta)+' of 2h window used':tl.minsBeforeEta>=0?'Short by '+fmtMins(120-tl.minsBeforeEta):fmtMins(Math.abs(tl.minsBeforeEta))+' overdue'}
                   </div>
                 </div>
               </div>
@@ -14660,7 +14911,7 @@ function exportTruckTATChallenges(){
   function tatVerdict(etaDate, subDate){
     if(!etaDate||!subDate)return'\u2014';
     const minsBeforeEta=(etaDate-subDate)/60000;
-    if(minsBeforeEta>=120) return 'TAT Reached (\u2705 '+toHMS(minsBeforeEta)+' before ETA)';
+    if(minsBeforeEta>=0&&minsBeforeEta<=120) return 'TAT Reached (\u2705 '+toHMS(minsBeforeEta)+' before ETA)';
     if(minsBeforeEta>=0)   return 'TAT Not Reached \u274c — only '+toHMS(minsBeforeEta)+' before ETA (need 02:00:00)';
     return 'TAT Not Reached \u274c — submitted '+toHMS(Math.abs(minsBeforeEta))+' AFTER ETA';
   }
@@ -17189,9 +17440,10 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
   if(mode==='Truck'){
-    // TAT Reached: transaction submitted at least 2 hours (120 mins) BEFORE ETA
+    // TAT Reached: submitted within 2 hours BEFORE ETA or at/before ETA
+    // i.e., 0 <= minsBeforeEta <= 120  (submitted between ETA-2h and ETA)
     const minsBeforeEta=(eta-submittedDate)/60000;
-    return minsBeforeEta>=120?'TAT Reached':'TAT Not Reached';
+    return (minsBeforeEta>=0&&minsBeforeEta<=120)?'TAT Reached':'TAT Not Reached';
   } else {
     // Ocean/Air/Rail: submitted on or before ETA date (compare date only, end of ETA day)
     const etaEndOfDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
