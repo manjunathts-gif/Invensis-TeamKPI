@@ -8875,10 +8875,11 @@ function doLogout(){
 // ══════════════════════════════════════════════════════════
 // Role helpers
 function isSuperLead(){ return ['Manager','Supervisor','Team Lead'].includes(CU.role); }
-// Supervisor is view-only — no adding or editing data records
-function isViewOnly(){ return CU && CU.role==='Supervisor'; }
-// Returns true if the current user can edit data records (not view-only supervisor)
-function canEditData(){ return !isViewOnly(); }
+// Supervisor can ADD records but NOT edit existing records
+function isViewOnly(){ return false; } // kept for compatibility — no longer blocks everything
+function canAddData(){ return true; } // all roles including Supervisor can add
+// Returns true if the current user can edit existing data records
+function canEditData(){ return CU && CU.role!=='Supervisor'; }
 function isCoOrd(){ return CU.role==='Co-Ordinator'; }
 // Error report visible to: Release, LVS (cls), PARS Docs, Ocean Docs tasks
 function canSeeErrors(){ return true; } // All users can see Error Report
@@ -8925,7 +8926,7 @@ function buildNav(){
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
     ];
   } else if(isSup){
-    // Supervisor: Dashboard + ALL tasks + Reports + TAT Analyzer + Instructions + Error Report
+    // Supervisor: Dashboard + ALL tasks + Audit + Reports + TAT Analyzer + Instructions + Error Report
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'status',l:'📡 Status',g:'main'},
@@ -8936,6 +8937,7 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -9171,16 +9173,15 @@ function showPage(id){
   window._forceRefresh = false;
   window._pendingPageRefresh=null;
   _currentPage=id;
-  // Show view-only banner for Supervisor on task pages
+  // Show info banner for Supervisor on task pages — they can add but not edit
   const _taskPages=['lvs','classifier','compliance','parsdocs','oceandocs','partlot','release2','oceantt','b2entries'];
-  if(isViewOnly && isViewOnly() && _taskPages.includes(id)){
-    // Will append banner after render below — done via setTimeout to not block render
+  if(CU && CU.role==='Supervisor' && _taskPages.includes(id)){
     setTimeout(()=>{
       if(!document.getElementById('supViewOnlyBanner')){
         const _b=document.createElement('div');
         _b.id='supViewOnlyBanner';
-        _b.style.cssText='position:sticky;top:0;z-index:50;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:8px 16px;font-size:12px;font-weight:700;color:#92400e;text-align:center;';
-        _b.textContent='👁️ Supervisor View — Data is read-only. Adding and editing records is disabled.';
+        _b.style.cssText='position:sticky;top:0;z-index:50;background:#e0f2fe;border-bottom:2px solid #0ea5e9;padding:8px 16px;font-size:12px;font-weight:700;color:#0369a1;text-align:center;';
+        _b.textContent='👁️ Supervisor View — ✅ Adding new records is enabled · ✏️ Editing existing records is restricted';
         const pc=document.getElementById('pc');
         if(pc&&pc.firstChild)pc.insertBefore(_b,pc.firstChild);
       }
@@ -9453,7 +9454,7 @@ function renderLVSRows(data){
 }
 
 function updateLVSStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const sel=document.getElementById('lsts_'+rowIdx);
   if(!sel)return;
   const r=DB.lvs[dbIdx];
@@ -9468,7 +9469,7 @@ function updateLVSStatus(rowIdx,dbIdx){
 }
 
 function editLVSRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.lvs[idx];if(!r)return;
   openLVS();
   setTimeout(()=>{
@@ -9537,7 +9538,7 @@ function clearLVSFilter(){
 // LVS PANEL
 // ══════════════════════════════════════════════════════════
 function openLVS(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['lf_txn','lf_release','lf_lines','lf_client','lf_cmt','lf_clientName','lf_team','lf_duration','lf_aht','lf_submitted'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const lvsAlert=document.getElementById('lvs_client_alert');if(lvsAlert){lvsAlert.style.display='none';lvsAlert.dataset.clientNo='';}
   const lvsAck=document.getElementById('lvs_acknowledge');if(lvsAck)lvsAck.checked=false;
@@ -9881,7 +9882,7 @@ function renderCLSRows(data){
 }
 
 function updateCLSStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const sel=document.getElementById('csts_'+rowIdx);
   if(!sel)return;
   const r=DB.cls[dbIdx];
@@ -9946,7 +9947,7 @@ function _buildUserOpts(taskName){
 }
 
 function openCLS(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['cf_txn','cf_submitted','cf_duration','cf_cmt','cf_client','cf_clientName','cf_team'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const clsAlert=document.getElementById('cls_client_alert');if(clsAlert){clsAlert.style.display='none';clsAlert.dataset.clientNo='';}
   const clsAck=document.getElementById('cls_acknowledge');if(clsAck)clsAck.checked=false;
@@ -15063,10 +15064,10 @@ function renderAudit(c){
     <td style="text-align:center"><span class="audit-pending-badge">${cnt} pending</span></td>
     <td style="padding:7px 14px"><div class="audit-progress-bar" style="width:100px;display:inline-block"><div class="audit-progress-fill" style="width:${Math.min(cnt*10,100)}%;background:#f59e0b"></div></div></td></tr>`).join('');
 
-  // Team Lead names for dropdowns
+  // Team Lead + Supervisor names for auditor dropdowns
   const tlNames=[...new Set([
-    ...DB.users.filter(u=>u.role==='Team Lead').map(u=>u.name),
-    ...DB.loginUsers.filter(u=>u.role==='Team Lead').map(u=>u.name),
+    ...DB.users.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
+    ...DB.loginUsers.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
     CU.name
   ])].filter(Boolean);
   window._auditTLOpts=tlNames.map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -15775,7 +15776,7 @@ function renderCOMPRows(data){
 }
 
 function updateCOMPStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const rr=DB.comp[dbIdx];
   if(rr&&!isSuperLead()&&rr.assignedTo!==CU.name){showToast('⚠️ You can only update your own records',true);return;}
   const sel=document.getElementById('cpst_'+rowIdx);
@@ -15820,7 +15821,7 @@ function clearCOMPFilter(){
 
 // ── Compliance Panel Functions ──
 function openCOMP(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['cpf_subject','cpf_mailrcvd','cpf_clientname','cpf_start','cpf_completed','cpf_duration','cpf_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const cn=document.getElementById('cpf_clientno');if(cn)cn.value='';
   const txn=document.getElementById('cpf_txn');if(txn)txn.value='';
@@ -16072,7 +16073,7 @@ function renderPDRows(data){
     <td>
       ${isAdmin()
         ? adminActionBtns('parsDocs',r._dbid||r.id,r.txn||r.subject)
-        : (!isViewOnly()?`<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`:'')
+        : (canEditData()?`<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`:'')
       }
     </td>
   </tr>`).join('');
@@ -16104,7 +16105,7 @@ function clearPDFilter(){
 }
 
 function editPARSRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.parsDocs[idx]; if(!r) return;
   // Open panel and fill all fields including duration — don't reset parsDocsStart
   const sel=document.getElementById('pd_user');
@@ -16151,7 +16152,7 @@ function editPARSRecord(idx){
 }
 
 function openPARSDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['pd_subject','pd_mailrcvd','pd_start','pd_txn','pd_client','pd_clientname','pd_team','pd_eta','pd_created','pd_duration','pd_tat','pd_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pd_edit_idx').value='';
   // Reset Comments badge
@@ -16368,7 +16369,7 @@ function pdCaptureCreation(){
 }
 
 function submitPARSDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const subject=document.getElementById('pd_subject')?.value.trim();
   const user=document.getElementById('pd_user')?.value;
   const txn=document.getElementById('pd_txn')?.value.trim();
@@ -16532,7 +16533,7 @@ function clearODFilter(){
 }
 
 function editOceanDocsRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.oceanDocs[idx]; if(!r) return;
   const sel=document.getElementById('od_user');
   sel.innerHTML='<option value="">— Select User —</option>'+_buildUserOpts('Ocean Docs Clerk');
@@ -16565,7 +16566,7 @@ function editOceanDocsRecord(idx){
 }
 
 function openOceanDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['od_subject','od_mailrcvd','od_start','od_txn','od_client','od_clientname','od_team','od_created','od_duration','od_tat','od_shift','od_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e){e.value='';e.disabled=false;e.style.opacity='';e.style.cursor='';e.title='';}});
   oceanDocsStart=null;
@@ -16637,7 +16638,7 @@ function odCaptureCreation(){
 }
 
 function submitOceanDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const subject=document.getElementById('od_subject')?.value.trim();
   const user=document.getElementById('od_user')?.value;
   const txn=document.getElementById('od_txn')?.value.trim();
@@ -16785,7 +16786,7 @@ function clearPLFilter(){
 }
 
 function openPartLot(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['pl_subject','pl_txn','pl_parsno','pl_mailrcvd','pl_start','pl_completed','pl_duration','pl_tat','pl_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pl_user').value='';
   partLotStart=null;
@@ -16899,7 +16900,7 @@ function exportPartLot(){
 
 // ── Team Lead limited edit for Release records ──────────────────────────
 function openTLReleaseEdit(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.release2[idx];
   if(!r){showToast('⚠️ Record not found',true);return;}
   // Remove any existing TL edit panel
@@ -17061,7 +17062,7 @@ function renderRelease2(c){
 function renderRLRows(data){
   const tbody=document.getElementById('rlTbody');
   if(!tbody)return;
-  const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
+  const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
@@ -17114,7 +17115,7 @@ function renderRLRows(data){
 }
 
 function updateRLStatus(dbid){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   // Find record by _dbid for reliable lookup regardless of pagination index
   const dbIdx=DB.release2.findIndex(r=>String(r._dbid||r.id||'')===String(dbid));
   const rr2=dbIdx>=0?DB.release2[dbIdx]:null;
@@ -17163,7 +17164,7 @@ function clearRLFilter(){
 }
 
 function openRelease2(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['rl_txn','rl_transcreated','rl_eta','rl_profilecode','rl_start','rl_client','rl_clientname','rl_team',
    'rl_lines','rl_docrcvd','rl_submitted','rl_duration','rl_tat','rl_comments'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
@@ -17527,9 +17528,10 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
   if(mode==='Truck'){
-    // Truck: must be submitted at least 120 minutes BEFORE ETA (datetime comparison)
+    // Truck TAT Rule: submitted must be ON or BEFORE ETA, AND within 120 minutes of ETA
+    // i.e. 0 <= (eta - submitted) <= 120 min → TAT Reached
     const minsBeforeEta=(eta-submittedDate)/60000;
-    return minsBeforeEta>=120?'reached':'not-reached';
+    return (minsBeforeEta>=0 && minsBeforeEta<=120)?'reached':'not-reached';
   } else {
     // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
     // Rule: submitted on or before ETA date regardless of time
@@ -19108,7 +19110,7 @@ function _recalcTAT(taskKey, r){
     }
 
     if(taskKey==='release2'){
-      // Rule: Truck = submitted at least 120 min before ETA (datetime)
+      // Rule: Truck = submitted ON/BEFORE ETA AND within 120 min of ETA → reached
       //        Ocean/Air/Rail = submitted DATE ≤ ETA DATE (time ignored on both sides)
       const eta=_pd(r.eta)||_pdISO(r.eta);
       const sub=_pd(r.submitted)||_pdISO(r.submitted);
@@ -19116,7 +19118,7 @@ function _recalcTAT(taskKey, r){
       if(!eta||!sub) return null;
       if(mode==='truck'){
         const minsBeforeEta=(eta-sub)/60000;
-        return minsBeforeEta>=120?'reached':'not-reached';
+        return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
       } else {
         // Date-only comparison — strip time from both ETA and submitted
         const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19296,7 +19298,7 @@ async function bulkFixReleaseTAT(){
     if(!eta||!sub) return null;
     if(mode==='truck'){
       const minsBeforeEta=(eta-sub)/60000;
-      return minsBeforeEta>=120?'reached':'not-reached';
+      return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
     } else {
       // Ocean / Air / Rail — date comparison only, time ignored
       const etaDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19343,7 +19345,7 @@ async function bulkFixReleaseTAT(){
     '⚡ Bulk TAT Fix\n\n'+
     allToFix.length+' records need TAT recalculation:\n'+breakdown+'\n\n'+
     'Rules applied:\n'+
-    '• Truck: submitted ≥ 120 min before ETA → Reached\n'+
+    '• Truck: submitted ON or BEFORE ETA, within 120 min of ETA → Reached\n'+
     '• Ocean/Air/Rail: submitted DATE ≤ ETA DATE → Reached (time ignored)\n\n'+
     'This will update Supabase. Continue?'
   )) return;
@@ -19422,10 +19424,10 @@ function exportAuditCSV(){
 }
 
 function openAuditFromRelease(rlIdx){
-  // Build the TL names and error type opts on-the-fly
+  // Build the TL/Supervisor names and error type opts on-the-fly
   const tlNames=[...new Set([
-    ...DB.users.filter(u=>u.role==='Team Lead').map(u=>u.name),
-    ...DB.loginUsers.filter(u=>u.role==='Team Lead').map(u=>u.name),
+    ...DB.users.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
+    ...DB.loginUsers.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
     CU.name
   ])].filter(Boolean);
   window._auditTLOpts=tlNames.map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -19718,7 +19720,7 @@ function clearOTTFilter(){
 }
 
 function openOTT(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['ott_txn','ott_client','ott_clientname','ott_team','ott_etancc','ott_ncccomments','ott_etaupdate','ott_complete','ott_duration','ott_tat'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('ott_status').value='';
   document.getElementById('ott_destination').value='';
@@ -19956,7 +19958,7 @@ function clearB2Filter(){
 }
 
 function openB2(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['b2_txn','b2_assigneddate','b2_lines','b2_comments','b2_start','b2_start_iso','b2_completed','b2_completed_iso','b2_duration'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('b2_source').value='';
   document.getElementById('b2_adjtype').value='';
