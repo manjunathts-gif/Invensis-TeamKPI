@@ -2425,11 +2425,11 @@ body.role-client [data-col="clientname"]{
       </div>
       <div class="frow">
         <div class="fpg">
-          <label class="fpl" for="od_irs">Client IRS Notes</label>
+          <label class="fpl" for="od_irs">Client IRS Notes <span class="req">*</span></label>
           <select class="fps" id="od_irs"><option value="">— Select —</option><option>Yes</option><option>No</option></select>
         </div>
         <div class="fpg">
-          <label class="fpl" for="od_doc">Document</label>
+          <label class="fpl" for="od_doc">Document <span class="req">*</span></label>
           <select class="fps" id="od_doc">
             <option value="">— Select —</option>
             <option>Docs</option><option>Manifest</option><option>Complete Set</option>
@@ -2438,14 +2438,14 @@ body.role-client [data-col="clientname"]{
       </div>
       <div class="frow">
         <div class="fpg">
-          <label class="fpl" for="od_reqdoc">Request Document</label>
+          <label class="fpl" for="od_reqdoc">Request Document <span class="req">*</span></label>
           <select class="fps" id="od_reqdoc">
             <option value="">— Select —</option>
             <option>Request Docs</option><option>Not Required</option>
           </select>
         </div>
         <div class="fpg">
-          <label class="fpl" for="od_sentlog">Sent Log</label>
+          <label class="fpl" for="od_sentlog">Sent Log <span class="req">*</span></label>
           <select class="fps" id="od_sentlog">
             <option value="">— Select —</option>
             <option>Request Sent</option><option>Not Required</option>
@@ -2454,11 +2454,11 @@ body.role-client [data-col="clientname"]{
       </div>
       <div class="frow">
         <div class="fpg">
-          <label class="fpl" for="od_docsdated">Docs Dated</label>
+          <label class="fpl" for="od_docsdated">Docs Dated <span class="req">*</span></label>
           <select class="fps" id="od_docsdated"><option value="">— Select —</option><option>Yes</option><option>No</option></select>
         </div>
         <div class="fpg">
-          <label class="fpl" for="od_docsforwarded">Docs Forwarded</label>
+          <label class="fpl" for="od_docsforwarded">Docs Forwarded <span class="req">*</span></label>
           <select class="fps" id="od_docsforwarded" onchange="odCaptureCreation()"><option value="">— Select —</option><option>Yes</option><option>No</option></select>
         </div>
       </div>
@@ -4864,14 +4864,20 @@ const FORM_STEPS = {
   ],
   // ── OCEAN DOCS — all fields from screenshot ──────────────
   oceanDocsPanel: [
-    {id:'od_mailbox',  label:'Mailbox'},
-    {id:'od_subject',  label:'Mail Subject'},
-    {id:'od_mailrcvd', label:'Mail Received Date'},
-    {id:'od_client',   label:'Client Number'},
-    {id:'od_txn',      label:'Transaction Number'},
-    {id:'od_mode',     label:'Mode'},
-    {id:'od_shiptype', label:'Shipment Type'},
-    {id:'od_user',     label:'Assigned User'},
+    {id:'od_mailbox',      label:'Mailbox'},
+    {id:'od_subject',      label:'Mail Subject'},
+    {id:'od_mailrcvd',     label:'Mail Received Date'},
+    {id:'od_client',       label:'Client Number'},
+    {id:'od_txn',          label:'Transaction Number'},
+    {id:'od_mode',         label:'Mode'},
+    {id:'od_shiptype',     label:'Shipment Type'},
+    {id:'od_irs',          label:'Client IRS Notes'},
+    {id:'od_doc',          label:'Document'},
+    {id:'od_reqdoc',       label:'Request Document'},
+    {id:'od_sentlog',      label:'Sent Log'},
+    {id:'od_docsdated',    label:'Docs Dated'},
+    {id:'od_docsforwarded',label:'Docs Forwarded'},
+    {id:'od_user',         label:'Assigned User'},
   ],
   // ── PART LOT ─────────────────────────────────────────────
   partLotPanel: [
@@ -5192,9 +5198,23 @@ async function secLogEvent(type, username, note=''){
   console.log('secEvent:', type, username, note||'');
 }
 
+// Returns true if any slide-in form panel is currently open
+function _isFormPanelOpen(){
+  return ['lvsPanel','clsPanel','compPanel','parsDocsPanel','oceanDocsPanel',
+          'partLotPanel','release2Panel','ottPanel','b2Panel','clientPanel']
+    .some(id=>{ const el=document.getElementById(id); return el&&el.classList.contains('open'); });
+}
+
 // Session expiry check — called every minute
+// Paused while any form panel is open so users filling a long form are not logged out
 function secCheckSession(){
   if(!CU) return;
+  // If a form is open, reset the session start clock so the 8-hour countdown
+  // does not accumulate during active form entry — user is clearly present
+  if(_isFormPanelOpen()){
+    SEC.sessionStart = Date.now();
+    return;
+  }
   if(SEC.sessionStart && Date.now()-SEC.sessionStart > SEC.SESSION_MS){
     alert('⏰ Your session has expired (8 hours). Please log in again.');
     doLogout();
@@ -5894,8 +5914,14 @@ function renderETAMonitor(c){
     const loadRelease = (!DB.release2 || DB.release2.length === 0)
       ? dbLoad('release').then(rows => { if(rows){ DB.release2 = rows.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i); } })
       : Promise.resolve();
-    Promise.all([loadPars, loadRelease]).catch(()=>{});
-    dbLoad('eta_assignments').then(rows => {
+    // Load loginUsers if TL/Supervisor doesn't have it — needed for "Assign to Release" dropdown
+    const loadUsers = (!DB.loginUsers || DB.loginUsers.length === 0)
+      ? dbLoad('login_users').then(rows => { if(rows) DB.loginUsers = rows; })
+      : Promise.resolve();
+    // Wait for ALL data loads to complete before loading assignments then rendering
+    Promise.all([loadPars, loadRelease, loadUsers]).then(() => {
+      return dbLoad('eta_assignments');
+    }).then(rows => {
       if(rows && rows.length){
         rows.forEach(r => {
           if(!window._etaAssignments[String(r.txn)]){
@@ -16490,7 +16516,7 @@ function editOceanDocsRecord(idx){
 
 function openOceanDocs(){
   ['od_subject','od_mailrcvd','od_start','od_txn','od_client','od_clientname','od_team','od_created','od_duration','od_tat','od_shift','od_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e){e.value='';e.disabled=false;e.style.opacity='';e.style.cursor='';e.title='';}});
   oceanDocsStart=null;
   const sel=document.getElementById('od_user');
   sel.innerHTML='<option value="">— Select User —</option>'+_buildUserOpts('Ocean Docs Clerk');
@@ -16574,6 +16600,11 @@ function submitOceanDocs(){
   if(!mode){showToast('⚠️ Please select a Mode',true);return;}
   if(!shiptype){showToast('⚠️ Please select a Ship Type',true);return;}
   if(!doc){showToast('⚠️ Please select a Document type',true);return;}
+  if(!document.getElementById('od_irs')?.value){showToast('⚠️ Please select Client IRS Notes',true);return;}
+  if(!document.getElementById('od_reqdoc')?.value){showToast('⚠️ Please select Request Document',true);return;}
+  if(!document.getElementById('od_sentlog')?.value){showToast('⚠️ Please select Sent Log',true);return;}
+  if(!document.getElementById('od_docsdated')?.value){showToast('⚠️ Please select Docs Dated',true);return;}
+  if(!document.getElementById('od_docsforwarded')?.value){showToast('⚠️ Please select Docs Forwarded',true);return;}
   if(!user){showToast('⚠️ Please select a User',true);return;}
   const odTat=document.getElementById('od_tat')?.value||'';
   const _odTatNorm = (odTat==='TAT Not Reached'||odTat.toLowerCase().includes('not')) ? 'TAT Not Reached' : (odTat==='TAT Reached'||odTat.toLowerCase().includes('reached')) ? 'TAT Reached' : '—';
@@ -20107,6 +20138,8 @@ function _checkIdle(){
   if(!CU || _idleShown) return;
   // Skip idle tracking for Client role — view-only users
   if(CU.role==='Client' || CU.task==='Client') return;
+  // If any form panel is open the user is actively working — reset idle clock
+  if(_isFormPanelOpen()){ _lastAct = Date.now(); return; }
   const gap = Date.now() - _lastAct;
   const badge = document.getElementById('idleTopBadge');
   const badgeTime = document.getElementById('idleTopTime');
