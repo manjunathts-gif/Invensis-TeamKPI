@@ -8880,6 +8880,43 @@ function isViewOnly(){ return false; } // kept for compatibility — no longer b
 function canAddData(){ return true; } // all roles including Supervisor can add
 // Returns true if the current user can edit existing data records
 function canEditData(){ return CU && CU.role!=='Supervisor'; }
+
+// ══ PERSISTENT FILTER STATE ENGINE ══════════════════════════════════════════
+// Stores filter values per task page key — survives page re-renders
+window._taskFilters = window._taskFilters || {};
+
+function _saveFilter(key, ids){
+  const state = {};
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if(el) state[id] = el.value;
+  });
+  window._taskFilters[key] = state;
+}
+
+function _restoreFilter(key){
+  const state = window._taskFilters[key];
+  if(!state) return false;
+  let hasValue = false;
+  Object.entries(state).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if(el && val){ el.value = val; hasValue = true; }
+  });
+  return hasValue;
+}
+
+function _clearFilter(key, ids){
+  delete window._taskFilters[key];
+  ids.forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
+}
+
+// Helper: scope DB array by user role
+function _scopeByUser(arr, userField){
+  if(isSuperLead()) return arr.map((r,i)=>({...r,_idx:i}));
+  return arr.map((r,i)=>({...r,_idx:i})).filter(r=>(r[userField]||'')===CU.name);
+}
+// ════════════════════════════════════════════════════════════════════════════
+
 function isCoOrd(){ return CU.role==='Co-Ordinator'; }
 // Error report visible to: Release, LVS (cls), PARS Docs, Ocean Docs tasks
 function canSeeErrors(){ return true; } // All users can see Error Report
@@ -9334,7 +9371,8 @@ function renderLVS(c){
     </table></div>
   </div>
 <div id="pg_lvs"></div>`;
-  const _d=DB.lvs.map((r,i)=>({...r,_idx:i}));pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  if(_restoreFilter('lvs')) applyLVSFilter();
 }
 
 
@@ -9508,14 +9546,14 @@ function editLVSRecord(idx){
 }
 
 function applyLVSFilter(){
+  _saveFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
   const d1=document.getElementById('lf_d1')?.value;
   const d2=document.getElementById('lf_d2')?.value;
   const u=document.getElementById('lf_fu')?.value;
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  let data=DB.lvs.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU.task==='LVS') data=data.filter(r=>r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.lvs,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -9530,8 +9568,8 @@ function pgGoLVS(p){
   pgGo('lvs', p, renderLVSRows, 'pg_lvs', 'pgGoLVS');
 }
 function clearLVSFilter(){
-  ['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.lvs.map((r,i)=>({...r,_idx:i}));pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  _clearFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -9846,7 +9884,8 @@ function renderCLS(c){
     </table></div>
   </div>
 <div id="pg_cls"></div>`;
-  const _d=DB.cls.map((r,i)=>({...r,_idx:i}));pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  if(_restoreFilter('cls')) applyCLSFilter();
 }
 
 function renderCLSRows(data){
@@ -9897,14 +9936,14 @@ function updateCLSStatus(rowIdx,dbIdx){
 }
 
 function applyCLSFilter(){
+  _saveFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
   const d1=document.getElementById('cf_d1')?.value;
   const d2=document.getElementById('cf_d2')?.value;
   const u=document.getElementById('cf_fu')?.value;
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
-  let data=DB.cls.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU.task==='Classifier') data=data.filter(r=>r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.cls,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -9919,8 +9958,8 @@ function pgGoCLS(p){
   pgGo('cls', p, renderCLSRows, 'pg_cls', 'pgGoCLS');
 }
 function clearCLSFilter(){
-  ['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.cls.map((r,i)=>({...r,_idx:i}));pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  _clearFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -15735,7 +15774,8 @@ function renderCOMP(c){
     </table></div>
   </div>
 <div id="pg_comp"></div>`;
-  const _d=DB.comp.map((r,i)=>({...r,_idx:i}));pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  const _d=_scopeByUser(DB.comp,'assignedTo');pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  if(_restoreFilter('comp')) applyCOMPFilter();
 }
 
 function renderCOMPRows(data){
@@ -15792,6 +15832,7 @@ function updateCOMPStatus(rowIdx,dbIdx){
 }
 
 function applyCOMPFilter(){
+  _saveFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_fs','cpf2_search']);
   const d1=document.getElementById('cpf2_d1')?.value;
   const d2=document.getElementById('cpf2_d2')?.value;
   const u=document.getElementById('cpf2_fu')?.value;
@@ -15799,7 +15840,7 @@ function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
-  let data=DB.comp.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.comp,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -15815,8 +15856,8 @@ function pgGoCOMP(p){
   pgGo('comp', p, renderCOMPRows, 'pg_comp', 'pgGoCOMP');
 }
 function clearCOMPFilter(){
-  ['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_rt','cpf2_fs','cpf2_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.comp.map((r,i)=>({...r,_idx:i}));pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  _clearFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_rt','cpf2_fs','cpf2_search']);
+  const _d=_scopeByUser(DB.comp,'assignedTo');pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
 }
 
 // ── Compliance Panel Functions ──
@@ -16047,7 +16088,8 @@ function renderPARSDocs(c){
     </table></div>
   </div>
 <div id="pg_pd"></div>`;
-  const _d=DB.parsDocs.map((r,i)=>({...r,_idx:i}));pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  if(_restoreFilter('pd')) applyPDFilter();
 }
 
 function renderPDRows(data){
@@ -16081,12 +16123,13 @@ function renderPDRows(data){
 }
 
 function applyPDFilter(){
+  _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
   const d1=document.getElementById('pd_fd1')?.value;
   const d2=document.getElementById('pd_fd2')?.value;
   const u=document.getElementById('pd_fu')?.value;
   const tm=document.getElementById('pd_fteam')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
-  let data=DB.parsDocs.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.parsDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16100,8 +16143,8 @@ function pgGoPD(p){
   pgGo('pd', p, renderPDRows, 'pg_pd', 'pgGoPD');
 }
 function clearPDFilter(){
-  ['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.parsDocs.map((r,i)=>({...r,_idx:i}));pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
 }
 
 function editPARSRecord(idx){
@@ -16478,7 +16521,8 @@ function renderOceanDocs(c){
     </table></div>
   </div>
 <div id="pg_od"></div>`;
-  const _d=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  if(_restoreFilter('od')) applyODFilter();
 }
 
 function renderODRows(data){
@@ -16509,12 +16553,13 @@ function renderODRows(data){
 }
 
 function applyODFilter(){
+  _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
   const d1=document.getElementById('od_fd1')?.value;
   const d2=document.getElementById('od_fd2')?.value;
   const u=document.getElementById('od_fu')?.value;
   const tm=document.getElementById('od_fteam')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
-  let data=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.oceanDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16528,8 +16573,8 @@ function pgGoOD(p){
   pgGo('od', p, renderODRows, 'pg_od', 'pgGoOD');
 }
 function clearODFilter(){
-  ['od_fd1','od_fd2','od_fu','od_fteam','od_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
 }
 
 function editOceanDocsRecord(idx){
@@ -16739,7 +16784,8 @@ function renderPartLot(c){
     </table></div>
   </div>
 <div id="pg_pl"></div>`;
-  const _d=DB.partLot.map((r,i)=>({...r,_idx:i}));pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  if(_restoreFilter('pl')) applyPLFilter();
 }
 
 function renderPLRows(data){
@@ -16764,11 +16810,12 @@ function renderPLRows(data){
 }
 
 function applyPLFilter(){
+  _saveFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
   const d1=document.getElementById('pl_fd1')?.value;
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
-  let data=DB.partLot.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.partLot,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16781,8 +16828,8 @@ function pgGoPL(p){
   pgGo('pl', p, renderPLRows, 'pg_pl', 'pgGoPL');
 }
 function clearPLFilter(){
-  ['pl_fd1','pl_fd2','pl_fu','pl_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.partLot.map((r,i)=>({...r,_idx:i}));pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  _clearFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
 }
 
 function openPartLot(){
@@ -17056,7 +17103,8 @@ function renderRelease2(c){
     </table></div>
   </div>
 <div id="pg_rl"></div>`;
-  const _d=DB.release2.map((r,i)=>({...r,_idx:i}));pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  if(_restoreFilter('rl')) applyRLFilter();
 }
 
 function renderRLRows(data){
@@ -17138,13 +17186,14 @@ function updateRLStatus(dbid){
 }
 
 function applyRLFilter(){
+  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
   const u=document.getElementById('rl_fu')?.value;
   const tm=document.getElementById('rl_fteam')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
-  let data=DB.release2.map((r,i)=>({...r,_idx:r._idx!==undefined?r._idx:i}));
+  let data=_scopeByUser(DB.release2,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17159,8 +17208,8 @@ function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
 function clearRLFilter(){
-  ['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.release2.map((r,i)=>({...r,_idx:i}));pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
 }
 
 function openRelease2(){
@@ -19656,7 +19705,8 @@ function renderOceanTT(c){
     </table></div>
   </div>
 <div id="pg_ott"></div>`;
-  const _d=DB.oceanTT.map((r,i)=>({...r,_idx:i}));pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  const _d=_scopeByUser(DB.oceanTT,'user');pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  if(_restoreFilter('ott')) applyOTTFilter();
 }
 
 function renderOTTRows(data){
@@ -19692,6 +19742,7 @@ function renderOTTRows(data){
 }
 
 function applyOTTFilter(){
+  _saveFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
   const d1=document.getElementById('ott_fd1')?.value;
   const d2=document.getElementById('ott_fd2')?.value;
   const u=document.getElementById('ott_fu')?.value;
@@ -19699,7 +19750,7 @@ function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
-  let data=DB.oceanTT.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.oceanTT,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -19715,8 +19766,8 @@ function pgGoOTT(p){
   pgGo('ott', p, renderOTTRows, 'pg_ott', 'pgGoOTT');
 }
 function clearOTTFilter(){
-  ['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.oceanTT.map((r,i)=>({...r,_idx:i}));pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  _clearFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
+  const _d=_scopeByUser(DB.oceanTT,'user');pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
 }
 
 function openOTT(){
@@ -19876,7 +19927,8 @@ function renderB2Entries(c){
     </table></div>
   </div>
 <div id="pg_b2"></div>`;
-  const _d=DB.b2entries.map((r,i)=>({...r,_idx:i}));pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  const _d=_scopeByUser(DB.b2entries,'user');pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  if(_restoreFilter('b2')) applyB2Filter();
 }
 
 function renderB2Rows(data){
@@ -19928,6 +19980,7 @@ function updateB2Status(rowIdx){
 }
 
 function applyB2Filter(){
+  _saveFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
   const d1=document.getElementById('b2_fd1')?.value;
   const d2=document.getElementById('b2_fd2')?.value;
   const u=document.getElementById('b2_fu')?.value;
@@ -19935,9 +19988,7 @@ function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
-  let data=DB.b2entries.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU&&CU.task&&CU.task!=='Manager') data=data.filter(r=>r.user===CU.name||r.assignedTo===CU.name);
-  if(!isSuperLead()&&CU&&CU.task&&CU.task!=='Manager') data=data.filter(r=>r.user===CU.name||r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.b2entries,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -19953,8 +20004,8 @@ function pgGoB2(p){
   pgGo('b2', p, renderB2Rows, 'pg_b2', 'pgGoB2');
 }
 function clearB2Filter(){
-  ['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.b2entries.map((r,i)=>({...r,_idx:i}));pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  _clearFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
+  const _d=_scopeByUser(DB.b2entries,'user');pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
 }
 
 function openB2(){
