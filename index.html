@@ -8875,6 +8875,10 @@ function doLogout(){
 // ══════════════════════════════════════════════════════════
 // Role helpers
 function isSuperLead(){ return ['Manager','Supervisor','Team Lead'].includes(CU.role); }
+// Supervisor is view-only — no adding or editing data records
+function isViewOnly(){ return CU && CU.role==='Supervisor'; }
+// Returns true if the current user can edit data records (not view-only supervisor)
+function canEditData(){ return !isViewOnly(); }
 function isCoOrd(){ return CU.role==='Co-Ordinator'; }
 // Error report visible to: Release, LVS (cls), PARS Docs, Ocean Docs tasks
 function canSeeErrors(){ return true; } // All users can see Error Report
@@ -9167,6 +9171,21 @@ function showPage(id){
   window._forceRefresh = false;
   window._pendingPageRefresh=null;
   _currentPage=id;
+  // Show view-only banner for Supervisor on task pages
+  const _taskPages=['lvs','classifier','compliance','parsdocs','oceandocs','partlot','release2','oceantt','b2entries'];
+  if(isViewOnly && isViewOnly() && _taskPages.includes(id)){
+    // Will append banner after render below — done via setTimeout to not block render
+    setTimeout(()=>{
+      if(!document.getElementById('supViewOnlyBanner')){
+        const _b=document.createElement('div');
+        _b.id='supViewOnlyBanner';
+        _b.style.cssText='position:sticky;top:0;z-index:50;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:8px 16px;font-size:12px;font-weight:700;color:#92400e;text-align:center;';
+        _b.textContent='👁️ Supervisor View — Data is read-only. Adding and editing records is disabled.';
+        const pc=document.getElementById('pc');
+        if(pc&&pc.firstChild)pc.insertBefore(_b,pc.firstChild);
+      }
+    },50);
+  }
   _updateMobNav(id); // sync bottom nav
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   const b=document.getElementById('nb_'+id);if(b)b.classList.add('active');
@@ -9300,7 +9319,7 @@ function renderLVS(c){
     <button class="btn-f" onclick="applyLVSFilter()">Apply</button>
     <button class="btn-cl" onclick="clearLVSFilter()">Clear</button>
     <button id="histSearchBtn_lvs" class="btn-cl" onclick="searchHistorical('lvs')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" onclick="openLVS()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" onclick="openLVS()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">LVS Transactions</div><div class="tc" id="lvsCount">${all.length} records</div></div>
@@ -9427,13 +9446,14 @@ function renderLVSRows(data){
       <td class="mono" style="color:var(--sky)">${r.duration}</td>
       <td>${tatB}</td>
       <td>${r.irs?'<span class="badge b-em">✓</span>':'<span class="badge b-ro">✗</span>'}</td>
-      ${CU&&CU.task==='Manager'?`<td>${isAdmin()?adminActionBtns('lvs',r._dbid||r.id,r.txn):`<button class="btn-upd" style="background:var(--indigo)" onclick="editLVSRecord(${r._idx})">✏️ Edit</button>`}</td>`:'<td></td>'}
+      ${(CU&&CU.task==='Manager'&&canEditData())?`<td>${isAdmin()?adminActionBtns('lvs',r._dbid||r.id,r.txn):`<button class="btn-upd" style="background:var(--indigo)" onclick="editLVSRecord(${r._idx})">✏️ Edit</button>`}</td>`:'<td></td>'}
     </tr>`;
   }).join('');
   const cnt=document.getElementById('lvsCount');if(cnt)cnt.textContent=(_pgState['lvs']?.filtered?.length||data.length)+' records';
 }
 
 function updateLVSStatus(rowIdx,dbIdx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
   const sel=document.getElementById('lsts_'+rowIdx);
   if(!sel)return;
   const r=DB.lvs[dbIdx];
@@ -9448,6 +9468,7 @@ function updateLVSStatus(rowIdx,dbIdx){
 }
 
 function editLVSRecord(idx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   const r=DB.lvs[idx];if(!r)return;
   openLVS();
   setTimeout(()=>{
@@ -9516,6 +9537,7 @@ function clearLVSFilter(){
 // LVS PANEL
 // ══════════════════════════════════════════════════════════
 function openLVS(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['lf_txn','lf_release','lf_lines','lf_client','lf_cmt','lf_clientName','lf_team','lf_duration','lf_aht','lf_submitted'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const lvsAlert=document.getElementById('lvs_client_alert');if(lvsAlert){lvsAlert.style.display='none';lvsAlert.dataset.clientNo='';}
   const lvsAck=document.getElementById('lvs_acknowledge');if(lvsAck)lvsAck.checked=false;
@@ -9813,7 +9835,7 @@ function renderCLS(c){
     <button class="btn-f" onclick="applyCLSFilter()">Apply</button>
     <button class="btn-cl" onclick="clearCLSFilter()">Clear</button>
     <button id="histSearchBtn_classifier" class="btn-cl" onclick="searchHistorical('classifier')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--teal);box-shadow:0 3px 10px rgba(13,148,136,.3);" onclick="openCLS()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal);box-shadow:0 3px 10px rgba(13,148,136,.3);" onclick="openCLS()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Classifier Records</div><div class="tc" id="clsCount">${all.length} records</div></div>
@@ -9859,6 +9881,7 @@ function renderCLSRows(data){
 }
 
 function updateCLSStatus(rowIdx,dbIdx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
   const sel=document.getElementById('csts_'+rowIdx);
   if(!sel)return;
   const r=DB.cls[dbIdx];
@@ -9923,6 +9946,7 @@ function _buildUserOpts(taskName){
 }
 
 function openCLS(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['cf_txn','cf_submitted','cf_duration','cf_cmt','cf_client','cf_clientName','cf_team'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const clsAlert=document.getElementById('cls_client_alert');if(clsAlert){clsAlert.style.display='none';clsAlert.dataset.clientNo='';}
   const clsAck=document.getElementById('cls_acknowledge');if(clsAck)clsAck.checked=false;
@@ -15692,7 +15716,7 @@ function renderCOMP(c){
     <button class="btn-f" onclick="applyCOMPFilter()">Apply</button>
     <button class="btn-cl" onclick="clearCOMPFilter()">Clear</button>
     <button id="histSearchBtn_compliance" class="btn-cl" onclick="searchHistorical('compliance')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--violet);box-shadow:0 3px 10px rgba(124,58,237,.3)" onclick="openCOMP()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--violet);box-shadow:0 3px 10px rgba(124,58,237,.3)" onclick="openCOMP()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2">
@@ -15751,6 +15775,7 @@ function renderCOMPRows(data){
 }
 
 function updateCOMPStatus(rowIdx,dbIdx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
   const rr=DB.comp[dbIdx];
   if(rr&&!isSuperLead()&&rr.assignedTo!==CU.name){showToast('⚠️ You can only update your own records',true);return;}
   const sel=document.getElementById('cpst_'+rowIdx);
@@ -15795,6 +15820,7 @@ function clearCOMPFilter(){
 
 // ── Compliance Panel Functions ──
 function openCOMP(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['cpf_subject','cpf_mailrcvd','cpf_clientname','cpf_start','cpf_completed','cpf_duration','cpf_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const cn=document.getElementById('cpf_clientno');if(cn)cn.value='';
   const txn=document.getElementById('cpf_txn');if(txn)txn.value='';
@@ -16010,7 +16036,7 @@ function renderPARSDocs(c){
     <button class="btn-f" onclick="applyPDFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPDFilter()">Clear</button>
     <button id="histSearchBtn_parsdocs" class="btn-cl" onclick="searchHistorical('parsdocs')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--sky)" onclick="openPARSDocs()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--sky)" onclick="openPARSDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">PARS Docs Records</div><div class="tc" id="pdCount">${all.length} records</div></div>
@@ -16046,7 +16072,7 @@ function renderPDRows(data){
     <td>
       ${isAdmin()
         ? adminActionBtns('parsDocs',r._dbid||r.id,r.txn||r.subject)
-        : `<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`
+        : (!isViewOnly()?`<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`:'')
       }
     </td>
   </tr>`).join('');
@@ -16078,6 +16104,7 @@ function clearPDFilter(){
 }
 
 function editPARSRecord(idx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   const r=DB.parsDocs[idx]; if(!r) return;
   // Open panel and fill all fields including duration — don't reset parsDocsStart
   const sel=document.getElementById('pd_user');
@@ -16124,6 +16151,7 @@ function editPARSRecord(idx){
 }
 
 function openPARSDocs(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['pd_subject','pd_mailrcvd','pd_start','pd_txn','pd_client','pd_clientname','pd_team','pd_eta','pd_created','pd_duration','pd_tat','pd_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pd_edit_idx').value='';
   // Reset Comments badge
@@ -16340,6 +16368,7 @@ function pdCaptureCreation(){
 }
 
 function submitPARSDocs(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
   const subject=document.getElementById('pd_subject')?.value.trim();
   const user=document.getElementById('pd_user')?.value;
   const txn=document.getElementById('pd_txn')?.value.trim();
@@ -16438,7 +16467,7 @@ function renderOceanDocs(c){
     <button class="btn-f" onclick="applyODFilter()">Apply</button>
     <button class="btn-cl" onclick="clearODFilter()">Clear</button>
     <button id="histSearchBtn_oceandocs" class="btn-cl" onclick="searchHistorical('oceandocs')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--teal)" onclick="openOceanDocs()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal)" onclick="openOceanDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Ocean Docs Records</div><div class="tc" id="odCount">${all.length} records</div></div>
@@ -16503,6 +16532,7 @@ function clearODFilter(){
 }
 
 function editOceanDocsRecord(idx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   const r=DB.oceanDocs[idx]; if(!r) return;
   const sel=document.getElementById('od_user');
   sel.innerHTML='<option value="">— Select User —</option>'+_buildUserOpts('Ocean Docs Clerk');
@@ -16535,6 +16565,7 @@ function editOceanDocsRecord(idx){
 }
 
 function openOceanDocs(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['od_subject','od_mailrcvd','od_start','od_txn','od_client','od_clientname','od_team','od_created','od_duration','od_tat','od_shift','od_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e){e.value='';e.disabled=false;e.style.opacity='';e.style.cursor='';e.title='';}});
   oceanDocsStart=null;
@@ -16606,6 +16637,7 @@ function odCaptureCreation(){
 }
 
 function submitOceanDocs(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
   const subject=document.getElementById('od_subject')?.value.trim();
   const user=document.getElementById('od_user')?.value;
   const txn=document.getElementById('od_txn')?.value.trim();
@@ -16696,7 +16728,7 @@ function renderPartLot(c){
     <button class="btn-f" onclick="applyPLFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPLFilter()">Clear</button>
     <button id="histSearchBtn_partlot" class="btn-cl" onclick="searchHistorical('partlot')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--amber)" onclick="openPartLot()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--amber)" onclick="openPartLot()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Part Lot Records</div><div class="tc" id="plCount">${all.length} records</div></div>
@@ -16753,6 +16785,7 @@ function clearPLFilter(){
 }
 
 function openPartLot(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['pl_subject','pl_txn','pl_parsno','pl_mailrcvd','pl_start','pl_completed','pl_duration','pl_tat','pl_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pl_user').value='';
   partLotStart=null;
@@ -16866,6 +16899,7 @@ function exportPartLot(){
 
 // ── Team Lead limited edit for Release records ──────────────────────────
 function openTLReleaseEdit(idx){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   const r=DB.release2[idx];
   if(!r){showToast('⚠️ Record not found',true);return;}
   // Remove any existing TL edit panel
@@ -17010,12 +17044,12 @@ function renderRelease2(c){
     <button class="btn-f" onclick="applyRLFilter()">Apply</button>
     <button class="btn-cl" onclick="clearRLFilter()">Clear</button>
     <button id="histSearchBtn_release2" class="btn-cl" onclick="searchHistorical('release2')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:var(--rose)" onclick="openRelease2()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--rose)" onclick="openRelease2()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
-      <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Profile Code</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>Comments</th><th>⭐ Quality</th>${(CU&&CU.role==='Team Lead'&&CU.task==='Release')?'<th>🔍 Audit</th><th>✏️ Edit</th>':''}</tr></thead>
+      <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Profile Code</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>Comments</th><th>⭐ Quality</th>${(CU&&CU.role==='Team Lead'&&CU.task==='Release'&&canEditData())?'<th>🔍 Audit</th><th>✏️ Edit</th>':''}</tr></thead>
       <tbody id="rlTbody"></tbody>
     </table></div>
   </div>
@@ -17072,13 +17106,14 @@ function renderRLRows(data){
     ${qCell}
     ${auditCell}
     ${isAdmin()?`<td>${adminActionBtns('release2',r._dbid||r.id,r.txn)}</td>`:''}
-    ${(CU&&CU.role==='Team Lead'&&CU.task==='Release')?`<td><button class="btn-upd" style="background:var(--primary);font-size:11px;padding:4px 9px" onclick="openTLReleaseEdit(${r._idx!==undefined?r._idx:i})" title="Edit Status / Comments">✏️ Edit</button></td>`:''}
+    ${(CU&&CU.role==='Team Lead'&&CU.task==='Release'&&canEditData())?`<td><button class="btn-upd" style="background:var(--primary);font-size:11px;padding:4px 9px" onclick="openTLReleaseEdit(${r._idx!==undefined?r._idx:i})" title="Edit Status / Comments">✏️ Edit</button></td>`:''}
   </tr>`;
   }).join('');
   const cnt=document.getElementById('rlCount');if(cnt)cnt.textContent=(_pgState['rl']?.filtered?.length||data.length)+' records';
 }
 
 function updateRLStatus(dbid){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
   // Find record by _dbid for reliable lookup regardless of pagination index
   const dbIdx=DB.release2.findIndex(r=>String(r._dbid||r.id||'')===String(dbid));
   const rr2=dbIdx>=0?DB.release2[dbIdx]:null;
@@ -17127,6 +17162,7 @@ function clearRLFilter(){
 }
 
 function openRelease2(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['rl_txn','rl_transcreated','rl_eta','rl_profilecode','rl_start','rl_client','rl_clientname','rl_team',
    'rl_lines','rl_docrcvd','rl_submitted','rl_duration','rl_tat','rl_comments'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
@@ -17243,7 +17279,7 @@ function rlModeChange(){
       hint.style.background='rgba(111,66,193,.08)';
       hint.style.color='var(--primary)';
       hint.style.border='1px solid rgba(111,66,193,.2)';
-      hint.innerHTML='🚛 <b>Truck TAT Rule:</b> Transaction must be submitted <b>at least 2 hours before ETA</b> → TAT Reached';
+      hint.innerHTML='🚛 <b>Truck TAT Rule:</b> Transaction must be submitted <b>on or before ETA time</b> → TAT Reached. The window shows time available from Trans Created to ETA.';
     } else {
       hint.style.display='block';
       hint.style.background='rgba(13,148,136,.08)';
@@ -17541,9 +17577,11 @@ function rlCalcTATAnalytics(){
   const tcToEtaLabel=tcToEtaMins>=0
     ?`${fmtMinutes(tcToEtaMins)} available from Trans Created to ETA`
     :`ETA is BEFORE Trans Created (${fmtMinutes(Math.abs(tcToEtaMins))} gap)`;
-  const tcWindow=tcToEtaMins>=0&&tcToEtaMins<=60?'Within 1 hour':
-                 tcToEtaMins>60&&tcToEtaMins<=120?'1-2 hours':
-                 tcToEtaMins>120?'More than 2 hours':'ETA before Trans Created';
+  // Window label: time available from Trans Created to ETA (larger = better for processing)
+  const tcWindow=tcToEtaMins<0?'ETA before Trans Created':
+                 tcToEtaMins<=60?'⚠️ Under 1 hour':
+                 tcToEtaMins<=120?'⚠️ 1-2 hours':
+                 '✅ More than 2 hours';
 
   // ── Part 2: Cross-check with PARS Docs mail received ──
   let parsLine='';
@@ -17578,7 +17616,7 @@ function rlCalcTATAnalytics(){
   let html=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
     <div style="background:#fff;border-radius:7px;padding:8px 10px;border:1px solid rgba(111,66,193,.12)">
       <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Trans Created → ETA</div>
-      <div style="font-weight:800;color:${tcToEtaMins<=120&&tcToEtaMins>=0?'var(--emerald)':'var(--rose)'};">${tcWindow}</div>
+      <div style="font-weight:800;color:${tcToEtaMins>120?'var(--emerald)':tcToEtaMins>60?'#d97706':'var(--rose)'};">${tcWindow}</div>
       <div style="font-size:11px;color:var(--text2);margin-top:2px">${tcToEtaLabel}</div>
     </div>
     <div style="background:#fff;border-radius:7px;padding:8px 10px;border:1px solid rgba(111,66,193,.12)">
@@ -19473,7 +19511,7 @@ function renderOceanTT(c){
     <button class="btn-f" onclick="applyOTTFilter()">Apply</button>
     <button class="btn-cl" onclick="clearOTTFilter()">Clear</button>
     <button id="histSearchBtn_oceantt" class="btn-cl" onclick="searchHistorical('oceantt')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:#0891b2;box-shadow:0 3px 10px rgba(8,145,178,.3)" onclick="openOTT()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:#0891b2;box-shadow:0 3px 10px rgba(8,145,178,.3)" onclick="openOTT()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Ocean Track &amp; Trace Records</div><div class="tc" id="ottCount">${all.length} records</div></div>
@@ -19552,6 +19590,7 @@ function clearOTTFilter(){
 }
 
 function openOTT(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['ott_txn','ott_client','ott_clientname','ott_team','ott_etancc','ott_ncccomments','ott_etaupdate','ott_complete','ott_duration','ott_tat'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('ott_status').value='';
   document.getElementById('ott_destination').value='';
@@ -19692,7 +19731,7 @@ function renderB2Entries(c){
     <button class="btn-f" onclick="applyB2Filter()">Apply</button>
     <button class="btn-cl" onclick="clearB2Filter()">Clear</button>
     <button id="histSearchBtn_b2entries" class="btn-cl" onclick="searchHistorical('b2entries')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
-    <button class="btn-add" style="background:#d97706;box-shadow:0 3px 10px rgba(217,119,6,.3)" onclick="openB2()">＋ Add Entry</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:#d97706;box-shadow:0 3px 10px rgba(217,119,6,.3)" onclick="openB2()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">B2 Entries Records</div><div class="tc" id="b2Count">${all.length} records</div></div>
@@ -19789,6 +19828,7 @@ function clearB2Filter(){
 }
 
 function openB2(){
+  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
   ['b2_txn','b2_assigneddate','b2_lines','b2_comments','b2_start','b2_start_iso','b2_completed','b2_completed_iso','b2_duration'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('b2_source').value='';
   document.getElementById('b2_adjtype').value='';
