@@ -17045,6 +17045,7 @@ function renderRelease2(c){
     <button class="btn-cl" onclick="clearRLFilter()">Clear</button>
     <button id="histSearchBtn_release2" class="btn-cl" onclick="searchHistorical('release2')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--rose)" onclick="openRelease2()">＋ Add Entry</button>':''}
+    ${isAdmin()?'<button onclick="bulkFixReleaseTAT()" style="padding:8px 14px;background:#fff7ed;border:1.5px solid rgba(245,158,11,.4);color:#b45309;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px;" title="Recalculate TAT for ALL Release records using correct date-only rule for Ocean/Air/Rail">⚡ Fix All TAT</button>':''}
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${all.length} records</div></div>
@@ -17526,12 +17527,15 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
   if(mode==='Truck'){
-    // TAT Reached: submitted on or before ETA (release sent before or at ETA time)
-    return submittedDate<=eta?'TAT Reached':'TAT Not Reached';
+    // Truck: must be submitted at least 120 minutes BEFORE ETA (datetime comparison)
+    const minsBeforeEta=(eta-submittedDate)/60000;
+    return minsBeforeEta>=120?'reached':'not-reached';
   } else {
-    // Ocean/Air/Rail: submitted on or before ETA date (compare date only, end of ETA day)
-    const etaEndOfDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
-    return submittedDate<=etaEndOfDay?'TAT Reached':'TAT Not Reached';
+    // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
+    // Rule: submitted on or before ETA date regardless of time
+    const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
+    const subDateOnly=new Date(submittedDate.getFullYear(),submittedDate.getMonth(),submittedDate.getDate());
+    return subDateOnly<=etaDateOnly?'reached':'not-reached';
   }
 }
 
@@ -19104,16 +19108,20 @@ function _recalcTAT(taskKey, r){
     }
 
     if(taskKey==='release2'){
-      // Rule: Truck = submitted on or before ETA; Ocean/Air/Rail = submitted ≤ ETA end-of-day
+      // Rule: Truck = submitted at least 120 min before ETA (datetime)
+      //        Ocean/Air/Rail = submitted DATE ≤ ETA DATE (time ignored on both sides)
       const eta=_pd(r.eta)||_pdISO(r.eta);
       const sub=_pd(r.submitted)||_pdISO(r.submitted);
       const mode=(r.mode||'').toLowerCase();
       if(!eta||!sub) return null;
       if(mode==='truck'){
-        return sub<=eta?'TAT Reached':'TAT Not Reached';
+        const minsBeforeEta=(eta-sub)/60000;
+        return minsBeforeEta>=120?'reached':'not-reached';
       } else {
-        const etaEOD=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate(),23,59,59);
-        return sub<=etaEOD?'TAT Reached':'TAT Not Reached';
+        // Date-only comparison — strip time from both ETA and submitted
+        const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
+        const subDateOnly=new Date(sub.getFullYear(),sub.getMonth(),sub.getDate());
+        return subDateOnly<=etaDateOnly?'reached':'not-reached';
       }
     }
 
@@ -19259,6 +19267,126 @@ async function adminDeleteRecord(taskKey, dbId, txn){
 }
 
 // Inject Edit/Delete buttons into any task table row
+
+// ══════════════════════════════════════════════════════════
+// BULK TAT FIX — Admin only
+// Recalculates TAT for ALL Release records using the corrected rules:
+//   Truck        : submitted at least 120 min before ETA (datetime)
+//   Ocean/Air/Rail: submitted DATE ≤ ETA DATE (time stripped from both sides)
+// Updates Supabase in batches and patches local DB array.
+// ══════════════════════════════════════════════════════════
+async function bulkFixReleaseTAT(){
+  if(!isAdmin()){showToast('⚠️ Admin only',true);return;}
+  const records=DB.release2||[];
+  if(!records.length){showToast('No Release records found',true);return;}
+
+  // Helper: parse DD-MM-YYYY HH:MM:SS or ISO string → Date
+  function _pd(s){
+    if(!s||s==='—') return null;
+    const m=String(s).match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if(m) return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+    const d=new Date(s); return isNaN(d)?null:d;
+  }
+
+  // Calculate correct TAT for a record
+  function _calcTAT(r){
+    const eta=_pd(r.eta);
+    const sub=_pd(r.submitted);
+    const mode=(r.mode||'').toLowerCase();
+    if(!eta||!sub) return null;
+    if(mode==='truck'){
+      const minsBeforeEta=(eta-sub)/60000;
+      return minsBeforeEta>=120?'reached':'not-reached';
+    } else {
+      // Ocean / Air / Rail — date comparison only, time ignored
+      const etaDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
+      const subDay=new Date(sub.getFullYear(),sub.getMonth(),sub.getDate());
+      return subDay<=etaDay?'reached':'not-reached';
+    }
+  }
+
+  // Find records that need updating
+  const toFix=records.filter(r=>{
+    if(!r.mode||r.mode==='Truck') return false; // skip Truck — separate rule
+    const correct=_calcTAT(r);
+    if(!correct) return false;
+    const current=(r.tat||'').toLowerCase().replace(/[^a-z-]/g,'');
+    const currentNorm=current.includes('not')?'not-reached':(current.includes('reached')?'reached':'');
+    return currentNorm!==correct;
+  });
+
+  // Also check Truck records
+  const truckFix=records.filter(r=>{
+    if(!r.mode||r.mode!=='Truck') return false;
+    const correct=_calcTAT(r);
+    if(!correct) return false;
+    const current=(r.tat||'').toLowerCase().replace(/[^a-z-]/g,'');
+    const currentNorm=current.includes('not')?'not-reached':(current.includes('reached')?'reached':'');
+    return currentNorm!==correct;
+  });
+
+  const allToFix=[...toFix,...truckFix];
+
+  if(!allToFix.length){
+    showToast('✅ All Release TAT values are already correct!');
+    return;
+  }
+
+  const modeBreakdown={};
+  allToFix.forEach(r=>{
+    const m=r.mode||'Unknown';
+    modeBreakdown[m]=(modeBreakdown[m]||0)+1;
+  });
+  const breakdown=Object.entries(modeBreakdown).map(([m,n])=>n+' '+m).join(', ');
+
+  if(!confirm(
+    '⚡ Bulk TAT Fix\n\n'+
+    allToFix.length+' records need TAT recalculation:\n'+breakdown+'\n\n'+
+    'Rules applied:\n'+
+    '• Truck: submitted ≥ 120 min before ETA → Reached\n'+
+    '• Ocean/Air/Rail: submitted DATE ≤ ETA DATE → Reached (time ignored)\n\n'+
+    'This will update Supabase. Continue?'
+  )) return;
+
+  showToast('⏳ Fixing '+allToFix.length+' records...');
+
+  let fixed=0;
+  let failed=0;
+  const BATCH=10;
+
+  for(let i=0;i<allToFix.length;i+=BATCH){
+    const batch=allToFix.slice(i,i+BATCH);
+    await Promise.all(batch.map(async r=>{
+      const newTat=_calcTAT(r);
+      if(!newTat) return;
+      // Update local array
+      r.tat=newTat;
+      // Push to Supabase
+      if(_supa&&r._dbid){
+        try{
+          const {error}=await _supa.from('release').update({tat:newTat}).eq('id',r._dbid);
+          if(error){ console.error('Bulk TAT fix failed for',r.txn,error); failed++; }
+          else fixed++;
+        } catch(e){ console.error('Bulk TAT fix error',r.txn,e); failed++; }
+      } else {
+        fixed++; // local-only record
+      }
+    }));
+    // Small delay between batches to avoid rate limiting
+    if(i+BATCH<allToFix.length) await new Promise(res=>setTimeout(res,200));
+  }
+
+  showToast(
+    failed===0
+      ? '✅ Fixed '+fixed+' records — TAT recalculated!'
+      : '⚠️ Fixed '+fixed+', failed '+failed+' (check console)',
+    failed>0
+  );
+
+  // Refresh Release page
+  showPage('release2');
+}
+
 function adminActionBtns(taskKey, dbId, txn){
   if(!isAdmin()) return '';
   // Guard: if dbId is undefined/null/empty, record not yet saved to DB — disable buttons
