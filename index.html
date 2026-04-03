@@ -3325,23 +3325,49 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-  // Load by ORDER + LIMIT only — no date filter
-  // Date filter caused empty results when sort column was NULL in DB
-  // For 60 users this app never exceeds 5000 records per table
-  const {data,error} = await _supa.from(table).select('*')
-    .order(dateCol, {ascending:false})
-    .limit(5000);
-  if(error){
-    // If sort column doesn't exist, fall back to id
-    console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying on id');
-    const {data:d2, error:e2} = await _supa.from(table).select('*')
-      .order('id', {ascending:false}).limit(5000);
-    if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return []; }
-    return d2 || [];
+
+  // ── Paginated fetch — loops through ALL rows in batches of 1000 ──
+  // Supabase REST API hard-caps each request at 1000 rows.
+  // A single .limit(5000) silently returns only 1000. Must paginate.
+  let allRows = [];
+  let from = 0;
+  const BATCH = 1000;
+
+  while(true){
+    let query = _supa.from(table).select('*', {count:'exact'})
+      .order(dateCol, {ascending:false})
+      .range(from, from + BATCH - 1);
+
+    const {data, error, count} = await query;
+
+    if(error){
+      // If sort column doesn't exist, retry on 'id'
+      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying on id');
+      let allRows2 = [];
+      let from2 = 0;
+      while(true){
+        const {data:d2, error:e2} = await _supa.from(table).select('*')
+          .order('id', {ascending:false})
+          .range(from2, from2 + BATCH - 1);
+        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
+        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
+        if(!d2 || d2.length < BATCH) break;
+        from2 += BATCH;
+        if(from2 > 50000) break; // safety cap
+      }
+      console.log('dbLoadRecent('+table+'): '+allRows2.length+' rows (fallback id sort)');
+      return allRows2;
+    }
+
+    if(data && data.length > 0) allRows = allRows.concat(data);
+    // Stop if we got fewer rows than batch size (last page)
+    if(!data || data.length < BATCH) break;
+    from += BATCH;
+    if(from > 50000) break; // safety cap — prevents infinite loop
   }
-  const rows = data || [];
-  console.log('dbLoadRecent('+table+'): '+rows.length+' rows');
-  return rows;
+
+  console.log('dbLoadRecent('+table+'): '+allRows.length+' rows fetched ('+Math.ceil(allRows.length/BATCH)+' pages)');
+  return allRows;
 }
 
 // Paginated fetch — gets ALL rows even if > 1000
@@ -3745,17 +3771,17 @@ async function loadAllFromSupabase(){
     setDetail('Loading data for your role...');
 
     if(isMgr){
-      // ── PHASE 1: Load TODAY only → show data in < 2 seconds ──────────────
-      setDetail("⚡ Loading today's data...");
+      // ── PHASE 1: Load ALL data for all tables ─────────────────────────────
+      setDetail("⚡ Loading all data...");
       const [users,loginUsers,clients,
              lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT,instructions
             ] = await Promise.all([
         dbLoad('users'), dbLoad('login_users'), dbLoad('clients'),
-        dbLoadRecent('lvs',1),    dbLoadRecent('cls',1),   dbLoadRecent('comp',1),
-        dbLoadRecent('pars_docs',1), dbLoadRecent('ocean_docs',1),
-        dbLoadRecent('part_lot',1),  dbLoadRecent('release',1),
-        dbLoadRecent('ocean_tt',1),  dbLoadRecent('b2_entries',1),
-        dbLoadRecent('client_errors',7), dbLoadRecent('audit',1),
+        dbLoadRecent('lvs'),    dbLoadRecent('cls'),   dbLoadRecent('comp'),
+        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
+        dbLoadRecent('part_lot'),  dbLoadRecent('release'),
+        dbLoadRecent('ocean_tt'),  dbLoadRecent('b2_entries'),
+        dbLoadRecent('client_errors'), dbLoadRecent('audit'),
         dbLoad('instructions')
       ]);
       DB.users        = users.map(mapUser);
@@ -3774,53 +3800,16 @@ async function loadAllFromSupabase(){
       DB.instructions = (instructions||[]).map(mapInstruction);
       DB.audit        = auditT.map(mapAudit);
 
-      // Show app immediately with today's data
-      setDetail("✅ Today's data loaded — showing now");
+      setDetail('✅ '+DB.lvs.length+' LVS · '+DB.release2.length+' Release · '+DB.audit.length+' Audits loaded');
       if(CU) refreshPage();
-      showToast('✅ Today data loaded instantly!');
+      showToast('✅ All data loaded — '+DB.release2.length+' Release records');
 
-      // ── PHASE 2: Load last 30 days in background silently ─────────────────
-      setDetail('🔄 Loading historical data in background...');
-      setTimeout(async () => {
-        try{
-          const [lvs30,cls30,comp30,pars30,ocean30,part30,rel30,ott30,b230,err30,audit30] =
-            await Promise.all([
-              dbLoadRecent('lvs',30),    dbLoadRecent('cls',30),
-              dbLoadRecent('comp',30),   dbLoadRecent('pars_docs',30),
-              dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
-              dbLoadRecent('release',30),dbLoadRecent('ocean_tt',30),
-              dbLoadRecent('b2_entries',30), dbLoadRecent('client_errors',60),
-              dbLoadRecent('audit',30)
-            ]);
-          // Merge: keep existing + add historical (avoid duplicates by id)
-          const _merge = (existing, fresh, mapFn) => {
-            const existIds = new Set(existing.map(r=>String(r._dbid||r.id||'')));
-            const newRecs  = fresh.map(mapFn).filter(r=>!existIds.has(String(r._dbid||r.id||'')));
-            return [...existing, ...newRecs];
-          };
-          DB.lvs      = _merge(DB.lvs,     lvs30,   mapLVS);   DB.lvs.forEach((r,i)=>r._idx=i);
-          DB.cls      = _merge(DB.cls,     cls30,   mapCLS);   DB.cls.forEach((r,i)=>r._idx=i);
-          DB.comp     = _merge(DB.comp,    comp30,  mapCOMP);  DB.comp.forEach((r,i)=>r._idx=i);
-          DB.parsDocs = _merge(DB.parsDocs,pars30,  mapPARSDocs);
-          DB.oceanDocs= _merge(DB.oceanDocs,ocean30,mapOceanDocs);
-          DB.partLot  = _merge(DB.partLot, part30,  mapPartLot);
-          DB.release2 = _merge(DB.release2,rel30,   mapRelease);DB.release2.forEach((r,i)=>r._idx=i);
-          DB.oceanTT  = _merge(DB.oceanTT, ott30,   mapOceanTT);
-          DB.b2entries= _merge(DB.b2entries,b230,   mapB2);
-          DB.errors   = _merge(DB.errors,  err30,   mapError); DB.errors.forEach((r,i)=>r._idx=i);
-          DB.audit    = _merge(DB.audit,   audit30, mapAudit);
-          _saveTaskCache();
-          _silentRefreshPage(_currentPage||'dashboard');
-          setDetail('✅ '+DB.clients.length+' clients, '+DB.lvs.length+' LVS, '+DB.release2.length+' Release, '+DB.audit.length+' Audits loaded');
-          showToast('✅ Full 30-day data loaded');
-        } catch(e){ console.warn('Phase 2 background load failed:', e.message); }
-      }, 100); // start immediately after phase 1
 
     } else if(isRlTL){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs]=await Promise.all([
-        dbLoadRecent('release',30), dbLoadRecent('audit',30), dbLoadRecent('client_errors',30), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs',7)
+        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -3837,10 +3826,10 @@ async function loadAllFromSupabase(){
       const [users,clients,lvs,cls,comp,parsDocs,oceanDocs,
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('clients'),
-        dbLoadRecent('lvs',30),dbLoadRecent('cls',30),dbLoadRecent('comp',30),dbLoadRecent('pars_docs',30),
-        dbLoadRecent('ocean_docs',30),dbLoadRecent('part_lot',30),dbLoadRecent('release',30),
-        dbLoadRecent('ocean_tt',30),dbLoadRecent('b2_entries',30),dbLoadRecent('client_errors',60),
-        dbLoadRecent('audit',30),dbLoad('instructions')
+        dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release'),
+        dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
+        dbLoadRecent('audit'),dbLoad('instructions')
       ]);
       DB.users=users.map(mapUser);
       DB.clients=clients.map(mapClient);
@@ -3863,8 +3852,8 @@ async function loadAllFromSupabase(){
       const tbl=taskTableMap[userTask];
       setDetail('Loading '+(userTask||'your')+' team data...');
       const fetches=tbl
-        ? [dbLoadRecent(tbl,30), dbLoadRecent('client_errors',30), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')]
-        : [dbLoadRecent('client_errors',30), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')];
+        ? [dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')]
+        : [dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')];
       const results=await Promise.all(fetches);
       const off=tbl?1:0;
       if(tbl&&results[0]) _applyTaskData(tbl,results[0]);
@@ -3878,12 +3867,12 @@ async function loadAllFromSupabase(){
       // Client: load ALL task tables (view-only) + errors + reports
       setDetail('Loading client view data...');
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients,pDocs] = await Promise.all([
-        dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
-        dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-        dbLoadRecent('part_lot',30), dbLoadRecent('release',30),
-        dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-        dbLoadRecent('client_errors',60), dbLoad('clients'),
-        dbLoadRecent('pars_docs',30)
+        dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
+        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
+        dbLoadRecent('part_lot'), dbLoadRecent('release'),
+        dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
+        dbLoadRecent('client_errors'), dbLoad('clients'),
+        dbLoadRecent('pars_docs')
       ]);
       if(lvs) { DB.lvs=lvs.map(mapLVS); DB.lvs.forEach((r,i)=>r._idx=i); }
       if(cls) { DB.cls=cls.map(mapCLS); DB.cls.forEach((r,i)=>r._idx=i); }
@@ -3901,11 +3890,11 @@ async function loadAllFromSupabase(){
       // Client role: load ALL task tables for read-only view
       setDetail('Loading client view data...');
       const [lvs,cls,comp,pars,ocean,partlot,release,oceantt,b2,errors] = await Promise.all([
-        dbLoadRecent('lvs',60), dbLoadRecent('cls',60), dbLoadRecent('comp',60),
-        dbLoadRecent('pars_docs',60), dbLoadRecent('ocean_docs',60),
-        dbLoadRecent('part_lot',60), dbLoadRecent('release',60),
-        dbLoadRecent('ocean_tt',60), dbLoadRecent('b2_entries',60),
-        dbLoadRecent('client_errors',90)
+        dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
+        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
+        dbLoadRecent('part_lot'), dbLoadRecent('release'),
+        dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
+        dbLoadRecent('client_errors')
       ]);
       if(lvs)    { DB.lvs=lvs.map(mapLVS); DB.lvs.forEach((r,i)=>r._idx=i); }
       if(cls)    { DB.cls=cls.map(mapCLS); DB.cls.forEach((r,i)=>r._idx=i); }
@@ -3924,8 +3913,8 @@ async function loadAllFromSupabase(){
       setDetail('Loading your '+(userTask||'task')+' data...');
       // Load clients first in array so it resolves quickly for fillClient
       const fetches=tbl
-        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadRecent('client_errors',30), dbLoad('login_users'), dbLoad('instructions')]
-        : [dbLoad('clients'), dbLoadRecent('client_errors',30), dbLoad('login_users'), dbLoad('instructions')];
+        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')]
+        : [dbLoad('clients'), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')];
       const results=await Promise.all(fetches);
       // clients is index 0, task table is index 1, etc.
       if(results[0]) DB.clients=results[0].map(mapClient); // clients FIRST — needed for autofill
@@ -3938,7 +3927,7 @@ async function loadAllFromSupabase(){
       if(results[instrIdx]) DB.instructions=results[instrIdx].map(mapInstruction);
       // pars_docs loaded separately for Release users who need ETA monitor
       if(userTask==='Release'){
-        try{ const pd=await dbLoadRecent('pars_docs',7); DB.parsDocs=(pd||[]).map(mapPARSDocs); }
+        try{ const pd=await dbLoadRecent('pars_docs'); DB.parsDocs=(pd||[]).map(mapPARSDocs); }
         catch(e){ console.warn('pars_docs load skipped for Release user',e); DB.parsDocs=[]; }
       }
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
@@ -4302,15 +4291,12 @@ function startBgPoll(){
         if(_latestId > 0 && cycle % 6 !== 0){
           // FAST PATH: only get records newer than we already have
           const {data:newRows} = await _supa.from(tbl).select('*')
-            .gt('id', _latestId).order('id',{ascending:false}).limit(50);
+            .gt('id', _latestId).order('id',{ascending:false}).limit(200);
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle — order by id (always set) not sortCol
-          // sortCol can be NULL for many records → wrong ordering → data loss
-          const {data:fullRows} = await _supa.from(tbl).select('*')
-            .order('id',{ascending:false}).limit(5000);
-          rows = fullRows||[];
+          // FULL PATH: every 6th cycle — paginated fetch of ALL rows
+          rows = await dbLoadRecent(tbl);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
@@ -6798,20 +6784,26 @@ function _saveTaskCache(){
       ts: Date.now(),
       role: CU?.role||'',
       task: CU?.task||'',
-      clients:  DB.clients.slice(0,2000),
-      lvs:      DB.lvs.slice(0,500),
-      cls:      DB.cls.slice(0,500),
-      comp:     DB.comp.slice(0,200),
-      parsDocs: DB.parsDocs.slice(0,500),
-      oceanDocs:DB.oceanDocs.slice(0,300),
-      partLot:  DB.partLot.slice(0,200),
-      release2: DB.release2.slice(0,500),
-      oceanTT:  DB.oceanTT.slice(0,300),
-      b2entries:DB.b2entries.slice(0,300),
-      errors:   DB.errors.slice(0,200),
+      clients:  DB.clients,
+      lvs:      DB.lvs,
+      cls:      DB.cls,
+      comp:     DB.comp,
+      parsDocs: DB.parsDocs,
+      oceanDocs:DB.oceanDocs,
+      partLot:  DB.partLot,
+      release2: DB.release2,
+      oceanTT:  DB.oceanTT,
+      b2entries:DB.b2entries,
+      errors:   DB.errors,
     };
     localStorage.setItem(TASK_CACHE_KEY, JSON.stringify(cache));
-  }catch(e){ /* storage full — skip cache */ }
+  }catch(e){
+    // Storage full — store minimal fallback (clients only, needed for autofill)
+    try{
+      const mini = { ts:Date.now(), role:CU?.role||'', task:CU?.task||'', clients:DB.clients };
+      localStorage.setItem(TASK_CACHE_KEY, JSON.stringify(mini));
+    }catch(e2){ /* even mini failed — skip entirely */ }
+  }
 }
 
 function _restoreTaskCache(){
@@ -8875,10 +8867,48 @@ function doLogout(){
 // ══════════════════════════════════════════════════════════
 // Role helpers
 function isSuperLead(){ return ['Manager','Supervisor','Team Lead'].includes(CU.role); }
-// Supervisor is view-only — no adding or editing data records
-function isViewOnly(){ return CU && CU.role==='Supervisor'; }
-// Returns true if the current user can edit data records (not view-only supervisor)
-function canEditData(){ return !isViewOnly(); }
+// Supervisor can ADD records but NOT edit existing records
+function isViewOnly(){ return false; } // kept for compatibility — no longer blocks everything
+function canAddData(){ return true; } // all roles including Supervisor can add
+// Returns true if the current user can edit existing data records
+function canEditData(){ return CU && CU.role!=='Supervisor'; }
+
+// ══ PERSISTENT FILTER STATE ENGINE ══════════════════════════════════════════
+// Stores filter values per task page key — survives page re-renders
+window._taskFilters = window._taskFilters || {};
+
+function _saveFilter(key, ids){
+  const state = {};
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if(el) state[id] = el.value;
+  });
+  window._taskFilters[key] = state;
+}
+
+function _restoreFilter(key){
+  const state = window._taskFilters[key];
+  if(!state) return false;
+  let hasValue = false;
+  Object.entries(state).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if(el && val){ el.value = val; hasValue = true; }
+  });
+  return hasValue;
+}
+
+function _clearFilter(key, ids){
+  delete window._taskFilters[key];
+  ids.forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
+}
+
+// Helper: scope DB array by user role
+function _scopeByUser(arr, userField){
+  if(isSuperLead()) return arr.map((r,i)=>({...r,_idx:i}));
+  return arr.map((r,i)=>({...r,_idx:i})).filter(r=>(r[userField]||'')===CU.name);
+}
+// ════════════════════════════════════════════════════════════════════════════
+
 function isCoOrd(){ return CU.role==='Co-Ordinator'; }
 // Error report visible to: Release, LVS (cls), PARS Docs, Ocean Docs tasks
 function canSeeErrors(){ return true; } // All users can see Error Report
@@ -8925,7 +8955,7 @@ function buildNav(){
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
     ];
   } else if(isSup){
-    // Supervisor: Dashboard + ALL tasks + Reports + TAT Analyzer + Instructions + Error Report
+    // Supervisor: Dashboard + ALL tasks + Audit + Reports + TAT Analyzer + Instructions + Error Report
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'status',l:'📡 Status',g:'main'},
@@ -8936,6 +8966,7 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -9171,16 +9202,15 @@ function showPage(id){
   window._forceRefresh = false;
   window._pendingPageRefresh=null;
   _currentPage=id;
-  // Show view-only banner for Supervisor on task pages
+  // Show info banner for Supervisor on task pages — they can add but not edit
   const _taskPages=['lvs','classifier','compliance','parsdocs','oceandocs','partlot','release2','oceantt','b2entries'];
-  if(isViewOnly && isViewOnly() && _taskPages.includes(id)){
-    // Will append banner after render below — done via setTimeout to not block render
+  if(CU && CU.role==='Supervisor' && _taskPages.includes(id)){
     setTimeout(()=>{
       if(!document.getElementById('supViewOnlyBanner')){
         const _b=document.createElement('div');
         _b.id='supViewOnlyBanner';
-        _b.style.cssText='position:sticky;top:0;z-index:50;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:8px 16px;font-size:12px;font-weight:700;color:#92400e;text-align:center;';
-        _b.textContent='👁️ Supervisor View — Data is read-only. Adding and editing records is disabled.';
+        _b.style.cssText='position:sticky;top:0;z-index:50;background:#e0f2fe;border-bottom:2px solid #0ea5e9;padding:8px 16px;font-size:12px;font-weight:700;color:#0369a1;text-align:center;';
+        _b.textContent='👁️ Supervisor View — ✅ Adding new records is enabled · ✏️ Editing existing records is restricted';
         const pc=document.getElementById('pc');
         if(pc&&pc.firstChild)pc.insertBefore(_b,pc.firstChild);
       }
@@ -9333,7 +9363,8 @@ function renderLVS(c){
     </table></div>
   </div>
 <div id="pg_lvs"></div>`;
-  const _d=DB.lvs.map((r,i)=>({...r,_idx:i}));pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  if(_restoreFilter('lvs')) applyLVSFilter();
 }
 
 
@@ -9453,7 +9484,7 @@ function renderLVSRows(data){
 }
 
 function updateLVSStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const sel=document.getElementById('lsts_'+rowIdx);
   if(!sel)return;
   const r=DB.lvs[dbIdx];
@@ -9468,7 +9499,7 @@ function updateLVSStatus(rowIdx,dbIdx){
 }
 
 function editLVSRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.lvs[idx];if(!r)return;
   openLVS();
   setTimeout(()=>{
@@ -9507,14 +9538,14 @@ function editLVSRecord(idx){
 }
 
 function applyLVSFilter(){
+  _saveFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
   const d1=document.getElementById('lf_d1')?.value;
   const d2=document.getElementById('lf_d2')?.value;
   const u=document.getElementById('lf_fu')?.value;
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  let data=DB.lvs.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU.task==='LVS') data=data.filter(r=>r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.lvs,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -9529,15 +9560,15 @@ function pgGoLVS(p){
   pgGo('lvs', p, renderLVSRows, 'pg_lvs', 'pgGoLVS');
 }
 function clearLVSFilter(){
-  ['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.lvs.map((r,i)=>({...r,_idx:i}));pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  _clearFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
 }
 
 // ══════════════════════════════════════════════════════════
 // LVS PANEL
 // ══════════════════════════════════════════════════════════
 function openLVS(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['lf_txn','lf_release','lf_lines','lf_client','lf_cmt','lf_clientName','lf_team','lf_duration','lf_aht','lf_submitted'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const lvsAlert=document.getElementById('lvs_client_alert');if(lvsAlert){lvsAlert.style.display='none';lvsAlert.dataset.clientNo='';}
   const lvsAck=document.getElementById('lvs_acknowledge');if(lvsAck)lvsAck.checked=false;
@@ -9845,7 +9876,8 @@ function renderCLS(c){
     </table></div>
   </div>
 <div id="pg_cls"></div>`;
-  const _d=DB.cls.map((r,i)=>({...r,_idx:i}));pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  if(_restoreFilter('cls')) applyCLSFilter();
 }
 
 function renderCLSRows(data){
@@ -9881,7 +9913,7 @@ function renderCLSRows(data){
 }
 
 function updateCLSStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const sel=document.getElementById('csts_'+rowIdx);
   if(!sel)return;
   const r=DB.cls[dbIdx];
@@ -9896,14 +9928,14 @@ function updateCLSStatus(rowIdx,dbIdx){
 }
 
 function applyCLSFilter(){
+  _saveFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
   const d1=document.getElementById('cf_d1')?.value;
   const d2=document.getElementById('cf_d2')?.value;
   const u=document.getElementById('cf_fu')?.value;
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
-  let data=DB.cls.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU.task==='Classifier') data=data.filter(r=>r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.cls,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -9918,8 +9950,8 @@ function pgGoCLS(p){
   pgGo('cls', p, renderCLSRows, 'pg_cls', 'pgGoCLS');
 }
 function clearCLSFilter(){
-  ['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.cls.map((r,i)=>({...r,_idx:i}));pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  _clearFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -9946,7 +9978,7 @@ function _buildUserOpts(taskName){
 }
 
 function openCLS(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['cf_txn','cf_submitted','cf_duration','cf_cmt','cf_client','cf_clientName','cf_team'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const clsAlert=document.getElementById('cls_client_alert');if(clsAlert){clsAlert.style.display='none';clsAlert.dataset.clientNo='';}
   const clsAck=document.getElementById('cls_acknowledge');if(clsAck)clsAck.checked=false;
@@ -15063,10 +15095,10 @@ function renderAudit(c){
     <td style="text-align:center"><span class="audit-pending-badge">${cnt} pending</span></td>
     <td style="padding:7px 14px"><div class="audit-progress-bar" style="width:100px;display:inline-block"><div class="audit-progress-fill" style="width:${Math.min(cnt*10,100)}%;background:#f59e0b"></div></div></td></tr>`).join('');
 
-  // Team Lead names for dropdowns
+  // Team Lead + Supervisor names for auditor dropdowns
   const tlNames=[...new Set([
-    ...DB.users.filter(u=>u.role==='Team Lead').map(u=>u.name),
-    ...DB.loginUsers.filter(u=>u.role==='Team Lead').map(u=>u.name),
+    ...DB.users.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
+    ...DB.loginUsers.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
     CU.name
   ])].filter(Boolean);
   window._auditTLOpts=tlNames.map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -15734,7 +15766,8 @@ function renderCOMP(c){
     </table></div>
   </div>
 <div id="pg_comp"></div>`;
-  const _d=DB.comp.map((r,i)=>({...r,_idx:i}));pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  const _d=_scopeByUser(DB.comp,'assignedTo');pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  if(_restoreFilter('comp')) applyCOMPFilter();
 }
 
 function renderCOMPRows(data){
@@ -15775,7 +15808,7 @@ function renderCOMPRows(data){
 }
 
 function updateCOMPStatus(rowIdx,dbIdx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const rr=DB.comp[dbIdx];
   if(rr&&!isSuperLead()&&rr.assignedTo!==CU.name){showToast('⚠️ You can only update your own records',true);return;}
   const sel=document.getElementById('cpst_'+rowIdx);
@@ -15791,6 +15824,7 @@ function updateCOMPStatus(rowIdx,dbIdx){
 }
 
 function applyCOMPFilter(){
+  _saveFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_fs','cpf2_search']);
   const d1=document.getElementById('cpf2_d1')?.value;
   const d2=document.getElementById('cpf2_d2')?.value;
   const u=document.getElementById('cpf2_fu')?.value;
@@ -15798,7 +15832,7 @@ function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
-  let data=DB.comp.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.comp,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -15814,13 +15848,13 @@ function pgGoCOMP(p){
   pgGo('comp', p, renderCOMPRows, 'pg_comp', 'pgGoCOMP');
 }
 function clearCOMPFilter(){
-  ['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_rt','cpf2_fs','cpf2_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.comp.map((r,i)=>({...r,_idx:i}));pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
+  _clearFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_rt','cpf2_fs','cpf2_search']);
+  const _d=_scopeByUser(DB.comp,'assignedTo');pgSetData('comp',_d);renderCOMPRows(pgSlice('comp'));pgRender('comp','pg_comp','pgGoCOMP');
 }
 
 // ── Compliance Panel Functions ──
 function openCOMP(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['cpf_subject','cpf_mailrcvd','cpf_clientname','cpf_start','cpf_completed','cpf_duration','cpf_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const cn=document.getElementById('cpf_clientno');if(cn)cn.value='';
   const txn=document.getElementById('cpf_txn');if(txn)txn.value='';
@@ -16046,7 +16080,8 @@ function renderPARSDocs(c){
     </table></div>
   </div>
 <div id="pg_pd"></div>`;
-  const _d=DB.parsDocs.map((r,i)=>({...r,_idx:i}));pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  if(_restoreFilter('pd')) applyPDFilter();
 }
 
 function renderPDRows(data){
@@ -16072,7 +16107,7 @@ function renderPDRows(data){
     <td>
       ${isAdmin()
         ? adminActionBtns('parsDocs',r._dbid||r.id,r.txn||r.subject)
-        : (!isViewOnly()?`<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`:'')
+        : (canEditData()?`<button class="btn-upd" style="background:var(--sky)" onclick="editPARSRecord(${r._idx!==undefined?r._idx:i})">✏️</button>`:'')
       }
     </td>
   </tr>`).join('');
@@ -16080,12 +16115,13 @@ function renderPDRows(data){
 }
 
 function applyPDFilter(){
+  _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
   const d1=document.getElementById('pd_fd1')?.value;
   const d2=document.getElementById('pd_fd2')?.value;
   const u=document.getElementById('pd_fu')?.value;
   const tm=document.getElementById('pd_fteam')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
-  let data=DB.parsDocs.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.parsDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16099,12 +16135,12 @@ function pgGoPD(p){
   pgGo('pd', p, renderPDRows, 'pg_pd', 'pgGoPD');
 }
 function clearPDFilter(){
-  ['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.parsDocs.map((r,i)=>({...r,_idx:i}));pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
 }
 
 function editPARSRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.parsDocs[idx]; if(!r) return;
   // Open panel and fill all fields including duration — don't reset parsDocsStart
   const sel=document.getElementById('pd_user');
@@ -16151,7 +16187,7 @@ function editPARSRecord(idx){
 }
 
 function openPARSDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['pd_subject','pd_mailrcvd','pd_start','pd_txn','pd_client','pd_clientname','pd_team','pd_eta','pd_created','pd_duration','pd_tat','pd_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pd_edit_idx').value='';
   // Reset Comments badge
@@ -16368,7 +16404,7 @@ function pdCaptureCreation(){
 }
 
 function submitPARSDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const subject=document.getElementById('pd_subject')?.value.trim();
   const user=document.getElementById('pd_user')?.value;
   const txn=document.getElementById('pd_txn')?.value.trim();
@@ -16477,7 +16513,8 @@ function renderOceanDocs(c){
     </table></div>
   </div>
 <div id="pg_od"></div>`;
-  const _d=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  if(_restoreFilter('od')) applyODFilter();
 }
 
 function renderODRows(data){
@@ -16508,12 +16545,13 @@ function renderODRows(data){
 }
 
 function applyODFilter(){
+  _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
   const d1=document.getElementById('od_fd1')?.value;
   const d2=document.getElementById('od_fd2')?.value;
   const u=document.getElementById('od_fu')?.value;
   const tm=document.getElementById('od_fteam')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
-  let data=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.oceanDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16527,12 +16565,12 @@ function pgGoOD(p){
   pgGo('od', p, renderODRows, 'pg_od', 'pgGoOD');
 }
 function clearODFilter(){
-  ['od_fd1','od_fd2','od_fu','od_fteam','od_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.oceanDocs.map((r,i)=>({...r,_idx:i}));pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
 }
 
 function editOceanDocsRecord(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.oceanDocs[idx]; if(!r) return;
   const sel=document.getElementById('od_user');
   sel.innerHTML='<option value="">— Select User —</option>'+_buildUserOpts('Ocean Docs Clerk');
@@ -16565,7 +16603,7 @@ function editOceanDocsRecord(idx){
 }
 
 function openOceanDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['od_subject','od_mailrcvd','od_start','od_txn','od_client','od_clientname','od_team','od_created','od_duration','od_tat','od_shift','od_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e){e.value='';e.disabled=false;e.style.opacity='';e.style.cursor='';e.title='';}});
   oceanDocsStart=null;
@@ -16637,7 +16675,7 @@ function odCaptureCreation(){
 }
 
 function submitOceanDocs(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — saving is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const subject=document.getElementById('od_subject')?.value.trim();
   const user=document.getElementById('od_user')?.value;
   const txn=document.getElementById('od_txn')?.value.trim();
@@ -16738,7 +16776,8 @@ function renderPartLot(c){
     </table></div>
   </div>
 <div id="pg_pl"></div>`;
-  const _d=DB.partLot.map((r,i)=>({...r,_idx:i}));pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  if(_restoreFilter('pl')) applyPLFilter();
 }
 
 function renderPLRows(data){
@@ -16763,11 +16802,12 @@ function renderPLRows(data){
 }
 
 function applyPLFilter(){
+  _saveFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
   const d1=document.getElementById('pl_fd1')?.value;
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
-  let data=DB.partLot.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.partLot,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16780,12 +16820,12 @@ function pgGoPL(p){
   pgGo('pl', p, renderPLRows, 'pg_pl', 'pgGoPL');
 }
 function clearPLFilter(){
-  ['pl_fd1','pl_fd2','pl_fu','pl_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.partLot.map((r,i)=>({...r,_idx:i}));pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  _clearFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
 }
 
 function openPartLot(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['pl_subject','pl_txn','pl_parsno','pl_mailrcvd','pl_start','pl_completed','pl_duration','pl_tat','pl_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pl_user').value='';
   partLotStart=null;
@@ -16899,7 +16939,7 @@ function exportPartLot(){
 
 // ── Team Lead limited edit for Release records ──────────────────────────
 function openTLReleaseEdit(idx){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const r=DB.release2[idx];
   if(!r){showToast('⚠️ Record not found',true);return;}
   // Remove any existing TL edit panel
@@ -17055,13 +17095,14 @@ function renderRelease2(c){
     </table></div>
   </div>
 <div id="pg_rl"></div>`;
-  const _d=DB.release2.map((r,i)=>({...r,_idx:i}));pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  if(_restoreFilter('rl')) applyRLFilter();
 }
 
 function renderRLRows(data){
   const tbody=document.getElementById('rlTbody');
   if(!tbody)return;
-  const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
+  const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
@@ -17114,7 +17155,7 @@ function renderRLRows(data){
 }
 
 function updateRLStatus(dbid){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — status updates are restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   // Find record by _dbid for reliable lookup regardless of pagination index
   const dbIdx=DB.release2.findIndex(r=>String(r._dbid||r.id||'')===String(dbid));
   const rr2=dbIdx>=0?DB.release2[dbIdx]:null;
@@ -17137,13 +17178,14 @@ function updateRLStatus(dbid){
 }
 
 function applyRLFilter(){
+  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
   const u=document.getElementById('rl_fu')?.value;
   const tm=document.getElementById('rl_fteam')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
-  let data=DB.release2.map((r,i)=>({...r,_idx:r._idx!==undefined?r._idx:i}));
+  let data=_scopeByUser(DB.release2,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17158,12 +17200,12 @@ function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
 function clearRLFilter(){
-  ['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.release2.map((r,i)=>({...r,_idx:i}));pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
 }
 
 function openRelease2(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['rl_txn','rl_transcreated','rl_eta','rl_profilecode','rl_start','rl_client','rl_clientname','rl_team',
    'rl_lines','rl_docrcvd','rl_submitted','rl_duration','rl_tat','rl_comments'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
@@ -17527,9 +17569,10 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
   if(mode==='Truck'){
-    // Truck: must be submitted at least 120 minutes BEFORE ETA (datetime comparison)
+    // Truck TAT Rule: submitted must be ON or BEFORE ETA, AND within 120 minutes of ETA
+    // i.e. 0 <= (eta - submitted) <= 120 min → TAT Reached
     const minsBeforeEta=(eta-submittedDate)/60000;
-    return minsBeforeEta>=120?'reached':'not-reached';
+    return (minsBeforeEta>=0 && minsBeforeEta<=120)?'reached':'not-reached';
   } else {
     // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
     // Rule: submitted on or before ETA date regardless of time
@@ -19108,7 +19151,7 @@ function _recalcTAT(taskKey, r){
     }
 
     if(taskKey==='release2'){
-      // Rule: Truck = submitted at least 120 min before ETA (datetime)
+      // Rule: Truck = submitted ON/BEFORE ETA AND within 120 min of ETA → reached
       //        Ocean/Air/Rail = submitted DATE ≤ ETA DATE (time ignored on both sides)
       const eta=_pd(r.eta)||_pdISO(r.eta);
       const sub=_pd(r.submitted)||_pdISO(r.submitted);
@@ -19116,7 +19159,7 @@ function _recalcTAT(taskKey, r){
       if(!eta||!sub) return null;
       if(mode==='truck'){
         const minsBeforeEta=(eta-sub)/60000;
-        return minsBeforeEta>=120?'reached':'not-reached';
+        return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
       } else {
         // Date-only comparison — strip time from both ETA and submitted
         const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19296,7 +19339,7 @@ async function bulkFixReleaseTAT(){
     if(!eta||!sub) return null;
     if(mode==='truck'){
       const minsBeforeEta=(eta-sub)/60000;
-      return minsBeforeEta>=120?'reached':'not-reached';
+      return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
     } else {
       // Ocean / Air / Rail — date comparison only, time ignored
       const etaDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19343,7 +19386,7 @@ async function bulkFixReleaseTAT(){
     '⚡ Bulk TAT Fix\n\n'+
     allToFix.length+' records need TAT recalculation:\n'+breakdown+'\n\n'+
     'Rules applied:\n'+
-    '• Truck: submitted ≥ 120 min before ETA → Reached\n'+
+    '• Truck: submitted ON or BEFORE ETA, within 120 min of ETA → Reached\n'+
     '• Ocean/Air/Rail: submitted DATE ≤ ETA DATE → Reached (time ignored)\n\n'+
     'This will update Supabase. Continue?'
   )) return;
@@ -19422,10 +19465,10 @@ function exportAuditCSV(){
 }
 
 function openAuditFromRelease(rlIdx){
-  // Build the TL names and error type opts on-the-fly
+  // Build the TL/Supervisor names and error type opts on-the-fly
   const tlNames=[...new Set([
-    ...DB.users.filter(u=>u.role==='Team Lead').map(u=>u.name),
-    ...DB.loginUsers.filter(u=>u.role==='Team Lead').map(u=>u.name),
+    ...DB.users.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
+    ...DB.loginUsers.filter(u=>u.role==='Team Lead'||u.role==='Supervisor').map(u=>u.name),
     CU.name
   ])].filter(Boolean);
   window._auditTLOpts=tlNames.map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -19654,7 +19697,8 @@ function renderOceanTT(c){
     </table></div>
   </div>
 <div id="pg_ott"></div>`;
-  const _d=DB.oceanTT.map((r,i)=>({...r,_idx:i}));pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  const _d=_scopeByUser(DB.oceanTT,'user');pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  if(_restoreFilter('ott')) applyOTTFilter();
 }
 
 function renderOTTRows(data){
@@ -19690,6 +19734,7 @@ function renderOTTRows(data){
 }
 
 function applyOTTFilter(){
+  _saveFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
   const d1=document.getElementById('ott_fd1')?.value;
   const d2=document.getElementById('ott_fd2')?.value;
   const u=document.getElementById('ott_fu')?.value;
@@ -19697,7 +19742,7 @@ function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
-  let data=DB.oceanTT.map((r,i)=>({...r,_idx:i}));
+  let data=_scopeByUser(DB.oceanTT,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -19713,12 +19758,12 @@ function pgGoOTT(p){
   pgGo('ott', p, renderOTTRows, 'pg_ott', 'pgGoOTT');
 }
 function clearOTTFilter(){
-  ['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.oceanTT.map((r,i)=>({...r,_idx:i}));pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
+  _clearFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
+  const _d=_scopeByUser(DB.oceanTT,'user');pgSetData('ott',_d);renderOTTRows(pgSlice('ott'));pgRender('ott','pg_ott','pgGoOTT');
 }
 
 function openOTT(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['ott_txn','ott_client','ott_clientname','ott_team','ott_etancc','ott_ncccomments','ott_etaupdate','ott_complete','ott_duration','ott_tat'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('ott_status').value='';
   document.getElementById('ott_destination').value='';
@@ -19874,7 +19919,8 @@ function renderB2Entries(c){
     </table></div>
   </div>
 <div id="pg_b2"></div>`;
-  const _d=DB.b2entries.map((r,i)=>({...r,_idx:i}));pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  const _d=_scopeByUser(DB.b2entries,'user');pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  if(_restoreFilter('b2')) applyB2Filter();
 }
 
 function renderB2Rows(data){
@@ -19926,6 +19972,7 @@ function updateB2Status(rowIdx){
 }
 
 function applyB2Filter(){
+  _saveFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
   const d1=document.getElementById('b2_fd1')?.value;
   const d2=document.getElementById('b2_fd2')?.value;
   const u=document.getElementById('b2_fu')?.value;
@@ -19933,9 +19980,7 @@ function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
-  let data=DB.b2entries.map((r,i)=>({...r,_idx:i}));
-  if(!isSuperLead()&&CU&&CU.task&&CU.task!=='Manager') data=data.filter(r=>r.user===CU.name||r.assignedTo===CU.name);
-  if(!isSuperLead()&&CU&&CU.task&&CU.task!=='Manager') data=data.filter(r=>r.user===CU.name||r.assignedTo===CU.name);
+  let data=_scopeByUser(DB.b2entries,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -19951,12 +19996,12 @@ function pgGoB2(p){
   pgGo('b2', p, renderB2Rows, 'pg_b2', 'pgGoB2');
 }
 function clearB2Filter(){
-  ['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const _d=DB.b2entries.map((r,i)=>({...r,_idx:i}));pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
+  _clearFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
+  const _d=_scopeByUser(DB.b2entries,'user');pgSetData('b2',_d);renderB2Rows(pgSlice('b2'));pgRender('b2','pg_b2','pgGoB2');
 }
 
 function openB2(){
-  if(isViewOnly()){showToast('⚠️ Supervisors can view data only — editing is restricted',true);return;}
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   ['b2_txn','b2_assigneddate','b2_lines','b2_comments','b2_start','b2_start_iso','b2_completed','b2_completed_iso','b2_duration'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('b2_source').value='';
   document.getElementById('b2_adjtype').value='';
