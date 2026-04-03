@@ -2633,7 +2633,7 @@ body.role-client [data-col="clientname"]{
       </div>
       <div class="fpg">
         <label class="fpl" for="rl_transcreated">Trans Created Date &amp; Time</label>
-        <input class="fpi" id="rl_transcreated" placeholder="Paste from NCC — e.g. Mon 19-01-2026 13:26" onfocus="if(rlStepGuard(3)){this.blur()}" oninput="rlAutoConvertDate(this);rlCalcTATAnalytics()"/>
+        <input class="fpi" id="rl_transcreated" placeholder="Paste from NCC — e.g. Mon 19-01-2026 13:26" onfocus="if(rlStepGuard(3)){this.blur()}" oninput="rlAutoConvertDate(this);rlCalcTATAnalytics();rlAutoCalcTAT();"/>
         <div class="fnote">📋 Paste Outlook date — auto-normalised to dd-mm-yyyy HH:MM:SS</div>
       </div>
     </div>
@@ -2646,7 +2646,7 @@ body.role-client [data-col="clientname"]{
       </div>
       <div class="fpg">
         <label class="fpl" for="rl_eta">ETA (Expected Time of Arrival)</label>
-        <input class="fpi" id="rl_eta" placeholder="Paste from NCC ETA — e.g. 25-01-2026 14:00" onfocus="if(rlStepGuard(4)){this.blur()}" oninput="rlAutoConvertDate(this);rlCalcTATAnalytics()"/>
+        <input class="fpi" id="rl_eta" placeholder="Paste from NCC ETA — e.g. 25-01-2026 14:00" onfocus="if(rlStepGuard(4)){this.blur()}" oninput="rlAutoConvertDate(this);rlCalcTATAnalytics();rlAutoCalcTAT();"/>
         <div class="fnote">Used to calculate TAT — paste from NCC</div>
       </div>
     </div>
@@ -2684,7 +2684,7 @@ body.role-client [data-col="clientname"]{
         <!-- STEP 8 — Mode -->
         <div class="fpg">
           <label class="fpl" for="rl_mode">Mode <span class="req">*</span> <span style="font-size:10px;color:var(--text3);font-weight:500">(Step 8)</span></label>
-          <select class="fps" id="rl_mode" onmousedown="if(rlStepGuard(8))return false;" onchange="rlModeChange();rlCalcTATAnalytics()">
+          <select class="fps" id="rl_mode" onmousedown="if(rlStepGuard(8))return false;" onchange="rlModeChange();rlCalcTATAnalytics();rlAutoCalcTAT();">
             <option value="">— Select Mode —</option>
             <option>Truck</option><option>Ocean</option><option>Air</option><option>Rail</option>
           </select>
@@ -14856,7 +14856,7 @@ function runTATAnalyzer(){
                 <div style="background:#fff;border-radius:6px;padding:7px 9px;border:1px solid var(--border);">
                   <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">✅ Submitted</div>
                   <div style="font-size:11px;font-weight:800;color:var(--navy);margin-top:2px;word-break:break-all;">${tl.submitted}</div>
-                  ${tl.minsBeforeEta!==null?`<div style="font-size:9px;color:${tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120?'var(--emerald)':tl.minsBeforeEta>=0?'var(--amber)':'var(--rose)'};margin-top:2px;font-weight:700;">${tl.minsBeforeEta>=0?fmtMins(tl.minsBeforeEta)+' before ETA':fmtMins(Math.abs(tl.minsBeforeEta))+' AFTER ETA'}</div>`:''}
+                  ${tl.minsBeforeEta!==null?`<div style="font-size:9px;color:${tl.minsBeforeEta>=0?'var(--emerald)':'var(--rose)'};margin-top:2px;font-weight:700;">${tl.minsBeforeEta>=0?fmtMins(tl.minsBeforeEta)+' before ETA':fmtMins(Math.abs(tl.minsBeforeEta))+' AFTER ETA'}</div>`:''}
                 </div>
               </div>
               <!-- Mail→ETA timeframe verdict -->
@@ -14876,10 +14876,10 @@ function runTATAnalyzer(){
                 <div style="background:#fff;border-radius:6px;padding:7px 9px;border:1px solid var(--border);">
                   <div style="font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">🎯 Submit vs 2h Target</div>
                   <div style="font-size:12px;font-weight:900;color:${tl.minsBeforeEta>=120?'var(--emerald)':tl.minsBeforeEta>=0?'var(--amber)':'var(--rose)'};margin-top:3px;">
-                    ${tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120?'✅ On Time':tl.minsBeforeEta>=0?'⚠️ Late (within ETA)':'❌ Past ETA'}
+                    ${tl.minsBeforeEta>=0?'✅ On Time':'❌ Past ETA'}
                   </div>
                   <div style="font-size:10px;color:var(--text3);margin-top:1px;">
-                    ${(tl.minsBeforeEta>=0&&tl.minsBeforeEta<=120)?fmtMins(120-tl.minsBeforeEta)+' of 2h window used':tl.minsBeforeEta>=0?'Short by '+fmtMins(120-tl.minsBeforeEta):fmtMins(Math.abs(tl.minsBeforeEta))+' overdue'}
+                    ${tl.minsBeforeEta>=0?fmtMins(tl.minsBeforeEta)+' before ETA':fmtMins(Math.abs(tl.minsBeforeEta))+' AFTER ETA (overdue)'}
                   </div>
                 </div>
               </div>
@@ -14997,9 +14997,9 @@ function exportTruckTATChallenges(){
   function tatVerdict(etaDate, subDate){
     if(!etaDate||!subDate)return'\u2014';
     const minsBeforeEta=(etaDate-subDate)/60000;
-    if(minsBeforeEta>=0&&minsBeforeEta<=120) return 'TAT Reached (\u2705 '+toHMS(minsBeforeEta)+' before ETA)';
-    if(minsBeforeEta>=0)   return 'TAT Not Reached \u274c — only '+toHMS(minsBeforeEta)+' before ETA (need 02:00:00)';
-    return 'TAT Not Reached \u274c — submitted '+toHMS(Math.abs(minsBeforeEta))+' AFTER ETA';
+    // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier is always better)
+    if(minsBeforeEta>=0) return 'TAT Reached (✅ '+toHMS(minsBeforeEta)+' before ETA)';
+    return 'TAT Not Reached (❌ submitted '+toHMS(Math.abs(minsBeforeEta))+' AFTER ETA)';
   }
 
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,"''")+'"';
@@ -17322,7 +17322,7 @@ function rlModeChange(){
       hint.style.background='rgba(111,66,193,.08)';
       hint.style.color='var(--primary)';
       hint.style.border='1px solid rgba(111,66,193,.2)';
-      hint.innerHTML='🚛 <b>Truck TAT Rule:</b> Transaction must be submitted <b>on or before ETA time</b> → TAT Reached. The window shows time available from Trans Created to ETA.';
+      hint.innerHTML='🚛 <b>Truck TAT Rule:</b> Submit <b>on or before ETA</b> → ✅ TAT Reached. Submit <b>after ETA</b> → ❌ TAT Not Reached. Earlier is always better.';
     } else {
       hint.style.display='block';
       hint.style.background='rgba(13,148,136,.08)';
@@ -17565,6 +17565,23 @@ function fmtMinutes(totalMins){
 // Truck: TAT Reached if submitted <= ETA AND (ETA - submitted) <= 120 min  [within 2 hrs of ETA means submitted ≥ ETA-2h]
 // Actually the rule: "submitted within 2 hours or equal to 2 hours" means time between submitted and ETA ≤ 2 hours
 // i.e. submitted >= ETA - 2h  AND submitted <= ETA
+// ── Auto-recalculate TAT whenever ETA or Mode changes ──────────────────────
+// Called from rl_eta oninput and rl_mode onchange so TAT always stays current
+function rlAutoCalcTAT(){
+  const etaRaw = document.getElementById('rl_eta')?.value;
+  const mode   = document.getElementById('rl_mode')?.value;
+  if(!etaRaw || !mode) return; // need both fields first
+
+  // Use captured submitted time if available, otherwise use now
+  const submittedStr = document.getElementById('rl_submitted')?.value;
+  const submittedDate = submittedStr ? (parseAppDate(submittedStr)||nowET()) : nowET();
+
+  const tatResult = rlCalcTAT(submittedDate, etaRaw, mode);
+  const tatEl = document.getElementById('rl_tat');
+  if(tatEl) tatEl.value = tatResult;
+  rlShowTATResult(tatResult);
+}
+
 function rlCalcTAT(submittedDate, etaRaw, mode){
   const eta=rlParseDate(etaRaw);
   if(!eta||!submittedDate)return'—';
@@ -17572,7 +17589,8 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
     // Truck TAT Rule: submitted must be ON or BEFORE ETA, AND within 120 minutes of ETA
     // i.e. 0 <= (eta - submitted) <= 120 min → TAT Reached
     const minsBeforeEta=(eta-submittedDate)/60000;
-    return (minsBeforeEta>=0 && minsBeforeEta<=120)?'reached':'not-reached';
+    // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier = better)
+    return minsBeforeEta>=0?'reached':'not-reached';
   } else {
     // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
     // Rule: submitted on or before ETA date regardless of time
@@ -17702,6 +17720,7 @@ function rlStatusSelected(){
     document.getElementById('rl_submitted_iso').value=nowISOET();
     if(releaseStart) document.getElementById('rl_duration').value=calcDuration(releaseStart,now);
   }
+  // Always recalculate TAT (not just on first capture)
   const submittedStr=document.getElementById('rl_submitted').value;
   const submittedTime=submittedStr?parseAppDate(submittedStr)||now:now;
   const etaRaw=document.getElementById('rl_eta').value;
@@ -17721,7 +17740,6 @@ function rlStatusSelected(){
 function rlCaptureSubmitted(){
   if(!document.getElementById('rl_submitted')) return;
   // Guard: only capture submitted time if start has already been captured.
-  // This prevents submitted being stamped before TXN is entered (start time).
   if(!releaseStart){ resetEndCapture('release'); return; }
   const now=nowET();
   const firstCapture=captureEndOnce('release');
@@ -17733,12 +17751,12 @@ function rlCaptureSubmitted(){
   // Always recalculate duration when user is selected (regardless of first/subsequent capture)
   if(releaseStart){
     const endTime=firstCapture?now:(()=>{
-      // Parse already-captured submitted time
       const submittedStr=document.getElementById('rl_submitted').value;
       return submittedStr?parseAppDate(submittedStr)||now:now;
     })();
     document.getElementById('rl_duration').value=calcDuration(releaseStart,endTime);
   }
+  // Always recalculate TAT
   const etaRaw=document.getElementById('rl_eta').value;
   const mode=document.getElementById('rl_mode').value;
   if(etaRaw&&mode){
@@ -19159,7 +19177,8 @@ function _recalcTAT(taskKey, r){
       if(!eta||!sub) return null;
       if(mode==='truck'){
         const minsBeforeEta=(eta-sub)/60000;
-        return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
+        // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier = better)
+        return minsBeforeEta>=0?'reached':'not-reached';
       } else {
         // Date-only comparison — strip time from both ETA and submitted
         const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19339,7 +19358,8 @@ async function bulkFixReleaseTAT(){
     if(!eta||!sub) return null;
     if(mode==='truck'){
       const minsBeforeEta=(eta-sub)/60000;
-      return (minsBeforeEta>=0&&minsBeforeEta<=120)?'reached':'not-reached';
+      // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier = better)
+      return minsBeforeEta>=0?'reached':'not-reached';
     } else {
       // Ocean / Air / Rail — date comparison only, time ignored
       const etaDay=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
@@ -19386,7 +19406,7 @@ async function bulkFixReleaseTAT(){
     '⚡ Bulk TAT Fix\n\n'+
     allToFix.length+' records need TAT recalculation:\n'+breakdown+'\n\n'+
     'Rules applied:\n'+
-    '• Truck: submitted ON or BEFORE ETA, within 120 min of ETA → Reached\n'+
+    '• Truck: submitted ON or BEFORE ETA → Reached (no upper bound)\n'+
     '• Ocean/Air/Rail: submitted DATE ≤ ETA DATE → Reached (time ignored)\n\n'+
     'This will update Supabase. Continue?'
   )) return;
