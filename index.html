@@ -7306,190 +7306,274 @@ function _attChangeMonth(){
 }
 
 function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
-  // Build lookup: {username: {date: row}}
+  // ── Helper: parse "DD-MM-YYYY HH:MM:SS" or "HH:MM:SS" → "HH:MM" display ──
+  function _fmtTime(t){
+    if(!t||t==='—'||t==='null') return '—';
+    const s = String(t);
+    // "DD-MM-YYYY HH:MM:SS" → take last 8 chars, first 5
+    const m = s.match(/(\d{2}:\d{2})(?::\d{2})?$/);
+    return m ? m[1] : '—';
+  }
+  function _fmtMins(m){
+    if(!m&&m!==0) return '—';
+    m = Math.round(m);
+    const h=Math.floor(m/60), mm=m%60;
+    return h>0 ? h+'h '+String(mm).padStart(2,'0')+'m' : mm+'m';
+  }
+
+  // ── Build lookup: {username: {date: [session, session, ...]}} ──
+  // OLD BUG: was {username: {date: singleRow}} — only kept 1 session per day
+  // FIX: keep ALL sessions as array, sorted by session_no
   const byUser = {};
   rows.forEach(r => {
     if(!byUser[r.username]) byUser[r.username] = {};
-    byUser[r.username][r.date] = r;
+    if(!byUser[r.username][r.date]) byUser[r.username][r.date] = [];
+    byUser[r.username][r.date].push(r);
+  });
+  // Sort each day's sessions by session_no asc
+  Object.values(byUser).forEach(dates => {
+    Object.values(dates).forEach(arr => arr.sort((a,b)=>(a.session_no||0)-(b.session_no||0)));
   });
 
-  // Get all working days in month (Mon-Fri)
+  // ── Calendar days ──
   const daysInMonth = new Date(year, month, 0).getDate();
   const allDays = [];
   for(let d=1; d<=daysInMonth; d++){
     const dt = new Date(year, month-1, d);
     allDays.push({
       d, dateStr: year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0'),
-      dow: dt.getDay(), // 0=Sun, 6=Sat
-      label: String(d).padStart(2,'0')
+      dow: dt.getDay(), label: String(d).padStart(2,'0')
     });
   }
-  const workDays = allDays.filter(d => d.dow !== 0 && d.dow !== 6);
-  const today = new Date().toISOString().slice(0,10);
-  const isCurrentMonth = (year === new Date().getFullYear() && month === new Date().getMonth()+1);
+  const workDays = allDays.filter(d => d.dow!==0 && d.dow!==6);
+  const today    = new Date().toISOString().slice(0,10);
+  const isCurrentMonth = (year===new Date().getFullYear() && month===new Date().getMonth()+1);
 
-  // ── Summary stats for today ──────────────────────────────────────
-  const todayRows   = rows.filter(r => r.date === today);
-  const presentToday= todayRows.filter(r => r.status==='Present'||r.status==='Half Day').length;
-  const lateToday   = todayRows.filter(r => _attendanceCheckLate(r.login_time)).length;
-  const absentToday = allUsers.length - presentToday;
-  const avgMins     = todayRows.length
-    ? Math.round(todayRows.reduce((s,r)=>s+(r.total_minutes||0),0)/todayRows.length)
-    : 0;
-  const avgHrs = Math.floor(avgMins/60), avgMin2 = avgMins%60;
+  // ── Avatar color ──
+  const _avColors=['#6d28d9','#2563eb','#059669','#0891b2','#d97706','#e11d48','#0d9488','#7c3aed'];
+  function _avCol(name){ let h=0;for(let i=0;i<(name||'').length;i++) h=(h*31+name.charCodeAt(i))%_avColors.length; return _avColors[h]; }
+  function _av(name){ return `<div style="width:28px;height:28px;border-radius:50%;background:${_avCol(name)};display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;flex-shrink:0;margin-right:7px">${(name||'?').charAt(0).toUpperCase()}</div>`; }
 
-  // ── Build per-user summary ───────────────────────────────────────
-  // Merge DB users with attendance data (include users with no attendance too)
-  const userSet = new Set([
-    ...allUsers.map(u=>u.loginName||u.username),
-    ...Object.keys(byUser)
-  ]);
-  const userList = [...userSet].sort();
+  // ── Summary cards data ──
+  const todayRows   = rows.filter(r => r.date===today);
+  // For "present today": user present if they have at least 1 session today
+  const presentUnameSet = new Set(todayRows.map(r=>r.username));
+  const presentToday = presentUnameSet.size;
+  const lateToday    = [...presentUnameSet].filter(u => {
+    const s = todayRows.filter(r=>r.username===u).sort((a,b)=>(a.session_no||0)-(b.session_no||0))[0];
+    return s && _attendanceCheckLate(s.login_time);
+  }).length;
+  const absentToday = Math.max(0, allUsers.filter(u=>u.active!==false).length - presentToday);
+  // Avg active hours = total_minutes for users who have logged out today / count
+  const completedToday = todayRows.filter(r=>r.total_minutes>0);
+  const avgMins = completedToday.length ? Math.round(completedToday.reduce((s,r)=>s+(r.total_minutes||0),0)/completedToday.length) : 0;
+  const avgHrs  = Math.floor(avgMins/60), avgMin2 = avgMins%60;
 
-  // ── Build transaction counts per user for today ──────────────────
+  // ── Transaction count (today) ──
   function _countTxnToday(uname, name){
-    let total = 0;
-    const allArrays = [DB.lvs, DB.cls, DB.comp, DB.parsDocs, DB.oceanDocs,
-                       DB.partLot, DB.release2, DB.oceanTT, DB.b2entries];
-    const todayD = new Date(today);
-    allArrays.forEach(arr => {
+    let total=0;
+    const allArrays=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
+    allArrays.forEach(arr=>{
       if(!arr) return;
-      arr.forEach(r => {
-        const assignedTo = r.assignedTo || r.user || r.user_name || '';
-        const createdStr = r._created || '';
-        if(!assignedTo || !createdStr) return;
-        const matchName = assignedTo.toLowerCase().trim() === (name||'').toLowerCase().trim() ||
-                          assignedTo.toLowerCase().trim() === (uname||'').toLowerCase().trim();
-        if(!matchName) return;
-        // Check if today
+      arr.forEach(r=>{
+        const assigned=String(r.assignedTo||r.user||r.user_name||'').toLowerCase().trim();
+        if(!assigned) return;
+        if(assigned!==(name||'').toLowerCase().trim()&&assigned!==(uname||'').toLowerCase().trim()) return;
         try{
-          const d = new Date(createdStr);
-          if(!isNaN(d) && d.toISOString().slice(0,10) === today) total++;
+          const d=new Date(r._created||'');
+          if(!isNaN(d)&&d.toISOString().slice(0,10)===today) total++;
         }catch(e){}
       });
     });
     return total;
   }
 
-  const summaryRows = userList.map(uname => {
-    const luObj  = allUsers.find(u=>(u.loginName||u.username)===uname) || {};
-    const name   = luObj.empName || luObj.name || uname;
-    const task   = luObj.task   || byUser[uname]?.[Object.keys(byUser[uname]||{})[0]]?.task || '—';
-    const uRows  = byUser[uname] || {};
-    const presentDays  = Object.values(uRows).filter(r=>r.status==='Present').length;
-    const halfDays     = Object.values(uRows).filter(r=>r.status==='Half Day').length;
-    const lateDays     = Object.values(uRows).filter(r=>_attendanceCheckLate(r.login_time)).length;
-    const absentDays   = workDays.filter(d=>{
-      if(isCurrentMonth && d.dateStr > today) return false;
-      return !uRows[d.dateStr];
+  // ── Build user list ──
+  const userSet = new Set([
+    ...allUsers.filter(u=>u.active!==false).map(u=>u.loginName||u.username),
+    ...Object.keys(byUser)
+  ]);
+  const userList = [...userSet].sort();
+
+  // ══════════════════════════════════════════════════════════════
+  // BUILD TABLE ROWS
+  // ══════════════════════════════════════════════════════════════
+  const tableRows = userList.map((uname,i) => {
+    const luObj = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
+    const name  = luObj.empName||luObj.name||uname;
+    const task  = luObj.task||Object.values(byUser[uname]||{})[0]?.[0]?.task||'—';
+    const uDays = byUser[uname]||{}; // {date: [session,...]}
+
+    // ── Monthly stats ──
+    const allSessions = Object.values(uDays).flat();
+    // A day is "present" if the user has any session that day
+    const uniquePresentDays = new Set(allSessions.map(r=>r.date));
+    const presentDays = uniquePresentDays.size;
+    // Late = first session of any day after 9:30
+    const lateDays = [...uniquePresentDays].filter(d=>{
+      const first = (uDays[d]||[]).sort((a,b)=>(a.session_no||0)-(b.session_no||0))[0];
+      return first && _attendanceCheckLate(first.login_time);
     }).length;
-    const totalMins = Object.values(uRows).reduce((s,r)=>s+(r.total_minutes||0),0);
-    const avgMinsU  = presentDays ? Math.round(totalMins/presentDays) : 0;
+    const absentDays = workDays.filter(d=>{
+      if(isCurrentMonth && d.dateStr>today) return false;
+      return !(uDays[d.dateStr]?.length);
+    }).length;
+    const totalMinsMonth = allSessions.reduce((s,r)=>s+(r.total_minutes||0),0);
+    const avgMinsU  = presentDays ? Math.round(totalMinsMonth/presentDays) : 0;
     const avgHrsU   = Math.floor(avgMinsU/60), avgMinU2 = avgMinsU%60;
 
-    // ── Today's sessions (multiple rows possible) ──────────────────
-    // Group ALL attendance_log rows for this user today by session_no
-    // rows is the flat array from DB — filter by this user and today
-    const todaySessions = rows.filter(r =>
-      r.username === uname && r.date === today
-    ).sort((a,b) => (a.session_no||0) - (b.session_no||0));
+    // ── Today's sessions ──
+    const todaySessions = (uDays[today]||[]).sort((a,b)=>(a.session_no||0)-(b.session_no||0));
+    const session1 = todaySessions[0]||null;
+    const session2 = todaySessions[1]||null;
+    const lastSess = todaySessions[todaySessions.length-1]||null;
+    const isActive = lastSess && !lastSess.logout_time;
 
-    const session1 = todaySessions[0] || null;  // first login of day
-    const session2 = todaySessions[1] || null;  // second login (re-login after break)
-    const lastSession = todaySessions[todaySessions.length-1] || null;
+    // First login
+    const login1    = session1 ? _fmtTime(session1.login_time) : '—';
+    const login1Late = session1 && _attendanceCheckLate(session1.login_time);
 
-    // First login time
-    const login1 = session1?.login_time
-      ? session1.login_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
-      : '—';
+    // Second login (re-login after break)
+    const login2    = session2 ? _fmtTime(session2.login_time) : '—';
 
-    // Second login time (if user logged in again)
-    const login2 = session2?.login_time
-      ? session2.login_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
-      : '—';
+    // Last logout (from last session)
+    const logoutStr = lastSess?.logout_time ? _fmtTime(lastSess.logout_time) : (lastSess ? '⚡' : '—');
+    const logoutCol = !lastSess ? 'var(--text3)' : isActive ? '#3b82f6' : 'var(--rose)';
 
-    // Latest logout (from last session)
-    const logoutToday = lastSession?.logout_time
-      ? lastSession.logout_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
-      : (lastSession ? '⚡ Active' : '—');
+    // Total active time today (sum all sessions' total_minutes)
+    // If a session is still active, estimate from login time
+    let totalMinsToday = 0;
+    todaySessions.forEach(s => {
+      if(s.total_minutes > 0){
+        totalMinsToday += s.total_minutes;
+      } else if(s.login_time){
+        // Active session — estimate from login to now
+        const loginT = _fmtTime(s.login_time);
+        const [lh,lm] = loginT.split(':').map(Number);
+        const nowD = new Date();
+        const nowMins = nowD.getHours()*60+nowD.getMinutes();
+        totalMinsToday += Math.max(0, nowMins - (lh*60+lm));
+      }
+    });
+    const activeHoursStr = totalMinsToday>0 ? _fmtMins(totalMinsToday) : (lastSess ? '⚡ Active' : '—');
+    const activeColor    = totalMinsToday>=480 ? 'var(--emerald)' : totalMinsToday>=240 ? 'var(--amber)' : (totalMinsToday>0?'var(--rose)':'var(--text3)');
+    const activePct      = Math.min(100, Math.round(totalMinsToday/480*100));
 
-    // Total active hours today (sum all sessions)
-    const totalMinsToday = todaySessions.reduce((s,r) => s + (r.total_minutes||0), 0);
-    const hoursToday = totalMinsToday > 0
-      ? Math.floor(totalMinsToday/60) + 'h ' + String(totalMinsToday%60).padStart(2,'0') + 'm'
-      : (lastSession ? '⚡ Active' : '—');
+    // Idle time = sum of gap_before from session 2 onwards
+    const idleMinsToday = todaySessions.slice(1).reduce((s,r)=>s+(r.gap_before||0),0);
+    const idleStr = idleMinsToday>0 ? _fmtMins(idleMinsToday) : (todaySessions.length>1 ? '—' : '—');
 
-    // Idle hours = sum of gap_before across all sessions (time between logout and re-login)
-    const idleMinsToday = todaySessions.slice(1).reduce((s,r) => s + (r.gap_before||0), 0);
-    const idleToday = idleMinsToday > 0
-      ? Math.floor(idleMinsToday/60) + 'h ' + String(idleMinsToday%60).padStart(2,'0') + 'm'
-      : (todaySessions.length > 1 ? '0m' : '—');
-
-    // Transaction count today
+    // Transactions today
     const txnCount = isCurrentMonth ? _countTxnToday(uname, name) : 0;
 
     // Status
-    let todayStatus = isCurrentMonth ? (todaySessions.length ? 'Present' : 'Absent') : '—';
-    if(todaySessions.length && _attendanceCheckLate(session1?.login_time)) todayStatus = 'Late';
+    const todayStatus = !isCurrentMonth ? '—'
+      : !session1 ? 'Absent'
+      : login1Late ? 'Late' : 'Present';
 
     const statusBadge = todayStatus==='Present'
-      ? `<span style="background:rgba(16,185,129,.12);color:#065f46;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">✅ Present</span>`
+      ? `<span style="background:#ecfdf5;color:#065f46;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #6ee7b780">✅ Present</span>`
       : todayStatus==='Late'
-      ? `<span style="background:rgba(245,158,11,.12);color:#92400e;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">⏰ Late</span>`
+      ? `<span style="background:#fffbeb;color:#92400e;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #fcd34d80">⏰ Late</span>`
       : todayStatus==='Absent'
-      ? `<span style="background:rgba(239,68,68,.12);color:#991b1b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">❌ Absent</span>`
-      : `<span style="color:var(--text3)">—</span>`;
+      ? `<span style="background:#fff1f2;color:#991b1b;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #fca5a580">❌ Absent</span>`
+      : `<span style="color:var(--text3);font-size:11px">—</span>`;
+
+    // Sessions detail pill row (shown below name)
+    const sessionPills = todaySessions.map(s => {
+      const dot  = s.logout_time ? '#10b981' : '#3b82f6';
+      const endT = s.logout_time ? _fmtTime(s.logout_time) : '⚡';
+      const dur  = s.total_minutes>0 ? _fmtMins(s.total_minutes) : '';
+      const gap  = s.gap_before>0 ? `<span style="color:var(--amber);font-size:10px;margin-left:3px">(idle ${_fmtMins(s.gap_before)})</span>` : '';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;margin-right:4px;margin-top:3px;white-space:nowrap">
+        <span style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></span>
+        <span style="font-family:var(--mono);font-weight:700;color:var(--text2)">S${s.session_no||1}</span>
+        <span style="font-family:var(--mono);color:var(--emerald)">${_fmtTime(s.login_time)}</span>
+        <span style="color:var(--text3)">→</span>
+        <span style="font-family:var(--mono);color:${s.logout_time?'var(--rose)':'#3b82f6'}">${endT}</span>
+        ${dur?`<span style="font-family:var(--mono);color:var(--text3);font-size:10px">${dur}</span>`:''}
+        ${gap}
+      </span>`;
+    }).join('');
 
     // Monthly calendar dots
     const dots = allDays.map(day => {
-      if(day.dow===0||day.dow===6){
-        return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:var(--surface2);margin:1px;" title="${day.dateStr} Weekend"></span>`;
-      }
-      if(isCurrentMonth && day.dateStr > today){
-        return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:var(--surface);border:1px dashed var(--border);margin:1px;" title="Future"></span>`;
-      }
-      // Get all sessions for this day
-      const daySessions = rows.filter(r => r.username===uname && r.date===day.dateStr);
-      if(!daySessions.length){
-        return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:rgba(239,68,68,.2);margin:1px;" title="${day.dateStr}: Absent"></span>`;
-      }
-      const s1 = daySessions[0];
-      const isLate = _attendanceCheckLate(s1.login_time);
-      const bg = isLate ? 'rgba(245,158,11,.35)' : 'rgba(16,185,129,.35)';
-      const dayMins = daySessions.reduce((s,r)=>s+(r.total_minutes||0),0);
-      const dayHrs = dayMins ? Math.floor(dayMins/60)+'h '+dayMins%60+'m' : 'Active';
-      return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:${bg};margin:1px;" title="${day.dateStr}: ${isLate?'Late':'Present'} · In:${(s1.login_time||'').slice(-8,-3)} · ${dayHrs}${daySessions.length>1?' ('+daySessions.length+' sessions)':''}"></span>`;
+      if(day.dow===0||day.dow===6)
+        return `<span style="display:inline-block;width:13px;height:13px;border-radius:2px;background:var(--surface2);margin:1px" title="${day.dateStr} Weekend"></span>`;
+      if(isCurrentMonth && day.dateStr>today)
+        return `<span style="display:inline-block;width:13px;height:13px;border-radius:2px;background:var(--surface);border:1px dashed var(--border);margin:1px" title="Future"></span>`;
+      const daySess = (uDays[day.dateStr]||[]).sort((a,b)=>(a.session_no||0)-(b.session_no||0));
+      if(!daySess.length)
+        return `<span style="display:inline-block;width:13px;height:13px;border-radius:2px;background:rgba(225,29,72,.2);margin:1px" title="${day.dateStr}: Absent"></span>`;
+      const s1     = daySess[0];
+      const isLateD = _attendanceCheckLate(s1.login_time);
+      const bg     = isLateD ? 'rgba(245,158,11,.4)' : 'rgba(16,185,129,.4)';
+      const dayMin = daySess.reduce((s,r)=>s+(r.total_minutes||0),0);
+      const in1    = _fmtTime(s1.login_time);
+      const out1   = _fmtTime(daySess[daySess.length-1].logout_time)||'active';
+      const tip    = `${day.dateStr}: ${isLateD?'⏰ Late':'✅ Present'} · In ${in1} Out ${out1} · ${_fmtMins(dayMin)}${daySess.length>1?' · '+daySess.length+' sessions':''}`;
+      return `<span style="display:inline-block;width:13px;height:13px;border-radius:2px;background:${bg};border:1px solid ${isLateD?'#f59e0b':'#10b981'};margin:1px" title="${tip}"></span>`;
     }).join('');
 
-    return {name, task, presentDays, halfDays, lateDays, absentDays,
-            avgHrsU, avgMinU2, todayStatus, statusBadge,
-            login1, login2, logoutToday, hoursToday, idleToday, txnCount, dots, uname};
-  });
+    // Row highlight: absent = faded, active now = subtle blue tint
+    const rowBg = todayStatus==='Absent' ? 'opacity:.52;' : isActive ? 'background:#f0f7ff;' : '';
 
-  const tableRows = summaryRows.map((u,i) => `
-    <tr style="border-top:1px solid var(--border);${u.todayStatus==='Absent'?'opacity:.55;':''}">
-      <td style="padding:8px 10px;color:var(--text3);font-size:12px;text-align:center">${i+1}</td>
-      <td style="padding:8px 10px;font-weight:700;white-space:nowrap">${_esc(u.name)}</td>
-      <td style="padding:8px 10px"><span style="background:var(--primary-pale);color:var(--primary);padding:2px 7px;border-radius:12px;font-size:10px;white-space:nowrap">${_esc(u.task)}</span></td>
-      <td style="padding:8px 10px;text-align:center">${u.statusBadge}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--emerald);font-weight:700;text-align:center">${u.login1}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--sky);text-align:center">${u.login2}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--rose);text-align:center">${u.logoutToday}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text2);text-align:center">${u.hoursToday}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--amber);text-align:center">${u.idleToday}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:13px;font-weight:800;color:var(--primary);text-align:center">${u.txnCount||'—'}</td>
-      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--emerald)">${u.presentDays}</td>
-      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--amber)">${u.lateDays}</td>
-      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--rose)">${u.absentDays}</td>
-      <td style="padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);text-align:center">${u.avgHrsU}h ${u.avgMinU2}m</td>
-      <td style="padding:8px 10px;min-width:180px">${u.dots}</td>
-    </tr>`).join('');
+    return `<tr style="${rowBg}border-top:1px solid var(--border)">
+      <td style="padding:8px 10px;color:var(--text3);font-size:12px;text-align:center;font-family:var(--mono)">${i+1}</td>
+      <td style="padding:8px 10px;white-space:nowrap;min-width:160px">
+        <div style="display:flex;align-items:flex-start;gap:0">
+          ${_av(name)}
+          <div>
+            <div style="font-weight:700;font-size:13px">${_esc(name)}</div>
+            ${todaySessions.length ? `<div style="margin-top:2px">${sessionPills}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td style="padding:8px 10px"><span style="background:var(--primary-pale);color:var(--primary);padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">${_esc(task)}</span></td>
+      <td style="padding:8px 10px;text-align:center">${statusBadge}</td>
+      <td style="padding:8px 10px;text-align:center">
+        ${login1!=='—' ? `<span style="font-family:var(--mono);font-size:13px;font-weight:800;color:${login1Late?'var(--amber)':'var(--emerald)'}">${login1}</span>${login1Late?'<div style="font-size:9px;color:var(--amber)">LATE</div>':''}` : '<span style="color:var(--text3)">—</span>'}
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        ${login2!=='—' ? `<span style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--sky)">${login2}</span><div style="font-size:9px;color:var(--text3)">re-login</div>` : '<span style="color:var(--text3);font-size:12px">—</span>'}
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        <span style="font-family:var(--mono);font-size:13px;font-weight:700;color:${logoutCol}">${logoutStr}</span>
+        ${isActive ? '<div style="font-size:9px;color:#3b82f6;font-weight:700">ACTIVE</div>' : ''}
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        ${totalMinsToday>0 ? `
+          <span style="font-family:var(--mono);font-size:13px;font-weight:800;color:${activeColor}">${activeHoursStr}</span>
+          <div style="height:4px;background:var(--border);border-radius:2px;margin-top:4px;width:60px;margin-left:auto;margin-right:auto;overflow:hidden">
+            <div style="height:100%;width:${activePct}%;background:${activeColor};border-radius:2px"></div>
+          </div>` : `<span style="color:var(--text3);font-size:12px">${activeHoursStr}</span>`}
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        ${idleMinsToday>0
+          ? `<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--amber)">${idleStr}</span><div style="font-size:9px;color:var(--text3)">${todaySessions.length-1} break${todaySessions.length>2?'s':''}</div>`
+          : '<span style="color:var(--text3);font-size:12px">—</span>'}
+      </td>
+      <td style="padding:8px 10px;text-align:center">
+        ${txnCount>0
+          ? `<span style="font-family:var(--mono);font-size:16px;font-weight:900;color:var(--primary)">${txnCount}</span><div style="font-size:9px;color:var(--text3)">records</div>`
+          : '<span style="color:var(--text3);font-size:12px">—</span>'}
+      </td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--emerald)">${presentDays}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:${lateDays>0?'var(--amber)':'var(--text3)'}">${lateDays||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:${absentDays>0?'var(--rose)':'var(--text3)'}">${absentDays||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--text2)">${avgHrsU}h ${String(avgMinU2).padStart(2,'0')}m</td>
+      <td style="padding:8px 10px;min-width:160px">${dots}</td>
+    </tr>`;
+  }).join('');
 
+  // ══════════════════════════════════════════════════════════════
+  // RENDER HTML
+  // ══════════════════════════════════════════════════════════════
   c.innerHTML = `
   <div class="ph">
     <div>
       <div class="pt">🕐 Attendance <span class="pbadge">Live</span></div>
-      <div class="ps">Login · Logout · Hours worked · Monthly summary per user</div>
+      <div class="ps">1st Login · 2nd Login · Logout · Active Hours · Idle Time · Transactions Today</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <select id="att_year" onchange="_attChangeMonth()" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:var(--font)">
@@ -7504,65 +7588,60 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   </div>
 
   <!-- Tab Bar -->
-  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin:0 16px 12px;font-family:var(--font)">
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin:0 0 16px;font-family:var(--font)">
     <button onclick="window._attActiveTab=undefined;renderAttendancePage(document.getElementById('pc'))"
-      style="padding:10px 20px;border:none;border-bottom:2px solid var(--primary);background:none;
-             font-size:13px;font-weight:700;cursor:pointer;color:var(--primary);margin-bottom:-2px;font-family:var(--font)">
+      style="padding:10px 20px;border:none;border-bottom:2px solid var(--primary);background:none;font-size:13px;font-weight:700;cursor:pointer;color:var(--primary);margin-bottom:-2px;font-family:var(--font)">
       🕐 Attendance
     </button>
     <button onclick="window._attActiveTab='breaks';renderAttendancePage(document.getElementById('pc'))"
-      style="padding:10px 20px;border:none;border-bottom:none;background:none;
-             font-size:13px;font-weight:700;cursor:pointer;color:var(--text3);margin-bottom:-2px;font-family:var(--font)">
+      style="padding:10px 20px;border:none;border-bottom:none;background:none;font-size:13px;font-weight:700;cursor:pointer;color:var(--text3);margin-bottom:-2px;font-family:var(--font)">
       ⚠️ Break Violations
     </button>
   </div>
 
   <!-- Summary Cards -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:0 16px 16px">
-    <div class="sc c-em"><div class="si">✅</div><div class="sl">Present Today</div><div class="sv">${presentToday}</div><div class="sf">of ${allUsers.length} users</div></div>
-    <div class="sc c-ro"><div class="si">❌</div><div class="sl">Absent Today</div><div class="sv">${Math.max(0,absentToday)}</div><div class="sf">not logged in</div></div>
-    <div class="sc c-am"><div class="si">⏰</div><div class="sl">Late Today</div><div class="sv">${lateToday}</div><div class="sf">after 9:30 AM</div></div>
-    <div class="sc c-blue"><div class="si">⏱️</div><div class="sl">Avg Hours Today</div><div class="sv">${avgHrs}h ${avgMin2}m</div><div class="sf">target: 8h</div></div>
+  <div class="sg" style="margin-bottom:16px">
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Present Today</div><div class="sv">${presentToday}</div><div class="sf">of ${allUsers.filter(u=>u.active!==false).length} active users</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">❌</div><div class="sl">Absent Today</div><div class="sv">${absentToday}</div><div class="sf">not logged in</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏰</div><div class="sl">Late Today</div><div class="sv">${lateToday}</div><div class="sf">after 9:30 AM</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">⏱️</div><div class="sl">Avg Active Hrs</div><div class="sv">${avgHrs}h ${String(avgMin2).padStart(2,'0')}m</div><div class="sf">sessions with logout</div></div>
   </div>
 
   <!-- Main Table -->
-  <div style="padding:0 16px 24px">
-    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
-      ${monthName} — ${userList.length} users
-    </div>
-    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:900px">
-        <thead>
-          <tr style="background:var(--navy)">
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">#</th>
-            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Name</th>
-            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Task</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Status</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">1st Login</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase">2nd Login</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">Logout</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Active Hrs</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏸ Idle Hrs</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#c4b5fd;font-weight:700;text-transform:uppercase">📊 Txn Today</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">✅ Days</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏰ Late</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">❌ Absent</th>
-            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Avg Hrs/Day</th>
-            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">${monthName} Calendar</th>
-          </tr>
-        </thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
-    <div style="margin-top:10px;display:flex;gap:16px;font-size:11px;color:var(--text3)">
-      <span>🟢 Present</span>
-      <span>🟡 Late (after 9:30 AM)</span>
-      <span>🔴 Absent</span>
-      <span>⬜ Weekend</span>
-      <span>Hover dots for details</span>
-    </div>
+  <div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px;margin-bottom:12px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:var(--navy)">
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:rgba(255,255,255,.6);font-weight:700;text-transform:uppercase">#</th>
+          <th style="padding:9px 14px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase;min-width:200px">Name &amp; Sessions</th>
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Task</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Status</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">🟢 1st Login</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase">🔵 2nd Login</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">🔴 Last Logout</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Active Hrs</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏸ Idle Today</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#c4b5fd;font-weight:700;text-transform:uppercase">📊 Txn Today</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">✅ Days</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏰ Late</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">❌ Absent</th>
+          <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Avg/Day</th>
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">${monthName} Calendar</th>
+        </tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  </div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text3);padding:0 2px">
+    <span>🟢 Present on time</span>
+    <span>🟡 Late (after 9:30 AM)</span>
+    <span>🔴 Absent</span>
+    <span>⬜ Weekend</span>
+    <span>⚡ Currently active</span>
+    <span style="color:var(--sky)">S1=Session 1 · S2=Session 2 · Hover calendar dots for details</span>
   </div>`;
 }
+
 
 // ── Export Attendance Excel ───────────────────────────────────────
 async function exportAttendanceExcel(){
