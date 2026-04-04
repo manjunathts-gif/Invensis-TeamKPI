@@ -7389,11 +7389,16 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   }
 
   // ── Build user list ──
-  const userSet = new Set([
-    ...allUsers.filter(u=>u.active!==false).map(u=>u.loginName||u.username),
-    ...Object.keys(byUser)
-  ]);
-  const userList = [...userSet].sort();
+  // Only show users who have logged in TODAY (when viewing current month).
+  // For past months, show everyone who has any attendance record that month.
+  let userList;
+  if(isCurrentMonth){
+    // Show ONLY users who have a session today — logged-in users only
+    userList = [...presentUnameSet].sort();
+  } else {
+    // Past month: show all users who have any record in that month
+    userList = [...new Set(Object.keys(byUser))].sort();
+  }
 
   // ══════════════════════════════════════════════════════════════
   // BUILD TABLE ROWS
@@ -7573,7 +7578,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   <div class="ph">
     <div>
       <div class="pt">🕐 Attendance <span class="pbadge">Live</span></div>
-      <div class="ps">1st Login · 2nd Login · Logout · Active Hours · Idle Time · Transactions Today</div>
+      <div class="ps">${isCurrentMonth?"Showing today's logged-in users — ":""+monthName+" · "}1st Login · 2nd Login · Active Hours · Idle Time · Txn Count</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <select id="att_year" onchange="_attChangeMonth()" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:var(--font)">
@@ -7626,7 +7631,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
           <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏰ Late</th>
           <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">❌ Absent</th>
           <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Avg/Day</th>
-          <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">${monthName} Calendar</th>
+          <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">${isCurrentMonth?"This Month":""+monthName} Calendar</th>
         </tr>
       </thead>
       <tbody>${tableRows}</tbody>
