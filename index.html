@@ -1673,8 +1673,11 @@ body.role-client [data-col="clientname"]{
         </div>
       </div>
       <span class="task-tag" id="taskTag"></span>
-      <div id="idleTopBadge" title="You have been idle — click to report" onclick="showIdlePopup()">
-        ⏱ Idle: <span id="idleTopTime">--:--</span>
+      <div id="idleTopBadge" style="display:none;align-items:center;gap:4px;">
+        <span onclick="showIdlePopup()" style="cursor:pointer;display:flex;align-items:center;gap:4px;" title="Click to report idle reason">
+          ⏱ Idle: <span id="idleTopTime">--:--</span>
+        </span>
+        <span onclick="clearIdleBadge(event)" title="Clear idle alert (no log)" style="cursor:pointer;background:rgba(251,191,36,.25);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fbbf24;flex-shrink:0;margin-left:2px;">✕</span>
       </div>
       <button class="btn-out" onclick="doLogout()">
         <span style="font-size:14px;">⇠</span>
@@ -3046,6 +3049,7 @@ body.role-client [data-col="clientname"]{
       <textarea id="idleOtherTxt" placeholder="Please describe reason for inactivity..."></textarea>
     </div>
     <button class="idle-submit-btn" id="idleSubmitBtn" onclick="submitIdle()" disabled>✅ Submit &amp; Resume Work</button>
+    <button onclick="clearIdleBadge()" style="width:100%;margin-top:10px;padding:11px;border-radius:12px;border:1.5px solid rgba(148,163,184,.3);background:transparent;color:#94a3b8;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);">✕ Clear &amp; Dismiss (no log)</button>
   </div>
 </div>
 
@@ -5906,7 +5910,7 @@ function renderETAMonitor(c){
       : Promise.resolve();
     // Load loginUsers if TL/Supervisor doesn't have it — needed for "Assign to Release" dropdown
     const loadUsers = (!DB.loginUsers || DB.loginUsers.length === 0)
-      ? dbLoad('login_users').then(rows => { if(rows) DB.loginUsers = rows; })
+      ? dbLoad('login_users').then(rows => { if(rows) DB.loginUsers = rows.map(mapLoginUser); })
       : Promise.resolve();
     // Wait for ALL data loads to complete before loading assignments then rendering
     Promise.all([loadPars, loadRelease, loadUsers]).then(() => {
@@ -5932,12 +5936,17 @@ function renderETAMonitor(c){
   }
 
   const records = _etaGetEligibleRecords();
-  const users = (DB.loginUsers || []).filter(u => u.active !== false &&
-    (u.task === 'Release' || (u.task||'').toLowerCase() === 'release'));
+  // Show ALL active users — manager decides who to assign (not limited to Release task)
+  const users = (DB.loginUsers || []).filter(u => u.active !== false)
+    .sort((a,b)=>(a.empName||a.username).localeCompare(b.empName||b.username));
 
-  const userOpts = users.map(u =>
-    `<option value="${u.loginName||u.username}" data-name="${u.empName||u.username}">${u.empName||u.username}</option>`
-  ).join('');
+  const userOpts = users.length
+    ? users.map(u => {
+        const name = u.empName || u.username;
+        const taskLabel = u.task ? ` (${u.task})` : '';
+        return `<option value="${u.loginName||u.username}" data-name="${name}">${name}${taskLabel}</option>`;
+      }).join('')
+    : '<option value="" disabled>No users found — check DB connection</option>';
 
   const rows = records.length === 0
     ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3);">No PARS Truck/Rail transactions with ETA in next 2 hours today</td></tr>`
@@ -7337,6 +7346,31 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   ]);
   const userList = [...userSet].sort();
 
+  // ── Build transaction counts per user for today ──────────────────
+  function _countTxnToday(uname, name){
+    let total = 0;
+    const allArrays = [DB.lvs, DB.cls, DB.comp, DB.parsDocs, DB.oceanDocs,
+                       DB.partLot, DB.release2, DB.oceanTT, DB.b2entries];
+    const todayD = new Date(today);
+    allArrays.forEach(arr => {
+      if(!arr) return;
+      arr.forEach(r => {
+        const assignedTo = r.assignedTo || r.user || r.user_name || '';
+        const createdStr = r._created || '';
+        if(!assignedTo || !createdStr) return;
+        const matchName = assignedTo.toLowerCase().trim() === (name||'').toLowerCase().trim() ||
+                          assignedTo.toLowerCase().trim() === (uname||'').toLowerCase().trim();
+        if(!matchName) return;
+        // Check if today
+        try{
+          const d = new Date(createdStr);
+          if(!isNaN(d) && d.toISOString().slice(0,10) === today) total++;
+        }catch(e){}
+      });
+    });
+    return total;
+  }
+
   const summaryRows = userList.map(uname => {
     const luObj  = allUsers.find(u=>(u.loginName||u.username)===uname) || {};
     const name   = luObj.empName || luObj.name || uname;
@@ -7346,67 +7380,109 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const halfDays     = Object.values(uRows).filter(r=>r.status==='Half Day').length;
     const lateDays     = Object.values(uRows).filter(r=>_attendanceCheckLate(r.login_time)).length;
     const absentDays   = workDays.filter(d=>{
-      if(isCurrentMonth && d.dateStr > today) return false; // future
+      if(isCurrentMonth && d.dateStr > today) return false;
       return !uRows[d.dateStr];
     }).length;
     const totalMins = Object.values(uRows).reduce((s,r)=>s+(r.total_minutes||0),0);
     const avgMinsU  = presentDays ? Math.round(totalMins/presentDays) : 0;
     const avgHrsU   = Math.floor(avgMinsU/60), avgMinU2 = avgMinsU%60;
 
-    // Today's status
-    const todayRec  = uRows[today];
-    let todayStatus = isCurrentMonth ? 'Absent' : '—';
-    if(todayRec) todayStatus = _attendanceCheckLate(todayRec.login_time) ? 'Late' : 'Present';
+    // ── Today's sessions (multiple rows possible) ──────────────────
+    // Group ALL attendance_log rows for this user today by session_no
+    // rows is the flat array from DB — filter by this user and today
+    const todaySessions = rows.filter(r =>
+      r.username === uname && r.date === today
+    ).sort((a,b) => (a.session_no||0) - (b.session_no||0));
+
+    const session1 = todaySessions[0] || null;  // first login of day
+    const session2 = todaySessions[1] || null;  // second login (re-login after break)
+    const lastSession = todaySessions[todaySessions.length-1] || null;
+
+    // First login time
+    const login1 = session1?.login_time
+      ? session1.login_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
+      : '—';
+
+    // Second login time (if user logged in again)
+    const login2 = session2?.login_time
+      ? session2.login_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
+      : '—';
+
+    // Latest logout (from last session)
+    const logoutToday = lastSession?.logout_time
+      ? lastSession.logout_time.replace(/^(\d{2})-(\d{2})-(\d{4}) /,'').slice(0,5)
+      : (lastSession ? '⚡ Active' : '—');
+
+    // Total active hours today (sum all sessions)
+    const totalMinsToday = todaySessions.reduce((s,r) => s + (r.total_minutes||0), 0);
+    const hoursToday = totalMinsToday > 0
+      ? Math.floor(totalMinsToday/60) + 'h ' + String(totalMinsToday%60).padStart(2,'0') + 'm'
+      : (lastSession ? '⚡ Active' : '—');
+
+    // Idle hours = sum of gap_before across all sessions (time between logout and re-login)
+    const idleMinsToday = todaySessions.slice(1).reduce((s,r) => s + (r.gap_before||0), 0);
+    const idleToday = idleMinsToday > 0
+      ? Math.floor(idleMinsToday/60) + 'h ' + String(idleMinsToday%60).padStart(2,'0') + 'm'
+      : (todaySessions.length > 1 ? '0m' : '—');
+
+    // Transaction count today
+    const txnCount = isCurrentMonth ? _countTxnToday(uname, name) : 0;
+
+    // Status
+    let todayStatus = isCurrentMonth ? (todaySessions.length ? 'Present' : 'Absent') : '—';
+    if(todaySessions.length && _attendanceCheckLate(session1?.login_time)) todayStatus = 'Late';
 
     const statusBadge = todayStatus==='Present'
-      ? `<span style="background:rgba(16,185,129,.12);color:#065f46;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">Present</span>`
+      ? `<span style="background:rgba(16,185,129,.12);color:#065f46;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">✅ Present</span>`
       : todayStatus==='Late'
-      ? `<span style="background:rgba(245,158,11,.12);color:#92400e;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">Late</span>`
+      ? `<span style="background:rgba(245,158,11,.12);color:#92400e;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">⏰ Late</span>`
       : todayStatus==='Absent'
-      ? `<span style="background:rgba(239,68,68,.12);color:#991b1b;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">Absent</span>`
+      ? `<span style="background:rgba(239,68,68,.12);color:#991b1b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700">❌ Absent</span>`
       : `<span style="color:var(--text3)">—</span>`;
-
-    const loginToday  = todayRec?.login_time  ? todayRec.login_time.slice(-8,-3)  : '—';
-    const logoutToday = todayRec?.logout_time ? todayRec.logout_time.slice(-8,-3) : (todayRec ? '⚡ Active' : '—');
-    const hoursToday  = todayRec?.total_hours || (todayRec ? '⚡ —' : '—');
 
     // Monthly calendar dots
     const dots = allDays.map(day => {
       if(day.dow===0||day.dow===6){
-        return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:var(--surface2);margin:1px;" title="${day.dateStr} (Weekend)"></span>`;
+        return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:var(--surface2);margin:1px;" title="${day.dateStr} Weekend"></span>`;
       }
       if(isCurrentMonth && day.dateStr > today){
         return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:var(--surface);border:1px dashed var(--border);margin:1px;" title="Future"></span>`;
       }
-      const dr = uRows[day.dateStr];
-      if(!dr){
+      // Get all sessions for this day
+      const daySessions = rows.filter(r => r.username===uname && r.date===day.dateStr);
+      if(!daySessions.length){
         return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:rgba(239,68,68,.2);margin:1px;" title="${day.dateStr}: Absent"></span>`;
       }
-      const isLate = _attendanceCheckLate(dr.login_time);
+      const s1 = daySessions[0];
+      const isLate = _attendanceCheckLate(s1.login_time);
       const bg = isLate ? 'rgba(245,158,11,.35)' : 'rgba(16,185,129,.35)';
-      const mins = dr.total_minutes || 0;
-      return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:${bg};margin:1px;" title="${day.dateStr}: ${isLate?'Late':'Present'} · ${dr.login_time||''}→${dr.logout_time||'active'} · ${dr.total_hours||''}"></span>`;
+      const dayMins = daySessions.reduce((s,r)=>s+(r.total_minutes||0),0);
+      const dayHrs = dayMins ? Math.floor(dayMins/60)+'h '+dayMins%60+'m' : 'Active';
+      return `<span style="display:inline-block;width:14px;height:14px;border-radius:2px;background:${bg};margin:1px;" title="${day.dateStr}: ${isLate?'Late':'Present'} · In:${(s1.login_time||'').slice(-8,-3)} · ${dayHrs}${daySessions.length>1?' ('+daySessions.length+' sessions)':''}"></span>`;
     }).join('');
 
     return {name, task, presentDays, halfDays, lateDays, absentDays,
             avgHrsU, avgMinU2, todayStatus, statusBadge,
-            loginToday, logoutToday, hoursToday, dots, uname};
+            login1, login2, logoutToday, hoursToday, idleToday, txnCount, dots, uname};
   });
 
   const tableRows = summaryRows.map((u,i) => `
-    <tr style="border-top:1px solid var(--border)">
-      <td style="padding:8px 12px;color:var(--text3);font-size:12px">${i+1}</td>
-      <td style="padding:8px 12px;font-weight:700">${_esc(u.name)}</td>
-      <td style="padding:8px 12px"><span style="background:var(--primary-pale);color:var(--primary);padding:2px 8px;border-radius:12px;font-size:11px">${_esc(u.task)}</span></td>
-      <td style="padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--emerald)">${u.loginToday}</td>
-      <td style="padding:8px 12px;font-family:var(--mono);font-size:12px;color:var(--text2)">${u.logoutToday}</td>
-      <td style="padding:8px 12px;font-family:var(--mono);font-size:12px;font-weight:700">${u.hoursToday}</td>
-      <td style="padding:8px 12px;text-align:center">${u.statusBadge}</td>
-      <td style="padding:8px 12px;text-align:center;font-weight:700;color:var(--emerald)">${u.presentDays}</td>
-      <td style="padding:8px 12px;text-align:center;font-weight:700;color:var(--amber)">${u.lateDays}</td>
-      <td style="padding:8px 12px;text-align:center;font-weight:700;color:var(--rose)">${u.absentDays}</td>
-      <td style="padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text2)">${u.avgHrsU}h ${u.avgMinU2}m</td>
-      <td style="padding:8px 12px;min-width:200px">${u.dots}</td>
+    <tr style="border-top:1px solid var(--border);${u.todayStatus==='Absent'?'opacity:.55;':''}">
+      <td style="padding:8px 10px;color:var(--text3);font-size:12px;text-align:center">${i+1}</td>
+      <td style="padding:8px 10px;font-weight:700;white-space:nowrap">${_esc(u.name)}</td>
+      <td style="padding:8px 10px"><span style="background:var(--primary-pale);color:var(--primary);padding:2px 7px;border-radius:12px;font-size:10px;white-space:nowrap">${_esc(u.task)}</span></td>
+      <td style="padding:8px 10px;text-align:center">${u.statusBadge}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--emerald);font-weight:700;text-align:center">${u.login1}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--sky);text-align:center">${u.login2}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--rose);text-align:center">${u.logoutToday}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text2);text-align:center">${u.hoursToday}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:12px;color:var(--amber);text-align:center">${u.idleToday}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:13px;font-weight:800;color:var(--primary);text-align:center">${u.txnCount||'—'}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--emerald)">${u.presentDays}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--amber)">${u.lateDays}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700;color:var(--rose)">${u.absentDays}</td>
+      <td style="padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);text-align:center">${u.avgHrsU}h ${u.avgMinU2}m</td>
+      <td style="padding:8px 10px;min-width:180px">${u.dots}</td>
     </tr>`).join('');
 
   c.innerHTML = `
@@ -7457,19 +7533,22 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     <div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px">
       <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:900px">
         <thead>
-          <tr style="background:var(--surface2)">
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">#</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Name</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Task</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--emerald);font-weight:700;text-transform:uppercase">Login</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Logout</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Hours Today</th>
-            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Status</th>
-            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--emerald);font-weight:700;text-transform:uppercase">✅ Days</th>
-            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--amber);font-weight:700;text-transform:uppercase">⏰ Late</th>
-            <th style="padding:10px 12px;text-align:center;font-size:11px;color:var(--rose);font-weight:700;text-transform:uppercase">❌ Absent</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Avg Hrs/Day</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${monthName} Calendar</th>
+          <tr style="background:var(--navy)">
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">#</th>
+            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Name</th>
+            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Task</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Status</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">1st Login</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase">2nd Login</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">Logout</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Active Hrs</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏸ Idle Hrs</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#c4b5fd;font-weight:700;text-transform:uppercase">📊 Txn Today</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#6ee7b7;font-weight:700;text-transform:uppercase">✅ Days</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fde68a;font-weight:700;text-transform:uppercase">⏰ Late</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fca5a5;font-weight:700;text-transform:uppercase">❌ Absent</th>
+            <th style="padding:9px 10px;text-align:center;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">Avg Hrs/Day</th>
+            <th style="padding:9px 10px;text-align:left;font-size:10px;color:#fff;font-weight:700;text-transform:uppercase">${monthName} Calendar</th>
           </tr>
         </thead>
         <tbody>${tableRows}</tbody>
@@ -9468,7 +9547,7 @@ function renderLVSRows(data){
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <select class="status-sel" id="lsts_${i}" onchange="">${stOpts}</select>
-          <button class="btn-upd" onclick="updateLVSStatus(${i},${r._idx})">Update</button>
+          ${canEditData()?'<button class="btn-upd" onclick="updateLVSStatus('+i+','+r._idx+')">Update</button>':''}
         </div>
       </td>
       <td style="font-weight:600">${r.assignedTo}</td>
@@ -9902,7 +9981,7 @@ function renderCLSRows(data){
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <select class="status-sel" id="csts_${i}">${stOpts}</select>
-          <button class="btn-upd" style="background:var(--teal)" onclick="updateCLSStatus(${i},${r._idx})">Update</button>
+          ${canEditData()?'<button class="btn-upd" style="background:var(--teal)" onclick="updateCLSStatus('+i+','+r._idx+')">Update</button>':''}
         </div>
       </td>
       <td style="font-size:12px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.comments||'—'}</td>
@@ -9965,9 +10044,12 @@ function _buildUserOpts(taskName){
     ...DB.users.filter(u=>u.task===taskName),
     ...DB.loginUsers.filter(u=>u.task===taskName&&u.active!==false)
   ];
-  // Always include the currently logged-in user so offline mode works
+  // Include logged-in user as fallback — but ONLY if their task matches (prevents Supervisor
+  // or Manager being added to task-specific dropdowns they don't belong to)
   const cuName=CU?CU.name||CU.empName||CU.username||'':'';
-  if(cuName&&!users.some(u=>(u.empName||u.name)===cuName))
+  const cuTask=(CU?.task||'').toLowerCase().trim();
+  const taskMatch=cuTask===taskName.toLowerCase().trim()||cuTask==='manager'||cuTask==='';
+  if(cuName&&taskMatch&&!users.some(u=>(u.empName||u.name)===cuName))
     users.push({empName:cuName,name:cuName,task:taskName});
   // De-duplicate
   const seen=new Set();
@@ -15797,7 +15879,7 @@ function renderCOMPRows(data){
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <select class="status-sel" id="cpst_${i}">${stOpts}</select>
-          <button class="btn-upd" style="background:var(--violet)" onclick="updateCOMPStatus(${i},${r._idx})">Update</button>
+          ${canEditData()?'<button class="btn-upd" style="background:var(--violet)" onclick="updateCOMPStatus('+i+','+r._idx+')">Update</button>':''}
         </div>
       </td>
       <td style="font-size:12px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(r.comments||'').replace(/[<>"'&]/g,'')}">${r.comments||'—'}</td>
@@ -17136,7 +17218,7 @@ function renderRLRows(data){
     <td>
       <div style="display:flex;align-items:center;gap:5px">
         <select class="status-sel" id="rlst_${r._dbid||r.id||i}" data-dbid="${r._dbid||r.id||''}">${rlStOpts(r.status)}</select>
-        <button class="btn-upd" style="background:var(--rose)" onclick="updateRLStatus('${r._dbid||r.id||i}')">Update</button>
+        ${canEditData()?`<button class="btn-upd" style="background:var(--rose)" onclick="updateRLStatus('${r._dbid||r.id||i}')">Update</button>`:''}
       </div>
     </td>
     <td style="font-weight:600">${r.user||'—'}</td>
@@ -19966,7 +20048,7 @@ function renderB2Rows(data){
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <select class="status-sel" id="b2st_${i}">${stOpts}</select>
-          <button class="btn-upd" style="background:#d97706" onclick="updateB2Status(${i})">Update</button>
+          ${canEditData()?'<button class="btn-upd" style="background:#d97706" onclick="updateB2Status('+i+')">Update</button>':''}
         </div>
       </td>
       <td style="font-weight:600">${r.user||'—'}</td>
@@ -20525,6 +20607,30 @@ async function submitIdle(){
   if(badge) badge.classList.remove('show');
 
   showToast('✅ Idle reason recorded — thank you!');
+}
+
+// ── Clear idle alert without logging ──
+function clearIdleBadge(e){
+  if(e) e.stopPropagation();
+  // Reset idle state without saving any record
+  _idleShown = false;
+  _lastAct   = Date.now();
+  _idleStart = null;
+  if(_idleElInt){ clearInterval(_idleElInt); _idleElInt=null; }
+  // Hide overlay
+  const overlay = document.getElementById('idleOverlay');
+  if(overlay) overlay.classList.remove('show');
+  // Hide badge
+  const badge = document.getElementById('idleTopBadge');
+  if(badge) badge.classList.remove('show');
+  // Reset chosen reason
+  _chosenReason = '';
+  document.querySelectorAll('.idle-rbtn').forEach(b=>b.classList.remove('sel'));
+  const ow = document.getElementById('idleOtherWrap');
+  if(ow) ow.style.display='none';
+  const sb = document.getElementById('idleSubmitBtn');
+  if(sb) sb.disabled=true;
+  showToast('✅ Idle alert cleared');
 }
 
 // ── Stop tracker on logout ──
