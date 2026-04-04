@@ -11099,6 +11099,79 @@ function renderDashboard(c){
     })()}
   </div>
 
+  <!-- ══ AUDIT — MODE-WISE STATUS CARDS ══ -->
+  ${(()=>{
+    if(isTL&&!isMgr&&CU.task!=='Release') return '';
+    const auditedTxns=new Set(DB.audit.map(a=>a.txn));
+    const allRelease=DB.release2;
+    const modes=[...new Set(allRelease.map(r=>r.mode||'Unknown'))].sort();
+    if(!modes.length||!allRelease.length) return '';
+    const mCfg={
+      'Truck': {bg:'#fff7ed',border:'#fed7aa',text:'#92400e',bar:'#f97316',track:'#ffe4c4',icon:'🚛'},
+      'Ocean': {bg:'#f0f9ff',border:'#bae6fd',text:'#075985',bar:'#0891b2',track:'#dbeafe',icon:'🌊'},
+      'Air':   {bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',bar:'#7c3aed',track:'#ede9fe',icon:'✈️'},
+      'Rail':  {bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',bar:'#16a34a',track:'#dcfce7',icon:'🚂'},
+    };
+    const cards=modes.map(md=>{
+      const c=mCfg[md]||{bg:'#f8fafc',border:'#e2e8f0',text:'#475569',bar:'#6366f1',track:'#e0e7ff',icon:'📦'};
+      const mdRecs=allRelease.filter(r=>(r.mode||'Unknown')===md);
+      const mdDone=mdRecs.filter(r=>auditedTxns.has(r.txn));
+      const mdPend=mdRecs.filter(r=>!auditedTxns.has(r.txn));
+      const mdScores=mdDone.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0);
+      const mdAvg=mdScores.length?(mdScores.reduce((s,v)=>s+v,0)/mdScores.length).toFixed(1):'—';
+      const mPct=mdRecs.length?Math.round(mdDone.length/mdRecs.length*100):0;
+      const allDone=mdPend.length===0&&mdRecs.length>0;
+      return`
+      <div style="background:${c.bg};border:2px solid ${c.border};border-radius:16px;padding:18px 20px;position:relative;overflow:hidden;min-width:220px;flex:1">
+        ${allDone?`<div style="position:absolute;top:10px;right:10px;background:#dcfce7;color:#166534;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;letter-spacing:.3px">✅ COMPLETE</div>`:''}
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="font-size:26px;line-height:1">${c.icon}</div>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:900;color:${c.text};letter-spacing:-.2px">${md}</div>
+            <div style="font-size:11px;color:${c.text};opacity:.65;font-weight:600">${mdRecs.length} total records</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${c.text};line-height:1">${mPct}%</div>
+            <div style="font-size:9px;color:${c.text};opacity:.6;font-weight:700;letter-spacing:.5px;text-align:right">AUDITED</div>
+          </div>
+        </div>
+        <!-- Progress bar -->
+        <div style="height:10px;background:${c.track};border-radius:10px;overflow:hidden;margin-bottom:14px">
+          <div style="height:100%;width:${mPct}%;background:${c.bar};border-radius:10px"></div>
+        </div>
+        <!-- 3 stat boxes -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div style="background:rgba(22,163,74,.1);border:1.5px solid rgba(22,163,74,.25);border-radius:10px;padding:9px 6px;text-align:center">
+            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#15803d;line-height:1">${mdDone.length}</div>
+            <div style="font-size:10px;font-weight:800;color:#15803d;margin-top:4px">✅ Audited</div>
+          </div>
+          <div style="background:${mdPend.length?'rgba(245,158,11,.1)':'rgba(22,163,74,.06)'};border:1.5px solid ${mdPend.length?'rgba(245,158,11,.3)':'rgba(22,163,74,.2)'};border-radius:10px;padding:9px 6px;text-align:center">
+            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${mdPend.length?'#92400e':'#15803d'};line-height:1">${mdPend.length}</div>
+            <div style="font-size:10px;font-weight:800;color:${mdPend.length?'#92400e':'#15803d'};margin-top:4px">${mdPend.length?'⏳ Pending':'✅ All Done'}</div>
+          </div>
+          <div style="background:rgba(99,102,241,.08);border:1.5px solid rgba(99,102,241,.2);border-radius:10px;padding:9px 6px;text-align:center">
+            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#4338ca;line-height:1">${mdAvg}${mdAvg!=='—'?'%':''}</div>
+            <div style="font-size:10px;font-weight:800;color:#4338ca;margin-top:4px">⭐ Avg Score</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return`
+    <div class="dash-ed-panel" style="margin-top:4px">
+      <div class="dash-ed-panel-hdr">
+        <div class="dash-ed-panel-title">🚢 Audit — Mode-wise Status</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">✅ ${DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length} audited</span>
+          <span style="background:#fef9c3;color:#92400e;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">⏳ ${DB.release2.length-DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length} pending</span>
+        </div>
+      </div>
+      <div style="padding:16px 18px;display:flex;gap:14px;flex-wrap:wrap">
+        ${cards}
+      </div>
+    </div>`;
+  })()}
+
   <!-- ══ ANALYTICS CARDS ROW ══ -->
   <div id="dash-analytics-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:4px;margin-bottom:4px"></div>
   <!-- ══ DB STORAGE INDICATOR ══ -->
