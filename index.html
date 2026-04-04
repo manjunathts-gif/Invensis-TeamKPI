@@ -3812,8 +3812,8 @@ async function loadAllFromSupabase(){
     } else if(isRlTL){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
-      const [release,audit,errors,clients,instructions,users,parsDocs]=await Promise.all([
-        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs')
+      const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
+        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -3822,20 +3822,22 @@ async function loadAllFromSupabase(){
       DB.instructions=(instructions||[]).map(mapInstruction);
       if(users) DB.users=users.map(mapUser);
       DB.parsDocs=(parsDocs||[]).map(mapPARSDocs);
+      if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
       setDetail('✅ '+DB.release2.length+' Release · '+DB.audit.length+' Audits (last 60 days)');
 
     } else if(CU && CU.role==='Supervisor'){
       // Supervisor: load all task tables + errors + clients + instructions + users (same as Manager but no admin tables)
       setDetail('Loading all data (Supervisor)...');
-      const [users,clients,lvs,cls,comp,parsDocs,oceanDocs,
+      const [users,loginUsers,clients,lvs,cls,comp,parsDocs,oceanDocs,
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
-        dbLoad('users'),dbLoad('clients'),
+        dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
         dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release'),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
         dbLoadRecent('audit'),dbLoad('instructions')
       ]);
       DB.users=users.map(mapUser);
+      if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
       DB.clients=clients.map(mapClient);
       DB.lvs=lvs.map(mapLVS);         DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls=cls.map(mapCLS);         DB.cls.forEach((r,i)=>r._idx=i);
@@ -3856,8 +3858,8 @@ async function loadAllFromSupabase(){
       const tbl=taskTableMap[userTask];
       setDetail('Loading '+(userTask||'your')+' team data...');
       const fetches=tbl
-        ? [dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')]
-        : [dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users')];
+        ? [dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')]
+        : [dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')];
       const results=await Promise.all(fetches);
       const off=tbl?1:0;
       if(tbl&&results[0]) _applyTaskData(tbl,results[0]);
@@ -3865,6 +3867,7 @@ async function loadAllFromSupabase(){
       if(results[off+1]) DB.clients=results[off+1].map(mapClient);
       DB.instructions=(results[off+2]||[]).map(mapInstruction);
       if(results[off+3]) DB.users=(results[off+3]).map(mapUser);
+      if(results[off+4]) DB.loginUsers=results[off+4].map(mapLoginUser);
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
 
     } else if(CU.role==='Client'){
@@ -7289,10 +7292,18 @@ async function renderAttendancePage(c){
     <div style="font-size:14px">⏳ Loading ${monthName} attendance...</div>
   </div>`;
 
-  // Load data
-  const rows = await _loadAttendanceMonth(selYear, selMonth);
-  // Also get all users for absent detection
-  const allUsers = DB.loginUsers.filter(u=>u.active!==false);
+  // Load data — fetch login_users on-demand if not loaded (some TL roles skip it at startup)
+  if(!DB.loginUsers || DB.loginUsers.length===0){
+    try{
+      const lu = await dbLoad('login_users');
+      if(lu && lu.length) DB.loginUsers = lu.map(mapLoginUser);
+    } catch(e){ console.warn('[Attendance] login_users fallback load failed:', e.message); }
+  }
+  const [rows] = await Promise.all([
+    _loadAttendanceMonth(selYear, selMonth)
+  ]);
+  // All active users — used for absent count and name lookup
+  const allUsers = (DB.loginUsers||[]).filter(u=>u.active!==false);
 
   _renderAttendanceContent(c, rows, allUsers, selYear, selMonth, monthName);
 }
@@ -7346,7 +7357,9 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     });
   }
   const workDays = allDays.filter(d => d.dow!==0 && d.dow!==6);
-  const today    = new Date().toISOString().slice(0,10);
+  // Use ET date — attendance_log stores dates in ET via nowISOET().slice(0,10)
+  // new Date().toISOString() gives UTC which can be wrong date for ET users
+  const today    = todayStrET();
   const isCurrentMonth = (year===new Date().getFullYear() && month===new Date().getMonth()+1);
 
   // ── Avatar color ──
@@ -7684,7 +7697,7 @@ async function exportAttendanceExcel(){
     return {d,dateStr:year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0'),dow:dt.getDay()};
   });
   const workDays = allDays.filter(d=>d.dow!==0&&d.dow!==6);
-  const today    = new Date().toISOString().slice(0,10);
+  const today    = todayStrET(); // ET date — matches attendance_log stored dates
   const isCurMon = (year===new Date().getFullYear()&&month===new Date().getMonth()+1);
 
   // Build per-user data
