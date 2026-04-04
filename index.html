@@ -21179,6 +21179,108 @@ window.addEventListener('resize', function(){
 // ── PWA Install Prompt ─────────────────────────────────────
 let _pwaInstallPrompt = null;
 
+// ══════════════════════════════════════════════════════════════════
+// CLOSE / REFRESH GUARD — remind user to logout before closing
+// ══════════════════════════════════════════════════════════════════
+
+// 1) Browser-native warning — fires on tab close, window close, F5 refresh
+//    Most modern browsers show a generic "Changes you made may not be saved" dialog.
+//    We cannot customise the message text (browser restriction since Chrome 51).
+window.addEventListener('beforeunload', function(e){
+  if(!CU) return; // not logged in — let them close freely
+  // Prevent default triggers the browser's built-in close confirmation dialog
+  e.preventDefault();
+  // Legacy support (some browsers require returnValue to be set)
+  e.returnValue = '';
+});
+
+// 2) Custom in-app modal — shown when the page becomes hidden (tab switch, minimise, close attempt)
+//    This gives a friendlier message with a Logout button before they close.
+//    Uses visibilitychange which fires before beforeunload on most browsers.
+(function(){
+  let _closeWarningShown = false;
+
+  function _showLogoutReminderBanner(){
+    if(!CU) return;                                   // not logged in
+    if(document.getElementById('_logoutReminderBanner')) return; // already showing
+
+    const banner = document.createElement('div');
+    banner.id = '_logoutReminderBanner';
+    banner.style.cssText = [
+      'position:fixed','top:0','left:0','right:0','z-index:99999',
+      'background:linear-gradient(135deg,#dc2626,#b91c1c)',
+      'color:#fff','padding:12px 20px',
+      'display:flex','align-items:center','justify-content:space-between',
+      'gap:12px','font-family:var(--font,sans-serif)',
+      'box-shadow:0 4px 20px rgba(0,0,0,.35)',
+      'animation:_slideDown .25s ease'
+    ].join(';');
+
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;flex:1">
+        <span style="font-size:22px">⚠️</span>
+        <div>
+          <div style="font-weight:800;font-size:14px;letter-spacing:.2px">
+            Please log out before closing this tab!
+          </div>
+          <div style="font-size:12px;opacity:.88;margin-top:2px">
+            Closing without logging out may leave your session active and affect attendance records.
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button onclick="doLogout()"
+          style="background:#fff;color:#dc2626;border:none;padding:8px 18px;border-radius:8px;
+                 font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">
+          🔓 Logout Now
+        </button>
+        <button onclick="document.getElementById('_logoutReminderBanner')?.remove()"
+          style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.4);
+                 padding:8px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">
+          ✕ Dismiss
+        </button>
+      </div>`;
+
+    // Add slide-down keyframe if not already added
+    if(!document.getElementById('_logoutReminderStyle')){
+      const s = document.createElement('style');
+      s.id = '_logoutReminderStyle';
+      s.textContent = '@keyframes _slideDown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}';
+      document.head.appendChild(s);
+    }
+
+    document.body.insertAdjacentElement('afterbegin', banner);
+    _closeWarningShown = true;
+  }
+
+  // Show banner when user switches away from the tab (potential close)
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden && CU){
+      _showLogoutReminderBanner();
+    }
+  });
+
+  // Also show banner if user moves mouse quickly toward top of screen (towards browser close button)
+  // Triggers on mouseleave from the document (cursor left the page)
+  document.addEventListener('mouseleave', function(e){
+    // Only trigger when cursor exits from the TOP of the page (heading for close button)
+    if(e.clientY <= 0 && CU){
+      _showLogoutReminderBanner();
+    }
+  });
+
+  // Hide banner once user is back on the tab
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden){
+      // Give user a moment then auto-dismiss the banner
+      setTimeout(()=>{
+        const b = document.getElementById('_logoutReminderBanner');
+        if(b) b.style.opacity = '1'; // keep visible — user came back, they should still logout
+      }, 200);
+    }
+  });
+})();
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   _pwaInstallPrompt = e;
