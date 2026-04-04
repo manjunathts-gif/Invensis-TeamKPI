@@ -7241,8 +7241,14 @@ async function _loadAttendanceMonth(year, month){
     .lte('date', endDate)
     .order('date', {ascending: true});
   if(error){ console.warn('[Attendance] Load failed:', error.message); return []; }
-  console.log('[Attendance] Loaded:', (data||[]).length, 'rows for', startDate, 'to', endDate);
-  return data || [];
+  const normalized = (data||[]).map(r => ({
+    ...r,
+    // Normalize date — Supabase may return 'YYYY-MM-DDTHH:MM:SS+00:00' for date columns
+    date: r.date ? String(r.date).slice(0,10) : r.date
+  }));
+  console.log('[Attendance] Loaded:', normalized.length, 'rows for', startDate, 'to', endDate,
+    '| Sample date:', normalized[0]?.date, '| Today ET:', todayStrET());
+  return normalized;
 }
 
 // ── Render Attendance Page ────────────────────────────────────────
@@ -7292,20 +7298,43 @@ async function renderAttendancePage(c){
     <div style="font-size:14px">⏳ Loading ${monthName} attendance...</div>
   </div>`;
 
-  // Load data — fetch login_users on-demand if not loaded (some TL roles skip it at startup)
+  // Load login_users on-demand if missing (some TL roles skip at startup)
   if(!DB.loginUsers || DB.loginUsers.length===0){
     try{
       const lu = await dbLoad('login_users');
       if(lu && lu.length) DB.loginUsers = lu.map(mapLoginUser);
     } catch(e){ console.warn('[Attendance] login_users fallback load failed:', e.message); }
   }
-  const [rows] = await Promise.all([
-    _loadAttendanceMonth(selYear, selMonth)
-  ]);
+
+  // Load month rows + a direct today-only query in parallel
+  // The today query is a safety net: even if month date normalization fails,
+  // we always know exactly who logged in today
+  const todayET = todayStrET();
+  const isCurrentMonthNow = (selYear===new Date().getFullYear() && selMonth===new Date().getMonth()+1);
+
+  let todayDirectRows = [];
+  if(isCurrentMonthNow && _supa){
+    try{
+      const {data:td} = await _supa.from('attendance_log')
+        .select('*')
+        .eq('date', todayET)
+        .order('session_no', {ascending:true});
+      todayDirectRows = (td||[]).map(r=>({...r, date: String(r.date||'').slice(0,10)}));
+      console.log('[Attendance] Today direct query:', todayDirectRows.length, 'rows, date='+todayET);
+    } catch(e){ console.warn('[Attendance] Today direct query failed:', e.message); }
+  }
+
+  const rows = await _loadAttendanceMonth(selYear, selMonth);
+
+  // Merge today's direct rows into month rows (avoid duplicates by id)
+  const monthRowIds = new Set(rows.map(r=>r.id));
+  const mergedRows = [...rows];
+  todayDirectRows.forEach(r=>{ if(!monthRowIds.has(r.id)) mergedRows.push(r); });
+
   // All active users — used for absent count and name lookup
   const allUsers = (DB.loginUsers||[]).filter(u=>u.active!==false);
 
-  _renderAttendanceContent(c, rows, allUsers, selYear, selMonth, monthName);
+  _renderAttendanceContent(c, mergedRows, allUsers, selYear, selMonth, monthName);
 }
 
 function _attChangeMonth(){
@@ -7337,9 +7366,10 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // FIX: keep ALL sessions as array, sorted by session_no
   const byUser = {};
   rows.forEach(r => {
+    const rDate = String(r.date||'').slice(0,10); // normalize: handle any timestamp format
     if(!byUser[r.username]) byUser[r.username] = {};
-    if(!byUser[r.username][r.date]) byUser[r.username][r.date] = [];
-    byUser[r.username][r.date].push(r);
+    if(!byUser[r.username][rDate]) byUser[r.username][rDate] = [];
+    byUser[r.username][rDate].push({...r, date: rDate});
   });
   // Sort each day's sessions by session_no asc
   Object.values(byUser).forEach(dates => {
@@ -7368,7 +7398,8 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   function _av(name){ return `<div style="width:28px;height:28px;border-radius:50%;background:${_avCol(name)};display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;flex-shrink:0;margin-right:7px">${(name||'?').charAt(0).toUpperCase()}</div>`; }
 
   // ── Summary cards data ──
-  const todayRows   = rows.filter(r => r.date===today);
+  // Normalize date comparison — handle any leftover timestamp format from DB
+  const todayRows   = rows.filter(r => String(r.date||'').slice(0,10)===today);
   // For "present today": user present if they have at least 1 session today
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
   const presentToday = presentUnameSet.size;
