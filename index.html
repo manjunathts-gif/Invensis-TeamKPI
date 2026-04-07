@@ -9775,7 +9775,7 @@ function clearLVSFilter(){
 // LVS PANEL
 // ══════════════════════════════════════════════════════════
 function openLVS(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['lf_txn','lf_release','lf_lines','lf_client','lf_cmt','lf_clientName','lf_team','lf_duration','lf_aht','lf_submitted'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const lvsAlert=document.getElementById('lvs_client_alert');if(lvsAlert){lvsAlert.style.display='none';lvsAlert.dataset.clientNo='';}
   const lvsAck=document.getElementById('lvs_acknowledge');if(lvsAck)lvsAck.checked=false;
@@ -10188,7 +10188,7 @@ function _buildUserOpts(taskName){
 }
 
 function openCLS(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['cf_txn','cf_submitted','cf_duration','cf_cmt','cf_client','cf_clientName','cf_team'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const clsAlert=document.getElementById('cls_client_alert');if(clsAlert){clsAlert.style.display='none';clsAlert.dataset.clientNo='';}
   const clsAck=document.getElementById('cls_acknowledge');if(clsAck)clsAck.checked=false;
@@ -16228,7 +16228,7 @@ function clearCOMPFilter(){
 
 // ── Compliance Panel Functions ──
 function openCOMP(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['cpf_subject','cpf_mailrcvd','cpf_clientname','cpf_start','cpf_completed','cpf_duration','cpf_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const cn=document.getElementById('cpf_clientno');if(cn)cn.value='';
   const txn=document.getElementById('cpf_txn');if(txn)txn.value='';
@@ -16561,7 +16561,7 @@ function editPARSRecord(idx){
 }
 
 function openPARSDocs(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['pd_subject','pd_mailrcvd','pd_start','pd_txn','pd_client','pd_clientname','pd_team','pd_eta','pd_created','pd_duration','pd_tat','pd_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pd_edit_idx').value='';
   // Reset Comments badge
@@ -16977,7 +16977,7 @@ function editOceanDocsRecord(idx){
 }
 
 function openOceanDocs(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['od_subject','od_mailrcvd','od_start','od_txn','od_client','od_clientname','od_team','od_created','od_duration','od_tat','od_shift','od_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   ['od_mailbox','od_mode','od_shiptype','od_irs','od_doc','od_reqdoc','od_sentlog','od_docsdated','od_docsforwarded','od_user'].forEach(id=>{const e=document.getElementById(id);if(e){e.value='';e.disabled=false;e.style.opacity='';e.style.cursor='';e.title='';}});
   oceanDocsStart=null;
@@ -17199,7 +17199,7 @@ function clearPLFilter(){
 }
 
 function openPartLot(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['pl_subject','pl_txn','pl_parsno','pl_mailrcvd','pl_start','pl_completed','pl_duration','pl_tat','pl_comments'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('pl_user').value='';
   partLotStart=null;
@@ -17579,7 +17579,7 @@ function clearRLFilter(){
 }
 
 function openRelease2(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['rl_txn','rl_transcreated','rl_eta','rl_profilecode','rl_start','rl_client','rl_clientname','rl_team',
    'rl_lines','rl_docrcvd','rl_submitted','rl_duration','rl_tat','rl_comments'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
@@ -17950,7 +17950,9 @@ function rlAutoCalcTAT(){
   const submittedStr = document.getElementById('rl_submitted')?.value;
   const submittedDate = submittedStr ? (parseAppDate(submittedStr)||nowET()) : nowET();
 
-  const tatResult = rlCalcTAT(submittedDate, etaRaw, mode);
+  // rlCalcTAT returns 'reached' or 'not-reached' — normalise to display strings
+  const raw = rlCalcTAT(submittedDate, etaRaw, mode);
+  const tatResult = (raw==='reached'||raw==='TAT Reached') ? 'TAT Reached' : 'TAT Not Reached';
   const tatEl = document.getElementById('rl_tat');
   if(tatEl) tatEl.value = tatResult;
   rlShowTATResult(tatResult);
@@ -17964,13 +17966,13 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
     // i.e. 0 <= (eta - submitted) <= 120 min → TAT Reached
     const minsBeforeEta=(eta-submittedDate)/60000;
     // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier = better)
-    return minsBeforeEta>=0?'TAT Reached':'TAT Not Reached';
+    return minsBeforeEta>=0?'reached':'not-reached';
   } else {
     // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
     // Rule: submitted on or before ETA date regardless of time
     const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
     const subDateOnly=new Date(submittedDate.getFullYear(),submittedDate.getMonth(),submittedDate.getDate());
-    return subDateOnly<=etaDateOnly?'TAT Reached':'TAT Not Reached';
+    return subDateOnly<=etaDateOnly?'reached':'not-reached';
   }
 }
 
@@ -20157,7 +20159,7 @@ function clearOTTFilter(){
 }
 
 function openOTT(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['ott_txn','ott_client','ott_clientname','ott_team','ott_etancc','ott_ncccomments','ott_etaupdate','ott_complete','ott_duration','ott_tat'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('ott_status').value='';
   document.getElementById('ott_destination').value='';
@@ -20354,6 +20356,7 @@ function renderB2Rows(data){
 }
 
 function updateB2Status(rowIdx){
+  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
   const sel=document.getElementById('b2st_'+rowIdx);
   if(!sel)return;
   DB.b2entries[rowIdx].status=sel.value;
@@ -20395,7 +20398,7 @@ function clearB2Filter(){
 }
 
 function openB2(){
-  if(!canEditData()){showToast('⚠️ Supervisors cannot edit existing records',true);return;}
+  // All roles including Supervisor can ADD new records
   ['b2_txn','b2_assigneddate','b2_lines','b2_comments','b2_start','b2_start_iso','b2_completed','b2_completed_iso','b2_duration'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('b2_source').value='';
   document.getElementById('b2_adjtype').value='';
