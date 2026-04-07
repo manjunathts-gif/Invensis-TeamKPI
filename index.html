@@ -17964,13 +17964,13 @@ function rlCalcTAT(submittedDate, etaRaw, mode){
     // i.e. 0 <= (eta - submitted) <= 120 min → TAT Reached
     const minsBeforeEta=(eta-submittedDate)/60000;
     // TAT Reached = submitted ON or BEFORE ETA (no upper bound — earlier = better)
-    return minsBeforeEta>=0?'reached':'not-reached';
+    return minsBeforeEta>=0?'TAT Reached':'TAT Not Reached';
   } else {
     // Ocean / Air / Rail: compare DATE ONLY — strip time from both ETA and submitted
     // Rule: submitted on or before ETA date regardless of time
     const etaDateOnly=new Date(eta.getFullYear(),eta.getMonth(),eta.getDate());
     const subDateOnly=new Date(submittedDate.getFullYear(),submittedDate.getMonth(),submittedDate.getDate());
-    return subDateOnly<=etaDateOnly?'reached':'not-reached';
+    return subDateOnly<=etaDateOnly?'TAT Reached':'TAT Not Reached';
   }
 }
 
