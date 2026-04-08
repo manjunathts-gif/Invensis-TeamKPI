@@ -8511,7 +8511,11 @@ async function renderBreakViolationsPage(c){
         const eh=Math.floor((w.excess_mins||0)/60), em=(w.excess_mins||0)%60;
         return '<tr style="border-top:1px solid var(--border)">'
           +'<td style="padding:9px 12px;font-size:12px;color:var(--text3)">'+_esc(w.date||'')+'</td>'
-          +'<td style="padding:9px 12px;font-weight:700">'+_esc(w.emp_name||w.username||'')+'</td>'
+          +'<td style="padding:9px 12px;font-weight:700">'+_esc((()=>{
+          const lu=(DB.loginUsers||[]).find(u=>(u.loginName||'').toLowerCase()===(w.username||'').toLowerCase()||(u.username||'').toLowerCase()===(w.username||'').toLowerCase());
+          const u=(DB.users||[]).find(u=>(u.username||'').toLowerCase()===(w.username||'').toLowerCase());
+          return (lu&&lu.empName)||(u&&u.name)||w.emp_name||w.username||'—';
+        })())+'</td>'
           +'<td style="padding:9px 12px"><span style="background:var(--primary-pale);color:var(--primary);padding:2px 8px;border-radius:12px;font-size:11px">'+_esc(w.task||'')+'</span></td>'
           +'<td style="padding:9px 12px;font-family:var(--mono);font-size:12px">'+(h>0?h+'h ':'')+m+'min</td>'
           +'<td style="padding:9px 12px;font-family:var(--mono);font-size:12px;color:var(--rose);font-weight:700">'+(eh>0?eh+'h ':'')+em+'min</td>'
