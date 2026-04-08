@@ -3326,53 +3326,99 @@ const TABLE_SORT_COL={
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 
 // Load only recent rows — last N days (keeps payload small for large teams)
-async function dbLoadRecent(table, days=30){
+async function dbLoadRecent(table, days=7){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
 
-  // ── Paginated fetch — loops through ALL rows in batches of 1000 ──
-  // Supabase REST API hard-caps each request at 1000 rows.
-  // A single .limit(5000) silently returns only 1000. Must paginate.
+  // ── Date-filtered fetch with 1000-row cap ──────────────────────
+  // Only fetch rows within the last `days` days, ordered newest-first.
+  // This is the key performance fix — never load the whole table.
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceISO = since.toISOString().slice(0,10); // YYYY-MM-DD
+
+  const LIMIT = 1000; // hard cap — more than enough for KPI display
   let allRows = [];
   let from = 0;
-  const BATCH = 1000;
 
   while(true){
-    let query = _supa.from(table).select('*', {count:'exact'})
+    let q = _supa.from(table).select('*')
+      .gte(dateCol, sinceISO)
       .order(dateCol, {ascending:false})
-      .range(from, from + BATCH - 1);
+      .range(from, from + LIMIT - 1);
 
-    const {data, error, count} = await query;
+    const {data, error} = await q;
 
     if(error){
-      // If sort column doesn't exist, retry on 'id'
+      // dateCol doesn't exist — retry without date filter, just newest 1000 by id
       console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying on id');
-      let allRows2 = [];
-      let from2 = 0;
-      while(true){
-        const {data:d2, error:e2} = await _supa.from(table).select('*')
-          .order('id', {ascending:false})
-          .range(from2, from2 + BATCH - 1);
-        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
-        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
-        if(!d2 || d2.length < BATCH) break;
-        from2 += BATCH;
-        if(from2 > 50000) break; // safety cap
-      }
-      console.log('dbLoadRecent('+table+'): '+allRows2.length+' rows (fallback id sort)');
-      return allRows2;
+      const {data:d2, error:e2} = await _supa.from(table).select('*')
+        .order('id', {ascending:false})
+        .limit(LIMIT);
+      if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return []; }
+      console.log('dbLoadRecent('+table+','+days+'d,fallback): '+(d2||[]).length+' rows');
+      return d2||[];
     }
 
     if(data && data.length > 0) allRows = allRows.concat(data);
-    // Stop if we got fewer rows than batch size (last page)
-    if(!data || data.length < BATCH) break;
-    from += BATCH;
-    if(from > 50000) break; // safety cap — prevents infinite loop
+    if(!data || data.length < LIMIT) break;
+    from += LIMIT;
+    if(from > 10000) break; // hard safety — 10k rows max
   }
 
-  console.log('dbLoadRecent('+table+'): '+allRows.length+' rows fetched ('+Math.ceil(allRows.length/BATCH)+' pages)');
+  console.log('dbLoadRecent('+table+','+days+'d,col='+dateCol+'): '+allRows.length+' rows');
   return allRows;
 }
+
+// ── Smart range fetch: local cache if ≤7 days, DB query if older ─
+// Returns mapped app-layer rows ready to filter
+async function dbFetchRange(table, mapFn, localArr, d1, d2){
+  const today = new Date();
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate()-7);
+  const d1Date = d1 ? new Date(d1) : null;
+  // If date range is within 7 days (or no d1), use local cache — instant
+  if(!d1Date || d1Date >= cutoff){
+    return localArr;
+  }
+  // Date range goes beyond 7 days — fetch from DB with filter
+  if(!_supa) return localArr;
+  const dateCol = TABLE_SORT_COL[table] || 'created_at';
+  showToast('🔍 Fetching records from '+_fmtDateLabel(d1)+' to '+(d2||'today')+'...');
+  try{
+    const rows = await dbLoadAll(table, {gte: d1||undefined, lte: d2||undefined});
+    if(rows && rows.length > 0){
+      showToast('✅ Loaded '+rows.length+' records');
+      return rows.map(mapFn);
+    }
+  } catch(e){ console.warn('dbFetchRange failed:', e.message); }
+  return localArr; // fallback to local
+}
+function _fmtDateLabel(d){ try{ return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){return d;} }
+
+
+// ── Fetch ALL rows for export (no date filter) ───────────────────
+async function dbLoadAll(table, opts={}){
+  if(!_supa) return [];
+  const dateCol = TABLE_SORT_COL[table] || 'id';
+  const BATCH = 1000;
+  let allRows=[], from=0;
+  while(true){
+    let q = _supa.from(table).select('*')
+      .order(dateCol, {ascending:false})
+      .range(from, from+BATCH-1);
+    if(opts.gte) q = q.gte(dateCol, opts.gte);   // date filter on sort column
+    if(opts.lte) q = q.lte(dateCol, opts.lte+'T23:59:59');
+    const {data, error} = await q;
+    if(error){ console.error('dbLoadAll '+table+':', error.message); break; }
+    if(data && data.length>0) allRows = allRows.concat(data);
+    if(!data || data.length<BATCH) break;
+    from += BATCH;
+    if(from>200000) break; // 200k row hard cap
+  }
+  console.log('dbLoadAll('+table+'): '+allRows.length+' total rows');
+  return allRows;
+}
+
 
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
@@ -3386,7 +3432,7 @@ async function dbLoad(table){
   if(table === 'clients'){
     try{
       const cached = JSON.parse(localStorage.getItem('kpi_clients_cache_v2')||'null');
-      if(cached && cached.ts && (Date.now()-cached.ts) < 60*60*1000 && cached.data?.length>0){
+      if(cached && cached.ts && (Date.now()-cached.ts) < 4*60*60*1000 && cached.data?.length>0){
         console.log('dbLoad(clients): '+cached.data.length+' rows from cache (1h TTL)');
         return cached.data;
       }
@@ -4246,7 +4292,7 @@ function startBgPoll(){
       const activeTbl=TASK_TABLE_MAP[getActivePage()]||null;
       // SPEED FIX: each role only polls what it needs
       const tables = isMgr
-        ? (window._bgPollCycle%5===0
+        ? (window._bgPollCycle%10===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users']
             : [activeTbl,'lvs','cls'].filter(Boolean))
         : CU.role==='Supervisor'
@@ -4360,7 +4406,7 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 90000); // Poll every 90s — still fresh, reduces DB calls by 33%
+  }, 30000); // silent sync every 30s // Poll every 90s — still fresh, reduces DB calls by 33%
   console.log('[bgPoll] Started — polling every 90s');
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -8843,7 +8889,7 @@ async function doLogin(){
       try{
         await Promise.race([
           loadAllFromSupabase(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000)) // 15s for admin
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000)) // 8s max wait
         ]);
       } catch(e){
         console.warn('Admin data load timed out or failed — booting with cached data:',e.message);
@@ -9748,7 +9794,7 @@ function editLVSRecord(idx){
   },100);
 }
 
-function applyLVSFilter(){
+async function applyLVSFilter(){
   _saveFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
   const d1=document.getElementById('lf_d1')?.value;
   const d2=document.getElementById('lf_d2')?.value;
@@ -9756,7 +9802,9 @@ function applyLVSFilter(){
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.lvs,'assignedTo');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('lvs', mapLVS, DB.lvs, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -10138,7 +10186,7 @@ function updateCLSStatus(rowIdx,dbIdx){
   syncRefreshAll('classifier');
 }
 
-function applyCLSFilter(){
+async function applyCLSFilter(){
   _saveFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
   const d1=document.getElementById('cf_d1')?.value;
   const d2=document.getElementById('cf_d2')?.value;
@@ -10146,7 +10194,9 @@ function applyCLSFilter(){
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.cls,'assignedTo');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('cls', mapCLS, DB.cls, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -12435,7 +12485,7 @@ function clearReportFilter(){
 // ══════════════════════════════════════════════════════════
 // EXPORT ALL TASKS — Multi-sheet Excel (SheetJS)
 // ══════════════════════════════════════════════════════════
-function exportAllTasksXLSX(){
+async function exportAllTasksXLSX(){
   // Dynamically load SheetJS if missing (CDN blocked or slow)
   if(typeof XLSX==='undefined'){
     showToast('⏳ Loading Excel library... please wait.',true);
@@ -12681,17 +12731,37 @@ function _filterByDateRange(arr, d1, d2){
   });
 }
 
-function exportLVS(){
+async function exportLVS(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.lvs, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('lvs');
+  }catch(e){
+    console.warn('exportLVS: full fetch failed, using local data', e);
+    _allRows = DB.lvs.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapLVS);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.lvs, d1, d2);
   const headers=['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)]);
   showToast('⬇️ LVS export: '+rows.length+' records');
   exportCSV(rows,headers,`LVS_${label||todayStrET()}.csv`);
 }
-function exportCLS(){
+async function exportCLS(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.cls, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('cls');
+  }catch(e){
+    console.warn('exportCLS: full fetch failed, using local data', e);
+    _allRows = DB.cls.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapCLS);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.cls, d1, d2);
   const headers=['Txn','Mode','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.mode||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Classifier: "+_data.length+" records");
@@ -16201,7 +16271,7 @@ function updateCOMPStatus(rowIdx,dbIdx){
   syncRefreshAll('compliance');
 }
 
-function applyCOMPFilter(){
+async function applyCOMPFilter(){
   _saveFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_fs','cpf2_search']);
   const d1=document.getElementById('cpf2_d1')?.value;
   const d2=document.getElementById('cpf2_d2')?.value;
@@ -16210,7 +16280,9 @@ function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.comp,'assignedTo');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('comp', mapCOMP, DB.comp, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -16335,9 +16407,19 @@ function submitCOMP(){
   dbInsertOptimistic(_compLocal,'comp',_compRow,mapCOMP,DB.comp,'compliance');
 }
 
-function exportCOMP(){
+async function exportCOMP(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.comp, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('comp');
+  }catch(e){
+    console.warn('exportCOMP: full fetch failed, using local data', e);
+    _allRows = DB.comp.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapCOMP);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.comp, d1, d2);
   const headers=['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Compliance: "+_data.length+" records");
@@ -16492,14 +16574,16 @@ function renderPDRows(data){
   const cnt=document.getElementById('pdCount');if(cnt)cnt.textContent=(_pgState['pd']?.filtered?.length||data.length)+' records';
 }
 
-function applyPDFilter(){
+async function applyPDFilter(){
   _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
   const d1=document.getElementById('pd_fd1')?.value;
   const d2=document.getElementById('pd_fd2')?.value;
   const u=document.getElementById('pd_fu')?.value;
   const tm=document.getElementById('pd_fteam')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.parsDocs,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('pars_docs', mapPARSDocs, DB.parsDocs, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16834,9 +16918,19 @@ function submitPARSDocs(){
   }
 }
 
-function exportPARSDocs(){
+async function exportPARSDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.parsDocs, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('pars_docs');
+  }catch(e){
+    console.warn('exportPARSDocs: full fetch failed, using local data', e);
+    _allRows = DB.parsDocs.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapPARSDocs);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.parsDocs, d1, d2);
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ PARS Docs: "+_data.length+" records");
@@ -16922,14 +17016,16 @@ function renderODRows(data){
   const cnt=document.getElementById('odCount');if(cnt)cnt.textContent=(_pgState['od']?.filtered?.length||data.length)+' records';
 }
 
-function applyODFilter(){
+async function applyODFilter(){
   _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
   const d1=document.getElementById('od_fd1')?.value;
   const d2=document.getElementById('od_fd2')?.value;
   const u=document.getElementById('od_fu')?.value;
   const tm=document.getElementById('od_fteam')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.oceanDocs,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('ocean_docs', mapOceanDocs, DB.oceanDocs, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17101,9 +17197,19 @@ function submitOceanDocs(){
   }
 }
 
-function exportOceanDocs(){
+async function exportOceanDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.oceanDocs, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('ocean_docs');
+  }catch(e){
+    console.warn('exportOceanDocs: full fetch failed, using local data', e);
+    _allRows = DB.oceanDocs.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapOceanDocs);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.oceanDocs, d1, d2);
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean Docs: "+_data.length+" records");
@@ -17179,13 +17285,15 @@ function renderPLRows(data){
   const cnt=document.getElementById('plCount');if(cnt)cnt.textContent=(_pgState['pl']?.filtered?.length||data.length)+' records';
 }
 
-function applyPLFilter(){
+async function applyPLFilter(){
   _saveFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
   const d1=document.getElementById('pl_fd1')?.value;
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.partLot,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('part_lot', mapPartLot, DB.partLot, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17302,9 +17410,19 @@ function submitPartLot(){
   dbInsertOptimistic(_plLocal,'part_lot',_plRow,mapPartLot,DB.partLot,'partlot');
 }
 
-function exportPartLot(){
+async function exportPartLot(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.partLot, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('part_lot');
+  }catch(e){
+    console.warn('exportPartLot: full fetch failed, using local data', e);
+    _allRows = DB.partLot.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapPartLot);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.partLot, d1, d2);
   const headers=['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Part Lot: "+_data.length+" records");
@@ -17555,7 +17673,7 @@ function updateRLStatus(dbid){
   } else { showToast('✅ Release status updated: '+newStatus); syncRefreshAll('release2'); }
 }
 
-function applyRLFilter(){
+async function applyRLFilter(){
   _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
@@ -17563,7 +17681,9 @@ function applyRLFilter(){
   const tm=document.getElementById('rl_fteam')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.release2,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('release', mapRelease, DB.release2, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -19877,9 +19997,15 @@ function openAuditFromRelease(rlIdx){
   startAudit(rlIdx);
 }
 
-function exportRelease2(){
+async function exportRelease2(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.release2, d1, d2);
+  // Fetch ALL records from DB for export
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{ _allRows = await dbLoadAll('release'); }
+  catch(e){ _allRows = []; }
+  const _allMapped = _allRows.map(mapRelease);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.release2, d1, d2);
   const headers=['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines',
     'Doc Rcvd Date','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
@@ -20133,7 +20259,7 @@ function renderOTTRows(data){
   const cnt=document.getElementById('ottCount');if(cnt)cnt.textContent=(_pgState['ott']?.filtered?.length||data.length)+' records';
 }
 
-function applyOTTFilter(){
+async function applyOTTFilter(){
   _saveFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
   const d1=document.getElementById('ott_fd1')?.value;
   const d2=document.getElementById('ott_fd2')?.value;
@@ -20142,7 +20268,9 @@ function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.oceanTT,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('ocean_tt', mapOceanTT, DB.oceanTT, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -20248,9 +20376,19 @@ function submitOTT(){
   dbInsertOptimistic(_ottLocal,'ocean_tt',_ottRow,mapOceanTT,DB.oceanTT,'oceantt');
 }
 
-function exportOTT(){
+async function exportOTT(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.oceanTT, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('ocean_tt');
+  }catch(e){
+    console.warn('exportOTT: full fetch failed, using local data', e);
+    _allRows = DB.oceanTT.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapOceanTT);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.oceanTT, d1, d2);
   const headers=['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA on Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean T&T: "+_data.length+" records");
@@ -20372,7 +20510,7 @@ function updateB2Status(rowIdx){
   syncRefreshAll('b2entries');
 }
 
-function applyB2Filter(){
+async function applyB2Filter(){
   _saveFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
   const d1=document.getElementById('b2_fd1')?.value;
   const d2=document.getElementById('b2_fd2')?.value;
@@ -20381,7 +20519,9 @@ function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.b2entries,'user');
+  // Fetch from DB if date range exceeds 7-day local cache
+  const _fetchedRows = await dbFetchRange('b2_entries', mapB2, DB.b2entries, d1, d2);
+  let data = _fetchedRows;
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -20482,9 +20622,19 @@ function submitB2(){
   dbInsertOptimistic(_b2Local,'b2_entries',_b2Row,mapB2,DB.b2entries,'b2entries');
 }
 
-function exportB2(){
+async function exportB2(){
   const {d1,d2,label} = _getReportDateRange();
-  const _data = _filterByDateRange(DB.b2entries, d1, d2);
+  // Fetch ALL records from DB for export (not just 7-day local cache)
+  showToast('⏳ Fetching all records for export...');
+  let _allRows = [];
+  try{
+    _allRows = await dbLoadAll('b2_entries');
+  }catch(e){
+    console.warn('exportB2: full fetch failed, using local data', e);
+    _allRows = DB.b2entries.map(r=>r._raw||r);
+  }
+  const _allMapped = _allRows.map(mapB2);
+  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.b2entries, d1, d2);
   const headers=['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ B2 Entries: "+_data.length+" records");
