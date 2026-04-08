@@ -28,10 +28,10 @@ if(location.protocol === 'file:'){
 <meta name="description" content="KPI Tracking — Daily Production Management for Custom Broker Teams"/>
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- XLSX loaded on-demand when export is triggered — not on every page load -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 html,body{background:#f4f6fa;overflow:hidden;height:100%;width:100%;}
@@ -83,7 +83,6 @@ html,body{background:#f4f6fa;overflow:hidden;height:100%;width:100%;}
    HOPE UI DESIGN SYSTEM v42
    Purple-first · Nunito · Rounded · Clean
    ══════════════════════════════════════════════ */
-*{margin:0;padding:0;box-sizing:border-box;}
 body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100vh;font-size:14px;}
 
 /* ── ANIMATIONS ── */
@@ -3069,8 +3068,23 @@ const _xk=0x5A;
 function _dk(h){return h.match(/.{2}/g).map(b=>String.fromCharCode(parseInt(b,16)^_xk)).join('');}
 const SUPA_ANON = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
 const SUPA_SERVICE_KEY = ''; // Removed from browser for security
-// Keep Supabase active — ping every 8 min to prevent free-tier pause
-function _supaKeepAlive(){ if(_supa) _supa.from('login_users').select('id').limit(1).then(()=>{}).catch(()=>{}); }
+
+// ── XLSX lazy loader — only loads the 800KB library when export is clicked ──
+let _xlsxLoaded = false;
+function _ensureXLSX(){
+  return new Promise((resolve, reject) => {
+    if(typeof XLSX !== 'undefined'){ resolve(); return; }
+    if(_xlsxLoaded){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => { _xlsxLoaded = true; resolve(); };
+    s.onerror = () => reject(new Error('Failed to load XLSX library'));
+    document.head.appendChild(s);
+  });
+}
+
+// Keep Supabase active — ping every 8 min to prevent free-tier pause (skip if tab hidden)
+function _supaKeepAlive(){ if(_supa && !document.hidden) _supa.from('login_users').select('id').limit(1).then(()=>{}).catch(()=>{}); }
 setInterval(_supaKeepAlive, 8*60*1000);
 
 // Safe Supabase init — won't crash if CDN fails to load (e.g. local file, offline)
@@ -3256,7 +3270,7 @@ function _makeSupaClient(){
     _restoreTaskCache();
     // Reload all data fresh from DB in background
     if(typeof loadAllFromSupabase === 'function'){
-      setTimeout(loadAllFromSupabase, 800);
+      setTimeout(loadAllFromSupabase, 200);
     }
 
     console.log('Session restored for', cu.name, '— away for', awayMin, 'min');
@@ -3326,104 +3340,56 @@ const TABLE_SORT_COL={
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 
 // Load only recent rows — last N days (keeps payload small for large teams)
-async function dbLoadRecent(table, days=7){
+async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
 
-  // ── Date-filtered fetch with 1000-row cap ──────────────────────
-  // Use LOCAL date (not UTC) so today's records are never cut off.
-  // e.g. in IST (UTC+5:30), toISOString() at midnight gives yesterday — wrong.
-  // Add 1 extra buffer day to guarantee today is always included.
-  const _now = new Date();
-  const _sinceDate = new Date(_now);
-  _sinceDate.setDate(_sinceDate.getDate() - (days + 1)); // +1 buffer for timezone safety
-  // Format as local YYYY-MM-DD (not UTC)
-  const sinceISO = _sinceDate.getFullYear()+'-'+
-    String(_sinceDate.getMonth()+1).padStart(2,'0')+'-'+
-    String(_sinceDate.getDate()).padStart(2,'0');
+  // ── Compute ISO cutoff date for the date filter ──
+  // This is the critical fix: actually apply the days filter so we don't fetch ALL rows
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const LIMIT = 1000; // hard cap — more than enough for KPI display
   let allRows = [];
   let from = 0;
+  const BATCH = 1000;
 
   while(true){
-    let q = _supa.from(table).select('*')
-      .gte(dateCol, sinceISO)
+    // Apply .gte(dateCol, cutoff) — only fetch rows newer than cutoff date
+    let query = _supa.from(table).select('*', {count:'exact'})
+      .gte(dateCol, cutoff)
       .order(dateCol, {ascending:false})
-      .range(from, from + LIMIT - 1);
+      .range(from, from + BATCH - 1);
 
-    const {data, error} = await q;
+    const {data, error, count} = await query;
 
     if(error){
-      // dateCol doesn't exist — retry without date filter, just newest 1000 by id
-      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying on id');
-      const {data:d2, error:e2} = await _supa.from(table).select('*')
-        .order('id', {ascending:false})
-        .limit(LIMIT);
-      if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return []; }
-      console.log('dbLoadRecent('+table+','+days+'d,fallback): '+(d2||[]).length+' rows');
-      return d2||[];
+      // If date column doesn't exist, retry without date filter but with id sort
+      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying without date filter');
+      let allRows2 = [];
+      let from2 = 0;
+      while(true){
+        const {data:d2, error:e2} = await _supa.from(table).select('*')
+          .order('id', {ascending:false})
+          .range(from2, from2 + BATCH - 1);
+        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
+        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
+        if(!d2 || d2.length < BATCH) break;
+        from2 += BATCH;
+        if(from2 > 10000) break; // safety cap
+      }
+      console.log('dbLoadRecent('+table+'): '+allRows2.length+' rows (fallback id sort, no date filter)');
+      return allRows2;
     }
 
     if(data && data.length > 0) allRows = allRows.concat(data);
-    if(!data || data.length < LIMIT) break;
-    from += LIMIT;
-    if(from > 10000) break; // hard safety — 10k rows max
-  }
-
-  console.log('dbLoadRecent('+table+','+days+'d,col='+dateCol+'): '+allRows.length+' rows');
-  return allRows;
-}
-
-// ── Smart range fetch: local cache if ≤7 days, DB query if older ─
-// Returns mapped app-layer rows ready to filter
-async function dbFetchRange(table, mapFn, localArr, d1, d2){
-  const today = new Date();
-  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate()-8); // 8d matches dbLoadRecent buffer
-  const d1Date = d1 ? new Date(d1) : null;
-  // If date range is within local cache window, use it — instant
-  if(!d1Date || d1Date >= cutoff){
-    return localArr;
-  }
-  // Date range goes beyond 7 days — fetch from DB with filter
-  if(!_supa) return localArr;
-  const dateCol = TABLE_SORT_COL[table] || 'created_at';
-  showToast('🔍 Fetching records from '+_fmtDateLabel(d1)+' to '+(d2||'today')+'...');
-  try{
-    const rows = await dbLoadAll(table, {gte: d1||undefined, lte: d2||undefined});
-    if(rows && rows.length > 0){
-      showToast('✅ Loaded '+rows.length+' records');
-      return rows.map(mapFn);
-    }
-  } catch(e){ console.warn('dbFetchRange failed:', e.message); }
-  return localArr; // fallback to local
-}
-function _fmtDateLabel(d){ try{ return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); }catch(e){return d;} }
-
-
-// ── Fetch ALL rows for export (no date filter) ───────────────────
-async function dbLoadAll(table, opts={}){
-  if(!_supa) return [];
-  const dateCol = TABLE_SORT_COL[table] || 'id';
-  const BATCH = 1000;
-  let allRows=[], from=0;
-  while(true){
-    let q = _supa.from(table).select('*')
-      .order(dateCol, {ascending:false})
-      .range(from, from+BATCH-1);
-    if(opts.gte) q = q.gte(dateCol, opts.gte);   // date filter on sort column
-    if(opts.lte) q = q.lte(dateCol, opts.lte+'T23:59:59');
-    const {data, error} = await q;
-    if(error){ console.error('dbLoadAll '+table+':', error.message); break; }
-    if(data && data.length>0) allRows = allRows.concat(data);
-    if(!data || data.length<BATCH) break;
+    // Stop if we got fewer rows than batch size (last page)
+    if(!data || data.length < BATCH) break;
     from += BATCH;
-    if(from>200000) break; // 200k row hard cap
+    if(from > 10000) break; // safety cap — 10k rows max per table is enough
   }
-  console.log('dbLoadAll('+table+'): '+allRows.length+' total rows');
+
+  console.log('dbLoadRecent('+table+', '+days+'d): '+allRows.length+' rows fetched');
   return allRows;
 }
-
 
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
@@ -3437,7 +3403,7 @@ async function dbLoad(table){
   if(table === 'clients'){
     try{
       const cached = JSON.parse(localStorage.getItem('kpi_clients_cache_v2')||'null');
-      if(cached && cached.ts && (Date.now()-cached.ts) < 4*60*60*1000 && cached.data?.length>0){
+      if(cached && cached.ts && (Date.now()-cached.ts) < 60*60*1000 && cached.data?.length>0){
         console.log('dbLoad(clients): '+cached.data.length+' rows from cache (1h TTL)');
         return cached.data;
       }
@@ -3826,38 +3792,72 @@ async function loadAllFromSupabase(){
     setDetail('Loading data for your role...');
 
     if(isMgr){
-      // ── PHASE 1: Load ALL data for all tables ─────────────────────────────
-      setDetail("⚡ Loading all data...");
-      const [users,loginUsers,clients,
-             lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT,instructions
-            ] = await Promise.all([
-        dbLoad('users'), dbLoad('login_users'), dbLoad('clients'),
-        dbLoadRecent('lvs'),    dbLoadRecent('cls'),   dbLoadRecent('comp'),
-        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'),  dbLoadRecent('release'),
-        dbLoadRecent('ocean_tt'),  dbLoadRecent('b2_entries'),
-        dbLoadRecent('client_errors'), dbLoadRecent('audit'),
-        dbLoad('instructions')
+      // ── PHASE 1: Load today's data only — show app fast ─────────────────────
+      setDetail("⚡ Loading today's data...");
+      const bar=document.getElementById('loadingProgressBar');
+      if(bar) bar.style.width='20%';
+
+      const [users,loginUsers,clients,instructions] = await Promise.all([
+        dbLoad('users'), dbLoad('login_users'), dbLoad('clients'), dbLoad('instructions')
       ]);
       DB.users        = users.map(mapUser);
       DB.loginUsers   = loginUsers.map(mapLoginUser);
       DB.clients      = clients.map(mapClient);
-      DB.lvs          = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
-      DB.cls          = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
-      DB.comp         = compT.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
-      DB.parsDocs     = parsT.map(mapPARSDocs);
-      DB.oceanDocs    = oceanT.map(mapOceanDocs);
-      DB.partLot      = partT.map(mapPartLot);
-      DB.release2     = relT.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
-      DB.oceanTT      = ottT.map(mapOceanTT);
-      DB.b2entries    = b2T.map(mapB2);
-      DB.errors       = errT.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
       DB.instructions = (instructions||[]).map(mapInstruction);
-      DB.audit        = auditT.map(mapAudit);
 
-      setDetail('✅ '+DB.lvs.length+' LVS · '+DB.release2.length+' Release · '+DB.audit.length+' Audits loaded');
+      if(bar) bar.style.width='50%';
+      // Load last 2 days of task data first — user sees data instantly
+      const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
+        dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
+        dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
+        dbLoadRecent('part_lot',2), dbLoadRecent('release',2),
+        dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
+        dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
+      ]);
+      DB.lvs       = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
+      DB.cls       = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
+      DB.comp      = compT.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
+      DB.parsDocs  = parsT.map(mapPARSDocs);
+      DB.oceanDocs = oceanT.map(mapOceanDocs);
+      DB.partLot   = partT.map(mapPartLot);
+      DB.release2  = relT.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
+      DB.oceanTT   = ottT.map(mapOceanTT);
+      DB.b2entries = b2T.map(mapB2);
+      DB.errors    = errT.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
+      DB.audit     = auditT.map(mapAudit);
+
+      if(bar) bar.style.width='100%';
+      setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
-      showToast('✅ All data loaded — '+DB.release2.length+' Release records');
+      showToast('✅ App ready — loading 30-day history in background...');
+
+      // ── PHASE 2: Load full 30-day history silently in background ──────────
+      setTimeout(async()=>{
+        try{
+          const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
+            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
+            dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
+            dbLoadRecent('part_lot',30), dbLoadRecent('release',30),
+            dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
+            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
+          ]);
+          DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
+          DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
+          DB.comp      = compF.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
+          DB.parsDocs  = parsF.map(mapPARSDocs);
+          DB.oceanDocs = oceanF.map(mapOceanDocs);
+          DB.partLot   = partF.map(mapPartLot);
+          DB.release2  = relF.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
+          DB.oceanTT   = ottF.map(mapOceanTT);
+          DB.b2entries = b2F.map(mapB2);
+          DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
+          DB.audit     = auditF.map(mapAudit);
+          _saveTaskCache();
+          if(CU && !isPanelOpen()) refreshPage();
+          showToast('✅ 30-day history loaded — '+DB.release2.length+' Release records');
+          console.log('✅ Manager background history load complete');
+        }catch(bg){ console.warn('Background history load error:', bg.message); }
+      }, 1500); // start after user is already in the app
 
 
     } else if(isRlTL){
@@ -3924,13 +3924,12 @@ async function loadAllFromSupabase(){
     } else if(CU.role==='Client'){
       // Client: load ALL task tables (view-only) + errors + reports
       setDetail('Loading client view data...');
-      const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients,pDocs] = await Promise.all([
+      const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
         dbLoadRecent('part_lot'), dbLoadRecent('release'),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
-        dbLoadRecent('client_errors'), dbLoad('clients'),
-        dbLoadRecent('pars_docs')
+        dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
       if(lvs) { DB.lvs=lvs.map(mapLVS); DB.lvs.forEach((r,i)=>r._idx=i); }
       if(cls) { DB.cls=cls.map(mapCLS); DB.cls.forEach((r,i)=>r._idx=i); }
@@ -3943,27 +3942,6 @@ async function loadAllFromSupabase(){
       if(b2) { DB.b2entries=b2.map(mapB2); }
       if(errors) { DB.errors=errors.map(mapError); DB.errors.forEach((r,i)=>r._idx=i); }
       if(clients) DB.clients=clients.map(mapClient);
-      setDetail('✅ Client view loaded');
-    } else if(CU.role==='Client'||CU.task==='Client'){
-      // Client role: load ALL task tables for read-only view
-      setDetail('Loading client view data...');
-      const [lvs,cls,comp,pars,ocean,partlot,release,oceantt,b2,errors] = await Promise.all([
-        dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
-        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoadRecent('release'),
-        dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
-        dbLoadRecent('client_errors')
-      ]);
-      if(lvs)    { DB.lvs=lvs.map(mapLVS); DB.lvs.forEach((r,i)=>r._idx=i); }
-      if(cls)    { DB.cls=cls.map(mapCLS); DB.cls.forEach((r,i)=>r._idx=i); }
-      if(comp)   { DB.comp=comp.map(mapCOMP); }
-      if(pars)   { DB.parsDocs=pars.map(mapPARSDocs); }
-      if(ocean)  { DB.oceanDocs=ocean.map(mapOceanDocs); }
-      if(partlot){ DB.partLot=partlot.map(mapPartLot); }
-      if(release){ DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i); }
-      if(oceantt){ DB.oceanTT=oceantt.map(mapOceanTT); }
-      if(b2)     { DB.b2entries=b2.map(mapB2); }
-      if(errors) { DB.errors=errors.map(mapError); DB.errors.forEach((r,i)=>r._idx=i); }
       setDetail('✅ Client view loaded');
     } else {
       // Regular user: own task table + errors + clients + login_users (for user dropdown autofill)
@@ -3994,16 +3972,7 @@ async function loadAllFromSupabase(){
     console.log('✅ Role-based load complete for',CU?.role,CU?.task);
     window._dbLoaded = true; // mark DB as loaded — prevent cache from overwriting fresh data
     // Always save clients to localStorage so session restore has them immediately
-    try{
-    if(DB.clients&&DB.clients.length>0){
-      // Only rewrite if client count changed — avoids serializing 1668 records every login
-      const _prevLen = parseInt(localStorage.getItem('kpi_clients_cache_len')||'0');
-      if(_prevLen !== DB.clients.length){
-        localStorage.setItem('kpi_clients_cache_len', String(DB.clients.length));
-        // Don't write clients to localStorage — use kpi_clients_cache_v2 (4h TTL) instead
-      }
-    }
-  }catch(e){}
+    try{ if(DB.clients&&DB.clients.length>0) localStorage.setItem('kpi_clients_cache', JSON.stringify(DB.clients)); }catch(e){}
     _saveTaskCache(); // cache for fast restore on refresh
     if(CU) refreshPage();
   } catch(e){
@@ -4306,9 +4275,9 @@ function startBgPoll(){
       const activeTbl=TASK_TABLE_MAP[getActivePage()]||null;
       // SPEED FIX: each role only polls what it needs
       const tables = isMgr
-        ? (window._bgPollCycle%10===0
+        ? (window._bgPollCycle%5===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users']
-            : [activeTbl].filter(Boolean))
+            : [activeTbl,'lvs','cls'].filter(Boolean))
         : CU.role==='Supervisor'
         ? (window._bgPollCycle%3===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries']
@@ -4355,15 +4324,15 @@ function startBgPoll(){
         let rows = [];
         const cycle = window._bgPollCycle||0;
 
-        if(_latestId > 0 && cycle % 20 !== 0){
+        if(_latestId > 0 && cycle % 6 !== 0){
           // FAST PATH: only get records newer than we already have
           const {data:newRows} = await _supa.from(tbl).select('*')
             .gt('id', _latestId).order('id',{ascending:false}).limit(200);
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle — paginated fetch of ALL rows
-          rows = await dbLoadRecent(tbl);
+          // FULL PATH: every 6th cycle — fetch last 30 days only (date-filtered)
+          rows = await dbLoadRecent(tbl, 30);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
@@ -4376,7 +4345,7 @@ function startBgPoll(){
         const hasNewRows = freshRows.some(r=>r.id && !localIds.has(String(r.id)));
 
         if(hasNewRows){
-          if(_latestId > 0 && cycle % 20 !== 0){
+          if(_latestId > 0 && cycle % 6 !== 0){
             // FAST PATH: ADD new records to existing — DO NOT replace entire array
             // freshRows only has NEW records; replacing would wipe existing data
             const mapperFn = {
@@ -4420,7 +4389,7 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 30000); // silent sync every 30s // Poll every 90s — still fresh, reduces DB calls by 33%
+  }, 90000); // Poll every 90s — still fresh, reduces DB calls by 33%
   console.log('[bgPoll] Started — polling every 90s');
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -5621,7 +5590,7 @@ function renderProductivity(c){
     window._prodDBLoaded=true;
     c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading productivity data...</div>';
     const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-    dbLoadRecent('productivity_log', 30).then(rows=>{
+    dbLoad('productivity_log').then(rows=>{
       if(rows&&rows.length){
         rows.filter(r=>r.logged_at&&new Date(r.logged_at).toISOString().slice(0,10)===_etToday)
           .forEach(r=>{
@@ -6843,13 +6812,7 @@ function _buildArchiveHistory(){
 const TASK_CACHE_KEY = 'kpi_task_cache_v2';
 const TASK_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
-let _saveTaskCacheTimer = null;
 function _saveTaskCache(){
-  // Debounce — delay actual write by 2s so it never blocks UI render
-  if(_saveTaskCacheTimer) clearTimeout(_saveTaskCacheTimer);
-  _saveTaskCacheTimer = setTimeout(_saveTaskCacheNow, 2000);
-}
-function _saveTaskCacheNow(){
   try{
     // Only cache if we have meaningful data
     const totalRecs = DB.lvs.length + DB.cls.length + DB.release2.length;
@@ -8909,7 +8872,7 @@ async function doLogin(){
       try{
         await Promise.race([
           loadAllFromSupabase(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000)) // 8s max wait
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000)) // 15s for admin
         ]);
       } catch(e){
         console.warn('Admin data load timed out or failed — booting with cached data:',e.message);
@@ -9814,7 +9777,7 @@ function editLVSRecord(idx){
   },100);
 }
 
-async function applyLVSFilter(){
+function applyLVSFilter(){
   _saveFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
   const d1=document.getElementById('lf_d1')?.value;
   const d2=document.getElementById('lf_d2')?.value;
@@ -9822,9 +9785,7 @@ async function applyLVSFilter(){
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('lvs', mapLVS, DB.lvs, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.lvs,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -10206,7 +10167,7 @@ function updateCLSStatus(rowIdx,dbIdx){
   syncRefreshAll('classifier');
 }
 
-async function applyCLSFilter(){
+function applyCLSFilter(){
   _saveFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
   const d1=document.getElementById('cf_d1')?.value;
   const d2=document.getElementById('cf_d2')?.value;
@@ -10214,9 +10175,7 @@ async function applyCLSFilter(){
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('cls', mapCLS, DB.cls, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.cls,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -10836,14 +10795,6 @@ function refreshTaskHeatmap(){
 }
 
 function renderDashboard(c){
-  // Memoize: skip full re-render if data count unchanged (very fast check)
-  const _dashKey = DB.lvs.length+'|'+DB.release2.length+'|'+DB.cls.length+'|'+DB.comp.length+'|'+DB.parsDocs.length;
-  if(window._lastDashKey === _dashKey && c.innerHTML.length > 100){
-    // Data unchanged — just refresh the hourly chart
-    setTimeout(renderHourlyTaskChart, 10);
-    return;
-  }
-  window._lastDashKey = _dashKey;
   const today=todayDateStringET();
   const now=nowET();
   const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
@@ -12513,7 +12464,7 @@ function clearReportFilter(){
 // ══════════════════════════════════════════════════════════
 // EXPORT ALL TASKS — Multi-sheet Excel (SheetJS)
 // ══════════════════════════════════════════════════════════
-async function exportAllTasksXLSX(){
+function exportAllTasksXLSX(){
   // Dynamically load SheetJS if missing (CDN blocked or slow)
   if(typeof XLSX==='undefined'){
     showToast('⏳ Loading Excel library... please wait.',true);
@@ -12759,37 +12710,17 @@ function _filterByDateRange(arr, d1, d2){
   });
 }
 
-async function exportLVS(){
+function exportLVS(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('lvs');
-  }catch(e){
-    console.warn('exportLVS: full fetch failed, using local data', e);
-    _allRows = DB.lvs.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapLVS);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.lvs, d1, d2);
+  const _data = _filterByDateRange(DB.lvs, d1, d2);
   const headers=['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)]);
   showToast('⬇️ LVS export: '+rows.length+' records');
   exportCSV(rows,headers,`LVS_${label||todayStrET()}.csv`);
 }
-async function exportCLS(){
+function exportCLS(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('cls');
-  }catch(e){
-    console.warn('exportCLS: full fetch failed, using local data', e);
-    _allRows = DB.cls.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapCLS);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.cls, d1, d2);
+  const _data = _filterByDateRange(DB.cls, d1, d2);
   const headers=['Txn','Mode','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.mode||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Classifier: "+_data.length+" records");
@@ -16299,7 +16230,7 @@ function updateCOMPStatus(rowIdx,dbIdx){
   syncRefreshAll('compliance');
 }
 
-async function applyCOMPFilter(){
+function applyCOMPFilter(){
   _saveFilter('comp',['cpf2_d1','cpf2_d2','cpf2_fu','cpf2_fteam','cpf2_fs','cpf2_search']);
   const d1=document.getElementById('cpf2_d1')?.value;
   const d2=document.getElementById('cpf2_d2')?.value;
@@ -16308,9 +16239,7 @@ async function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('comp', mapCOMP, DB.comp, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.comp,'assignedTo');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>r.assignedTo===u);
@@ -16435,19 +16364,9 @@ function submitCOMP(){
   dbInsertOptimistic(_compLocal,'comp',_compRow,mapCOMP,DB.comp,'compliance');
 }
 
-async function exportCOMP(){
+function exportCOMP(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('comp');
-  }catch(e){
-    console.warn('exportCOMP: full fetch failed, using local data', e);
-    _allRows = DB.comp.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapCOMP);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.comp, d1, d2);
+  const _data = _filterByDateRange(DB.comp, d1, d2);
   const headers=['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Compliance: "+_data.length+" records");
@@ -16602,16 +16521,14 @@ function renderPDRows(data){
   const cnt=document.getElementById('pdCount');if(cnt)cnt.textContent=(_pgState['pd']?.filtered?.length||data.length)+' records';
 }
 
-async function applyPDFilter(){
+function applyPDFilter(){
   _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
   const d1=document.getElementById('pd_fd1')?.value;
   const d2=document.getElementById('pd_fd2')?.value;
   const u=document.getElementById('pd_fu')?.value;
   const tm=document.getElementById('pd_fteam')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('pars_docs', mapPARSDocs, DB.parsDocs, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.parsDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -16946,19 +16863,9 @@ function submitPARSDocs(){
   }
 }
 
-async function exportPARSDocs(){
+function exportPARSDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('pars_docs');
-  }catch(e){
-    console.warn('exportPARSDocs: full fetch failed, using local data', e);
-    _allRows = DB.parsDocs.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapPARSDocs);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.parsDocs, d1, d2);
+  const _data = _filterByDateRange(DB.parsDocs, d1, d2);
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ PARS Docs: "+_data.length+" records");
@@ -17044,16 +16951,14 @@ function renderODRows(data){
   const cnt=document.getElementById('odCount');if(cnt)cnt.textContent=(_pgState['od']?.filtered?.length||data.length)+' records';
 }
 
-async function applyODFilter(){
+function applyODFilter(){
   _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
   const d1=document.getElementById('od_fd1')?.value;
   const d2=document.getElementById('od_fd2')?.value;
   const u=document.getElementById('od_fu')?.value;
   const tm=document.getElementById('od_fteam')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('ocean_docs', mapOceanDocs, DB.oceanDocs, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.oceanDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17225,19 +17130,9 @@ function submitOceanDocs(){
   }
 }
 
-async function exportOceanDocs(){
+function exportOceanDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('ocean_docs');
-  }catch(e){
-    console.warn('exportOceanDocs: full fetch failed, using local data', e);
-    _allRows = DB.oceanDocs.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapOceanDocs);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.oceanDocs, d1, d2);
+  const _data = _filterByDateRange(DB.oceanDocs, d1, d2);
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean Docs: "+_data.length+" records");
@@ -17313,15 +17208,13 @@ function renderPLRows(data){
   const cnt=document.getElementById('plCount');if(cnt)cnt.textContent=(_pgState['pl']?.filtered?.length||data.length)+' records';
 }
 
-async function applyPLFilter(){
+function applyPLFilter(){
   _saveFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
   const d1=document.getElementById('pl_fd1')?.value;
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('part_lot', mapPartLot, DB.partLot, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.partLot,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -17438,19 +17331,9 @@ function submitPartLot(){
   dbInsertOptimistic(_plLocal,'part_lot',_plRow,mapPartLot,DB.partLot,'partlot');
 }
 
-async function exportPartLot(){
+function exportPartLot(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('part_lot');
-  }catch(e){
-    console.warn('exportPartLot: full fetch failed, using local data', e);
-    _allRows = DB.partLot.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapPartLot);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.partLot, d1, d2);
+  const _data = _filterByDateRange(DB.partLot, d1, d2);
   const headers=['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Part Lot: "+_data.length+" records");
@@ -17701,7 +17584,7 @@ function updateRLStatus(dbid){
   } else { showToast('✅ Release status updated: '+newStatus); syncRefreshAll('release2'); }
 }
 
-async function applyRLFilter(){
+function applyRLFilter(){
   _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
@@ -17709,9 +17592,7 @@ async function applyRLFilter(){
   const tm=document.getElementById('rl_fteam')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('release', mapRelease, DB.release2, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.release2,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -20025,15 +19906,9 @@ function openAuditFromRelease(rlIdx){
   startAudit(rlIdx);
 }
 
-async function exportRelease2(){
+function exportRelease2(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{ _allRows = await dbLoadAll('release'); }
-  catch(e){ _allRows = []; }
-  const _allMapped = _allRows.map(mapRelease);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.release2, d1, d2);
+  const _data = _filterByDateRange(DB.release2, d1, d2);
   const headers=['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines',
     'Doc Rcvd Date','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
@@ -20287,7 +20162,7 @@ function renderOTTRows(data){
   const cnt=document.getElementById('ottCount');if(cnt)cnt.textContent=(_pgState['ott']?.filtered?.length||data.length)+' records';
 }
 
-async function applyOTTFilter(){
+function applyOTTFilter(){
   _saveFilter('ott',['ott_fd1','ott_fd2','ott_fu','ott_fteam','ott_fstatus','ott_fdest','ott_search']);
   const d1=document.getElementById('ott_fd1')?.value;
   const d2=document.getElementById('ott_fd2')?.value;
@@ -20296,9 +20171,7 @@ async function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('ocean_tt', mapOceanTT, DB.oceanTT, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.oceanTT,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -20404,19 +20277,9 @@ function submitOTT(){
   dbInsertOptimistic(_ottLocal,'ocean_tt',_ottRow,mapOceanTT,DB.oceanTT,'oceantt');
 }
 
-async function exportOTT(){
+function exportOTT(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('ocean_tt');
-  }catch(e){
-    console.warn('exportOTT: full fetch failed, using local data', e);
-    _allRows = DB.oceanTT.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapOceanTT);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.oceanTT, d1, d2);
+  const _data = _filterByDateRange(DB.oceanTT, d1, d2);
   const headers=['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA on Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean T&T: "+_data.length+" records");
@@ -20538,7 +20401,7 @@ function updateB2Status(rowIdx){
   syncRefreshAll('b2entries');
 }
 
-async function applyB2Filter(){
+function applyB2Filter(){
   _saveFilter('b2',['b2_fd1','b2_fd2','b2_fu','b2_fstatus','b2_fsource','b2_ftask','b2_search']);
   const d1=document.getElementById('b2_fd1')?.value;
   const d2=document.getElementById('b2_fd2')?.value;
@@ -20547,9 +20410,7 @@ async function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
-  // Fetch from DB if date range exceeds 7-day local cache
-  const _fetchedRows = await dbFetchRange('b2_entries', mapB2, DB.b2entries, d1, d2);
-  let data = _fetchedRows;
+  let data=_scopeByUser(DB.b2entries,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
@@ -20650,19 +20511,9 @@ function submitB2(){
   dbInsertOptimistic(_b2Local,'b2_entries',_b2Row,mapB2,DB.b2entries,'b2entries');
 }
 
-async function exportB2(){
+function exportB2(){
   const {d1,d2,label} = _getReportDateRange();
-  // Fetch ALL records from DB for export (not just 7-day local cache)
-  showToast('⏳ Fetching all records for export...');
-  let _allRows = [];
-  try{
-    _allRows = await dbLoadAll('b2_entries');
-  }catch(e){
-    console.warn('exportB2: full fetch failed, using local data', e);
-    _allRows = DB.b2entries.map(r=>r._raw||r);
-  }
-  const _allMapped = _allRows.map(mapB2);
-  const _data = _filterByDateRange(_allMapped.length>0?_allMapped:DB.b2entries, d1, d2);
+  const _data = _filterByDateRange(DB.b2entries, d1, d2);
   const headers=['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ B2 Entries: "+_data.length+" records");
@@ -21605,15 +21456,6 @@ window.addEventListener('beforeunload', function(e){
   // Show banner when user switches away from the tab (potential close)
   document.addEventListener('visibilitychange', function(){
     if(document.hidden && CU){
-      _showLogoutReminderBanner();
-    }
-  });
-
-  // Also show banner if user moves mouse quickly toward top of screen (towards browser close button)
-  // Triggers on mouseleave from the document (cursor left the page)
-  document.addEventListener('mouseleave', function(e){
-    // Only trigger when cursor exits from the TOP of the page (heading for close button)
-    if(e.clientY <= 0 && CU){
       _showLogoutReminderBanner();
     }
   });
