@@ -3331,11 +3331,16 @@ async function dbLoadRecent(table, days=7){
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
 
   // ── Date-filtered fetch with 1000-row cap ──────────────────────
-  // Only fetch rows within the last `days` days, ordered newest-first.
-  // This is the key performance fix — never load the whole table.
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-  const sinceISO = since.toISOString().slice(0,10); // YYYY-MM-DD
+  // Use LOCAL date (not UTC) so today's records are never cut off.
+  // e.g. in IST (UTC+5:30), toISOString() at midnight gives yesterday — wrong.
+  // Add 1 extra buffer day to guarantee today is always included.
+  const _now = new Date();
+  const _sinceDate = new Date(_now);
+  _sinceDate.setDate(_sinceDate.getDate() - (days + 1)); // +1 buffer for timezone safety
+  // Format as local YYYY-MM-DD (not UTC)
+  const sinceISO = _sinceDate.getFullYear()+'-'+
+    String(_sinceDate.getMonth()+1).padStart(2,'0')+'-'+
+    String(_sinceDate.getDate()).padStart(2,'0');
 
   const LIMIT = 1000; // hard cap — more than enough for KPI display
   let allRows = [];
@@ -3374,9 +3379,9 @@ async function dbLoadRecent(table, days=7){
 // Returns mapped app-layer rows ready to filter
 async function dbFetchRange(table, mapFn, localArr, d1, d2){
   const today = new Date();
-  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate()-7);
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate()-8); // 8d matches dbLoadRecent buffer
   const d1Date = d1 ? new Date(d1) : null;
-  // If date range is within 7 days (or no d1), use local cache — instant
+  // If date range is within local cache window, use it — instant
   if(!d1Date || d1Date >= cutoff){
     return localArr;
   }
