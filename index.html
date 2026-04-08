@@ -3994,7 +3994,16 @@ async function loadAllFromSupabase(){
     console.log('✅ Role-based load complete for',CU?.role,CU?.task);
     window._dbLoaded = true; // mark DB as loaded — prevent cache from overwriting fresh data
     // Always save clients to localStorage so session restore has them immediately
-    try{ if(DB.clients&&DB.clients.length>0) localStorage.setItem('kpi_clients_cache', JSON.stringify(DB.clients)); }catch(e){}
+    try{
+    if(DB.clients&&DB.clients.length>0){
+      // Only rewrite if client count changed — avoids serializing 1668 records every login
+      const _prevLen = parseInt(localStorage.getItem('kpi_clients_cache_len')||'0');
+      if(_prevLen !== DB.clients.length){
+        localStorage.setItem('kpi_clients_cache_len', String(DB.clients.length));
+        // Don't write clients to localStorage — use kpi_clients_cache_v2 (4h TTL) instead
+      }
+    }
+  }catch(e){}
     _saveTaskCache(); // cache for fast restore on refresh
     if(CU) refreshPage();
   } catch(e){
@@ -4299,7 +4308,7 @@ function startBgPoll(){
       const tables = isMgr
         ? (window._bgPollCycle%10===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users']
-            : [activeTbl,'lvs','cls'].filter(Boolean))
+            : [activeTbl].filter(Boolean))
         : CU.role==='Supervisor'
         ? (window._bgPollCycle%3===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries']
@@ -4346,7 +4355,7 @@ function startBgPoll(){
         let rows = [];
         const cycle = window._bgPollCycle||0;
 
-        if(_latestId > 0 && cycle % 6 !== 0){
+        if(_latestId > 0 && cycle % 20 !== 0){
           // FAST PATH: only get records newer than we already have
           const {data:newRows} = await _supa.from(tbl).select('*')
             .gt('id', _latestId).order('id',{ascending:false}).limit(200);
@@ -4367,7 +4376,7 @@ function startBgPoll(){
         const hasNewRows = freshRows.some(r=>r.id && !localIds.has(String(r.id)));
 
         if(hasNewRows){
-          if(_latestId > 0 && cycle % 6 !== 0){
+          if(_latestId > 0 && cycle % 20 !== 0){
             // FAST PATH: ADD new records to existing — DO NOT replace entire array
             // freshRows only has NEW records; replacing would wipe existing data
             const mapperFn = {
@@ -5612,7 +5621,7 @@ function renderProductivity(c){
     window._prodDBLoaded=true;
     c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading productivity data...</div>';
     const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-    dbLoad('productivity_log').then(rows=>{
+    dbLoadRecent('productivity_log', 30).then(rows=>{
       if(rows&&rows.length){
         rows.filter(r=>r.logged_at&&new Date(r.logged_at).toISOString().slice(0,10)===_etToday)
           .forEach(r=>{
@@ -6834,7 +6843,13 @@ function _buildArchiveHistory(){
 const TASK_CACHE_KEY = 'kpi_task_cache_v2';
 const TASK_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
+let _saveTaskCacheTimer = null;
 function _saveTaskCache(){
+  // Debounce — delay actual write by 2s so it never blocks UI render
+  if(_saveTaskCacheTimer) clearTimeout(_saveTaskCacheTimer);
+  _saveTaskCacheTimer = setTimeout(_saveTaskCacheNow, 2000);
+}
+function _saveTaskCacheNow(){
   try{
     // Only cache if we have meaningful data
     const totalRecs = DB.lvs.length + DB.cls.length + DB.release2.length;
@@ -10821,6 +10836,14 @@ function refreshTaskHeatmap(){
 }
 
 function renderDashboard(c){
+  // Memoize: skip full re-render if data count unchanged (very fast check)
+  const _dashKey = DB.lvs.length+'|'+DB.release2.length+'|'+DB.cls.length+'|'+DB.comp.length+'|'+DB.parsDocs.length;
+  if(window._lastDashKey === _dashKey && c.innerHTML.length > 100){
+    // Data unchanged — just refresh the hourly chart
+    setTimeout(renderHourlyTaskChart, 10);
+    return;
+  }
+  window._lastDashKey = _dashKey;
   const today=todayDateStringET();
   const now=nowET();
   const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
