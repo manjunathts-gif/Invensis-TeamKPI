@@ -4011,13 +4011,13 @@ async function loadAllFromSupabase(){
       DB.instructions = (instructions||[]).map(mapInstruction);
 
       if(bar) bar.style.width='50%';
-      // Load last 2 days of task data first — user sees data instantly
+      // Load last 2 days of task data first for speed, but release/audit always load ALL rows
       const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
         dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
         dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
-        dbLoadRecent('part_lot',2), dbLoadRecent('release',2),
+        dbLoadRecent('part_lot',2), dbLoad('release'),
         dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
-        dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
+        dbLoadRecent('client_errors',2), dbLoad('audit')
       ]);
       DB.lvs       = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls       = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4042,9 +4042,9 @@ async function loadAllFromSupabase(){
           const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoadRecent('release',90),
+            dbLoadRecent('part_lot',30), dbLoad('release'),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',30), dbLoadRecent('audit',90)
+            dbLoadRecent('client_errors',30), dbLoad('audit')
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4066,10 +4066,10 @@ async function loadAllFromSupabase(){
 
 
     } else if(isRlTL){
-      // Release Team Lead: release + audit (last 90 days) + errors + clients + instructions + users
+      // Release Team Lead: ALL release + ALL audit + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoadRecent('release',90), dbLoadRecent('audit',90), dbLoadRecent('client_errors',90), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs',90), dbLoad('login_users')
+        dbLoad('release'), dbLoad('audit'), dbLoadRecent('client_errors',90), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs',90), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4088,9 +4088,9 @@ async function loadAllFromSupabase(){
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
-        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release',90),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoad('release'),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
-        dbLoadRecent('audit'),dbLoad('instructions')
+        dbLoad('audit'),dbLoad('instructions')
       ]);
       DB.users=users.map(mapUser);
       if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
@@ -4132,7 +4132,7 @@ async function loadAllFromSupabase(){
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoadRecent('release',90),
+        dbLoadRecent('part_lot'), dbLoad('release'),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
         dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
@@ -4427,8 +4427,11 @@ async function globalRefresh(){
       for(const t of tables){
         // Load recent 30 days for task tables (much faster than full load)
         const taskTables = ['lvs','cls','comp','pars_docs','ocean_docs',
-          'part_lot','release','ocean_tt','b2_entries','audit','client_errors'];
-        const rows = taskTables.includes(t)
+          'part_lot','ocean_tt','b2_entries','client_errors'];
+        const fullLoadTables = ['release','audit']; // always load ALL rows — count must match DB
+        const rows = fullLoadTables.includes(t)
+          ? await dbLoad(t)
+          : taskTables.includes(t)
           ? await dbLoadRecent(t, 30)
           : await dbLoad(t);
         if(!rows) continue;
@@ -4535,9 +4538,14 @@ function startBgPoll(){
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle — use 90 days for release (count accuracy), 30 for others
-          const fullDays = (tbl === 'release' || tbl === 'audit') ? 90 : 30;
-          rows = await dbLoadRecent(tbl, fullDays);
+          // FULL PATH: every 6th cycle
+          // release/audit use dbLoad (ALL rows, no date filter) — ensures count matches DB
+          // Other tables use dbLoadRecent (30 days) — keeps payload small
+          if(tbl === 'release' || tbl === 'audit'){
+            rows = await dbLoad(tbl);
+          } else {
+            rows = await dbLoadRecent(tbl, 30);
+          }
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
