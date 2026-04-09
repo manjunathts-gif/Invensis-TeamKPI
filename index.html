@@ -9188,7 +9188,7 @@ function buildNav(){
       {id:'gdrive',l:'📤 Google Drive',g:'admin'},
       {id:'clients',l:'🏢 Clients',g:'admin'},
       {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
-      {id:'productivity',l:'📈 Productivity',g:'reports'},
+      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       {id:'tatreasons',l:'💬 TAT Reasons',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'archive',l:'🗄️ Archive & Cleanup',g:'admin'},
@@ -9214,7 +9214,7 @@ function buildNav(){
       {id:'tatanalyzer',l:'🎯 TAT Analyzer',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
       {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
-      {id:'productivity',l:'📈 Productivity',g:'reports'},
+      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
@@ -9231,7 +9231,7 @@ function buildNav(){
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
       {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
-      {id:'productivity',l:'📈 Productivity',g:'reports'},
+      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
@@ -9263,7 +9263,7 @@ function buildNav(){
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
-      {id:'productivity',l:'📈 Productivity',g:'reports'},
+      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
@@ -9479,7 +9479,7 @@ function showPage(id){
     status:'Team Status',users:'Users',clients:'Clients',
     oceantt:'Ocean T&T',b2entries:'B2 Entries',audit:'Audit',
     mystatus:'My Status',errorreport:'Error Report',loginusers:'Login Users',gdrive:'Google Drive',
-    tatanalyzer:'📊 TAT Analyzer',tatreasons:'TAT Reasons',instructions:'📋 Instruction Followup',idlelog:'⏸️ Idle Log'};
+    tatanalyzer:'📊 TAT Analyzer',tatreasons:'TAT Reasons',instructions:'📋 Instruction Followup',idlelog:'⏸️ Idle Log',tatissue:'🚨 TAT Issue'};
   const titleEl=document.getElementById('hopePageTitle');
   const crumbEl=document.getElementById('hopeBreadcrumb');
   if(titleEl) titleEl.textContent=pageTitles[id]||'Overview';
@@ -9516,6 +9516,7 @@ function showPage(id){
   else if(id==='audit') renderAudit(c);
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
+  else if(id==='tatissue') renderTATIssue(c);
   else if(id==='instructions') renderInstructions(c);
   else if(id==='qualityanalytics') renderQualityAnalytics(c);
   else if(id==='idlelog') renderIdleLogPage(c);
@@ -17609,6 +17610,127 @@ function pgGoRL(p){
 function clearRLFilter(){
   _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
   const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+}
+
+// ══════════════════════════════════════════
+//  TAT ISSUE TAB — TAT Not Reached Records
+//  Across ALL Modes from Release table
+//  Admin-only edit. All roles can view.
+// ══════════════════════════════════════════
+function renderTATIssue(c){
+  if(!c) return;
+  const all=(DB.release2||[]).filter(r=>{
+    const tv=(r.tat||'').toLowerCase();
+    return tv.includes('not reached')||tv.includes('not-reached');
+  });
+  const today=todayDateStringET();
+  const modes=[...new Set(all.map(r=>r.mode||'—').filter(Boolean))].sort();
+  c.innerHTML=`
+  <div class="ph">
+    <div>
+      <div class="pt">🚨 TAT Issue <span class="pbadge">Live</span></div>
+      <div class="ps">All Release records where TAT Not Reached — across all modes</div>
+    </div>
+  </div>
+  <div class="sg">
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv">${all.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
+  </div>
+  <div class="fb">
+    <span class="flbl">🔍 Filter</span>
+    <input class="fi2" id="ti_fd1" type="date" placeholder="From"/>
+    <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
+    <input class="fi2" id="ti_fd2" type="date" placeholder="To"/>
+    <select class="fs2" id="ti_fu">
+      <option value="">All Users</option>
+      ${[...new Set((DB.release2||[]).map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
+    </select>
+    <select class="fs2" id="ti_fteam">
+      <option value="">All Teams</option>
+      ${[...new Set((DB.release2||[]).map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
+    </select>
+    <select class="fs2" id="ti_fmode">
+      <option value="">All Modes</option>
+      ${modes.map(m=>`<option>${m}</option>`).join('')}
+    </select>
+    <input class="fi2" id="ti_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="applyTIFilter()"/>
+    <button class="btn-f" onclick="applyTIFilter()">Apply</button>
+    <button class="btn-cl" onclick="clearTIFilter()">Clear</button>
+  </div>
+  <div class="tw">
+    <div class="th2"><div class="tt">TAT Not Reached — Release Records</div><div class="tc" id="tiCount">${all.length} records</div></div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th>Client</th><th>Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>TAT Reason / Comments</th>${isAdmin()?'<th>✏️ Edit</th>':''}</tr></thead>
+      <tbody id="tiTbody"></tbody>
+    </table></div>
+  </div>
+  <div id="pg_ti"></div>`;
+  pgSetData('ti', all);
+  renderTIRows(pgSlice('ti'));
+  pgRender('ti','pg_ti','pgGoTI');
+}
+
+function renderTIRows(data){
+  const tbody=document.getElementById('tiTbody');
+  if(!tbody) return;
+  const colCount=isAdmin()?18:17;
+  if(!data||!data.length){
+    tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">✅</div><div class="empty-t">No TAT Not Reached records — All good!</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML=data.map((r,i)=>`<tr>
+    <td class="mono" style="color:var(--text3)">${i+1}</td>
+    <td class="mono" style="color:var(--rose);font-weight:700">${r.txn||'—'}</td>
+    <td style="font-size:11px">${r.transcreated||'—'}</td>
+    <td style="font-size:11px">${r.eta||'—'}</td>
+    <td class="mono">${_clientCode(r.client)}</td>
+    <td style="font-weight:500">${_clientName(r.clientname)}</td>
+    <td><span class="badge b-te">${r.team||'—'}</span></td>
+    <td><span class="badge b-am">${r.mode||'—'}</span></td>
+    <td class="mono" style="font-size:11px;color:var(--teal)">${r.docrcvd?r.docrcvd.replace('T',' ').slice(0,16):'—'}</td>
+    <td class="mono" style="text-align:center">${r.lines||'—'}</td>
+    <td><span class="badge" style="background:rgba(239,68,68,.1);color:var(--rose)">${r.status||'—'}</span></td>
+    <td style="font-weight:600">${r.user||'—'}</td>
+    <td class="mono" style="font-size:11px;color:var(--text3)">${r.start||'—'}</td>
+    <td class="mono" style="font-size:11px;color:var(--text3)">${r.submitted||'—'}</td>
+    <td class="mono" style="color:var(--sky)">${r.duration||'—'}</td>
+    <td>${tatBadge(r.tat)}</td>
+    <td style="font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.comments||'—'}</td>
+    ${isAdmin()?`<td>${adminActionBtns('release2',r._dbid||r.id,r.txn)}</td>`:''}
+  </tr>`).join('');
+  const cnt=document.getElementById('tiCount');
+  if(cnt) cnt.textContent=(_pgState['ti']?.filtered?.length||data.length)+' records';
+}
+
+function applyTIFilter(){
+  const d1=document.getElementById('ti_fd1')?.value;
+  const d2=document.getElementById('ti_fd2')?.value;
+  const u=document.getElementById('ti_fu')?.value;
+  const tm=document.getElementById('ti_fteam')?.value;
+  const mo=document.getElementById('ti_fmode')?.value;
+  const q=(document.getElementById('ti_search')?.value||'').toLowerCase().trim();
+  let data=(DB.release2||[]).filter(r=>{
+    const tv=(r.tat||'').toLowerCase();
+    return tv.includes('not reached')||tv.includes('not-reached');
+  });
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
+  pgSetData('ti', data);
+  renderTIRows(pgSlice('ti'));
+  pgRender('ti','pg_ti','pgGoTI');
+}
+function pgGoTI(p){ pgGo('ti', p, renderTIRows, 'pg_ti', 'pgGoTI'); }
+function clearTIFilter(){
+  ['ti_fd1','ti_fd2','ti_fu','ti_fteam','ti_fmode','ti_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const data=(DB.release2||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');});
+  pgSetData('ti', data);
+  renderTIRows(pgSlice('ti'));
+  pgRender('ti','pg_ti','pgGoTI');
 }
 
 function openRelease2(){
