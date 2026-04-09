@@ -3351,26 +3351,40 @@ async function dbLoadRecent(table, days=30){
     if(from >= 10000) break; // hard safety cap
   }
 
-  // Client-side date filter — handles all formats stored in DB:
-  //   ISO with tz:  2026-04-01T14:36:31-05:00  → new Date() handles natively
-  //   DD-MM-YYYY:   31-03-2026 12:37:21         → reorder to YYYY-MM-DDTHH:MM:SS
+  // Client-side date filter — handles all 3 formats stored in DB:
+  //   ISO:        2026-04-01T14:36:31-05:00  → new Date() natively
+  //   DD-MM-YYYY: 31-03-2026 12:37:21        → reorder to YYYY-MM-DDTHH:MM:SS
+  //   D/M/YYYY:   1/4/2026 16:58             → reorder to YYYY-MM-DDTHH:MM:SS
   const filtered = allRows.filter(r => {
     const raw = r[dateCol] || r.created_at;
     if(!raw || raw === '—' || raw === '') return true; // no date — include
     const s = String(raw).trim();
     let ms = NaN;
-    // Try native parse first (ISO format)
+
+    // 1. ISO format — new Date() handles natively (2026-04-01T...)
     const d1 = new Date(s);
-    if(!isNaN(d1)) { ms = d1.getTime(); }
-    else {
-      // DD-MM-YYYY HH:MM:SS — extract parts and reorder
+    if(!isNaN(d1)){ ms = d1.getTime(); }
+
+    // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
+    if(isNaN(ms)){
       const m = s.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
       if(m){
-        const iso = m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00');
-        const d2 = new Date(iso);
+        const d2 = new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00'));
         if(!isNaN(d2)) ms = d2.getTime();
       }
     }
+
+    // 3. D/M/YYYY H:MM  e.g. "1/4/2026 16:58" (day/month/year, no leading zeros)
+    if(isNaN(ms)){
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))? *$/);
+      if(m){
+        const dd = m[1].padStart(2,'0');
+        const mm = m[2].padStart(2,'0');
+        const d3 = new Date(m[3]+'-'+mm+'-'+dd+'T'+(m[4]||'00:00:00'));
+        if(!isNaN(d3)) ms = d3.getTime();
+      }
+    }
+
     if(isNaN(ms)) return true; // unparseable — always include
     return ms >= cutoffMs;
   });
