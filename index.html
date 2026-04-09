@@ -3328,6 +3328,12 @@ function _makeSupaClient(){
       gte(c,v){_filters.push(c+'=gte.'+v);return builder;},
       lt(c,v){_filters.push(c+'=lt.'+v);return builder;},
       lte(c,v){_filters.push(c+'=lte.'+v);return builder;},
+      is(c,v){
+        // PostgREST IS filter: .is('col', null) → col=is.null
+        const val = v === null ? 'null' : v === true ? 'true' : v === false ? 'false' : String(v);
+        _filters.push(c+'=is.'+val);
+        return builder;
+      },
       in(c,vals){_filters.push(c+'=in.('+vals.map(v=>encodeURIComponent(v)).join(',')+')');return builder;},
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
@@ -3515,49 +3521,86 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-
-  // ── Compute ISO cutoff date for the date filter ──
-  // This is the critical fix: actually apply the days filter so we don't fetch ALL rows
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  let allRows = [];
-  let from = 0;
+  // ── Tables where the primary date column can be NULL (e.g. release.submitted is
+  //    NULL for in-progress records). For these tables we fetch in two passes:
+  //    Pass A: rows where dateCol >= cutoff (recent completed records)
+  //    Pass B: rows where dateCol IS NULL (in-progress / no submit date yet)
+  //    Pass C: rows where start_time >= cutoff AND dateCol IS NULL (safety net)
+  //    We merge and deduplicate by id.
+  const NULLABLE_DATE_TABLES = ['release','ocean_tt','b2_entries','part_lot','comp','lvs','cls','pars_docs','ocean_docs'];
+  const useNullableStrategy = NULLABLE_DATE_TABLES.includes(table);
+
   const BATCH = 1000;
 
+  async function _fetchWithFilter(extraFilter){
+    let rows = [], from = 0;
+    while(true){
+      let q = _supa.from(table).select('*')
+        .order(dateCol, {ascending:false})
+        .range(from, from + BATCH - 1);
+      if(extraFilter) q = extraFilter(q);
+      const {data, error} = await q;
+      if(error) return null; // signal error to caller
+      if(data && data.length > 0) rows = rows.concat(data);
+      if(!data || data.length < BATCH) break;
+      from += BATCH;
+      if(from > 10000) break;
+    }
+    return rows;
+  }
+
+  if(useNullableStrategy){
+    // Pass A: records with dateCol set and within the date window
+    const passA = await _fetchWithFilter(q => q.gte(dateCol, cutoff));
+
+    // Pass B: records with NULL dateCol (in-progress / not yet submitted)
+    // Use start_time as fallback filter so we don't pull very old nulls
+    const passB_raw = await _fetchWithFilter(q =>
+      q.is(dateCol, null).gte('start_time', cutoff)
+    );
+
+    // If both passes worked, merge and deduplicate
+    if(passA !== null){
+      const seen = new Set();
+      const merged = [];
+      for(const r of [...(passA||[]), ...(passB_raw||[])]){
+        const key = String(r.id);
+        if(!seen.has(key)){ seen.add(key); merged.push(r); }
+      }
+      return merged;
+    }
+    // If passA failed (column error), fall through to id-sort fallback below
+  }
+
+  // Standard path: date-filtered fetch for tables with reliable date columns
+  let allRows = [], from = 0;
   while(true){
-    // Apply .gte(dateCol, cutoff) — only fetch rows newer than cutoff date
-    let query = _supa.from(table).select('*', {count:'exact'})
+    let query = _supa.from(table).select('*')
       .gte(dateCol, cutoff)
       .order(dateCol, {ascending:false})
       .range(from, from + BATCH - 1);
-
-    const {data, error, count} = await query;
-
+    const {data, error} = await query;
     if(error){
-      // If date column doesn't exist, retry without date filter but with id sort
-      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying without date filter');
-      let allRows2 = [];
-      let from2 = 0;
+      // Column missing — fall back to id sort with no date filter
+      let fallback = [], f2 = 0;
       while(true){
         const {data:d2, error:e2} = await _supa.from(table).select('*')
-          .order('id', {ascending:false})
-          .range(from2, from2 + BATCH - 1);
-        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
-        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
+          .order('id', {ascending:false}).range(f2, f2 + BATCH - 1);
+        if(e2) return fallback;
+        if(d2 && d2.length > 0) fallback = fallback.concat(d2);
         if(!d2 || d2.length < BATCH) break;
-        from2 += BATCH;
-        if(from2 > 10000) break; // safety cap
+        f2 += BATCH;
+        if(f2 > 10000) break;
       }
-      return allRows2;
+      return fallback;
     }
-
     if(data && data.length > 0) allRows = allRows.concat(data);
-    // Stop if we got fewer rows than batch size (last page)
     if(!data || data.length < BATCH) break;
     from += BATCH;
-    if(from > 10000) break; // safety cap — 10k rows max per table is enough
+    if(from > 10000) break;
   }
-
   return allRows;
 }
 
@@ -3999,9 +4042,9 @@ async function loadAllFromSupabase(){
           const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoadRecent('release',30),
+            dbLoadRecent('part_lot',30), dbLoadRecent('release',90),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
+            dbLoadRecent('client_errors',30), dbLoadRecent('audit',90)
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4023,10 +4066,10 @@ async function loadAllFromSupabase(){
 
 
     } else if(isRlTL){
-      // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
+      // Release Team Lead: release + audit (last 90 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
+        dbLoadRecent('release',90), dbLoadRecent('audit',90), dbLoadRecent('client_errors',90), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs',90), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4045,7 +4088,7 @@ async function loadAllFromSupabase(){
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
-        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release'),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release',90),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
         dbLoadRecent('audit'),dbLoad('instructions')
       ]);
@@ -4089,7 +4132,7 @@ async function loadAllFromSupabase(){
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoadRecent('release'),
+        dbLoadRecent('part_lot'), dbLoadRecent('release',90),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
         dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
@@ -4492,8 +4535,9 @@ function startBgPoll(){
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle — fetch last 30 days only (date-filtered)
-          rows = await dbLoadRecent(tbl, 30);
+          // FULL PATH: every 6th cycle — use 90 days for release (count accuracy), 30 for others
+          const fullDays = (tbl === 'release' || tbl === 'audit') ? 90 : 30;
+          rows = await dbLoadRecent(tbl, fullDays);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
