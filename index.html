@@ -3325,27 +3325,22 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-
-  // ── Compute ISO cutoff date for the date filter ──
-  // This is the critical fix: actually apply the days filter so we don't fetch ALL rows
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
+  let totalCount = null;
 
   while(true){
-    // Apply .gte(dateCol, cutoff) — only fetch rows newer than cutoff date
-    let query = _supa.from(table).select('*', {count:'exact'})
+    const {data, error, count} = await _supa.from(table).select('*', {count:'exact'})
       .gte(dateCol, cutoff)
       .order(dateCol, {ascending:false})
       .range(from, from + BATCH - 1);
 
-    const {data, error, count} = await query;
-
     if(error){
-      // If date column doesn't exist, retry without date filter but with id sort
-      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying without date filter');
+      // Date column filter failed — fall back to id-ordered full fetch
+      console.warn('dbLoadRecent '+table+' fallback (no date filter):', error.message);
       let allRows2 = [];
       let from2 = 0;
       while(true){
@@ -3356,16 +3351,23 @@ async function dbLoadRecent(table, days=30){
         if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
         if(!d2 || d2.length < BATCH) break;
         from2 += BATCH;
-        if(from2 > 10000) break; // safety cap
+        if(from2 > 10000) break;
       }
       return allRows2;
     }
 
     if(data && data.length > 0) allRows = allRows.concat(data);
-    // Stop if we got fewer rows than batch size (last page)
-    if(!data || data.length < BATCH) break;
+    // Capture exact total count from Supabase on first batch
+    if(totalCount === null && count !== null) totalCount = count;
+    // Use count-based termination — handles mixed date formats where text
+    // comparison causes short batches even when more records exist
+    if(totalCount !== null){
+      if(allRows.length >= totalCount) break;
+    } else {
+      if(!data || data.length < BATCH) break;
+    }
     from += BATCH;
-    if(from > 10000) break; // safety cap — 10k rows max per table is enough
+    if(from > 10000) break; // hard safety cap
   }
 
   return allRows;
