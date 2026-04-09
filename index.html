@@ -3302,7 +3302,6 @@ try {
       sessionStorage.setItem('kpi_api_key', _ak);
       localStorage.setItem('kpi_api_key_pub', _ak);
     }catch(e){}
-    console.log('✅ Direct REST client ready — no auth/websocket overhead');
   }
 } catch(e){
   console.warn('Init failed:', e.message);
@@ -3314,14 +3313,14 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 // ── Generic helpers ──────────────────────────────────────────
 // Tables that do NOT have a created_at column
 // Tables without created_at column — order by id or name instead
-const NO_CREATED_AT=['clients','users','login_users','productivity_log','cls','lvs','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','client_errors','idle_log']; // instructions removed — it has created_at column // 'audit' removed — audit table HAS created_at column, needed for dbLoadRecent
+const NO_CREATED_AT=['clients','users','login_users','cls','lvs','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','client_errors','idle_log']; // productivity_log removed — disabled
 
 // ★ Per-table sort column mapping (matches SQL schema filter fields)
 // Each task table is ordered by its own submission/completion timestamp DESC
 // so the most recent entry always appears at the top of the table.
 const TABLE_SORT_COL={
   eta_assignments:  'created_at',
-  productivity_log: 'logged_at',
+  // productivity_log removed — tab disabled
   lvs:          'submitted_time',
   cls:          'submitted_time',
   comp:         'completed_time',
@@ -3376,7 +3375,6 @@ async function dbLoadRecent(table, days=30){
         from2 += BATCH;
         if(from2 > 10000) break; // safety cap
       }
-      console.log('dbLoadRecent('+table+'): '+allRows2.length+' rows (fallback id sort, no date filter)');
       return allRows2;
     }
 
@@ -3387,13 +3385,12 @@ async function dbLoadRecent(table, days=30){
     if(from > 10000) break; // safety cap — 10k rows max per table is enough
   }
 
-  console.log('dbLoadRecent('+table+', '+days+'d): '+allRows.length+' rows fetched');
   return allRows;
 }
 
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
-const OPTIONAL_TABLES=['idle_log','eta_assignments','productivity_log','tat_reasons','attendance_log']; // instructions is now a required table
+const OPTIONAL_TABLES=['idle_log','eta_assignments','tat_reasons','attendance_log']; // productivity_log removed — tab disabled
 // Track which missing-table warnings already shown
 const _missingTableWarned={};
 
@@ -3404,7 +3401,6 @@ async function dbLoad(table){
     try{
       const cached = JSON.parse(localStorage.getItem('kpi_clients_cache_v2')||'null');
       if(cached && cached.ts && (Date.now()-cached.ts) < 60*60*1000 && cached.data?.length>0){
-        console.log('dbLoad(clients): '+cached.data.length+' rows from cache (1h TTL)');
         return cached.data;
       }
     }catch(e){}
@@ -3444,7 +3440,6 @@ async function dbLoad(table){
     from+=SUPABASE_PAGE_SIZE;
     if(from>50000) break;
   }
-  console.log('dbLoad('+table+'): '+allRows.length+' rows fetched');
   // Cache clients table for 1 hour
   if(table === 'clients' && allRows.length > 0){
     try{ localStorage.setItem('kpi_clients_cache_v2', JSON.stringify({ts:Date.now(),data:allRows})); }catch(e){}
@@ -3536,7 +3531,6 @@ async function dbInsert(table,row){
   // data is always an array [{...}] — return first row for single inserts
   const result = Array.isArray(data)?data[0]??data:data;
   // Log successful saves so user can verify in DevTools
-  console.log('✅ SAVED to DB:', table, 'id=', result?.id||'?');
   return result;
 }
 
@@ -3577,7 +3571,6 @@ async function dbDeleteAdmin(table, id){
   if(!_supa) throw new Error('Not connected to database');
   if(!id || String(id) === 'undefined') throw new Error('Invalid ID — record not synced to DB yet');
 
-  console.log('🗑️ Deleting from', table, 'id=', id);
 
   // Use the custom REST client so the request goes through the Cloudflare proxy
   // (same path as all other DB operations — proxy forwards DELETE correctly this way)
@@ -3593,7 +3586,7 @@ async function dbDeleteAdmin(table, id){
       console.warn([
         'lvs','cls','comp','pars_docs','ocean_docs','part_lot','release',
         'ocean_tt','b2_entries','client_errors','audit','instructions',
-        'idle_log','login_users','users','clients','productivity_log','tat_reasons'
+        'idle_log','login_users','users','clients','tat_reasons'
       ].map(t =>
         `DROP POLICY IF EXISTS "Allow delete" ON public.${t};\n` +
         `CREATE POLICY "Allow delete" ON public.${t} FOR DELETE USING (true);`
@@ -3602,7 +3595,6 @@ async function dbDeleteAdmin(table, id){
     }
     throw new Error('Delete failed: ' + msg.substring(0, 120));
   }
-  console.log('✅ Deleted from', table, 'id=', id);
 }
 async function dbUpdate(table,id,patch){
   if(!_supa) return null;
@@ -3759,11 +3751,9 @@ function _restoreFromCache(users){
 // Release TL:   release + audit + errors
 // Manager:      all tables
 async function loadAllFromSupabase(){
-  if(!_supa){console.log('Local mode — no DB load');return;}
-  const detail=document.getElementById('loadingDetail');
+  if(!_supa){  const detail=document.getElementById('loadingDetail');
   const setDetail=t=>{
     if(detail) detail.textContent=t;
-    console.log(t);
     // Update loading bar width based on progress keyword
     const bar=document.getElementById('loadingProgressBar');
     if(bar){
@@ -3855,7 +3845,6 @@ async function loadAllFromSupabase(){
           _saveTaskCache();
           if(CU && !isPanelOpen()) refreshPage();
           showToast('✅ 30-day history loaded — '+DB.release2.length+' Release records');
-          console.log('✅ Manager background history load complete');
         }catch(bg){ console.warn('Background history load error:', bg.message); }
       }, 1500); // start after user is already in the app
 
@@ -3969,7 +3958,6 @@ async function loadAllFromSupabase(){
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
     }
 
-    console.log('✅ Role-based load complete for',CU?.role,CU?.task);
     window._dbLoaded = true; // mark DB as loaded — prevent cache from overwriting fresh data
     // Always save clients to localStorage so session restore has them immediately
     try{ if(DB.clients&&DB.clients.length>0) localStorage.setItem('kpi_clients_cache', JSON.stringify(DB.clients)); }catch(e){}
@@ -4023,6 +4011,14 @@ function getActivePage(){
 // dbArray   = the DB.xxx array to update
 // afterShow = page to show after insert
 // Sort all task DB arrays so newest record (highest id) is always first
+// ── Debounce utility — prevents filter functions firing on every keystroke ──
+// Improves INP on all search/filter inputs across every table page
+const _debouncedFns = {};
+function _debounce(key, fn, delay){
+  clearTimeout(_debouncedFns[key]);
+  _debouncedFns[key] = setTimeout(fn, delay || 220);
+}
+
 function tatBadge(tat){
   const t=(tat||'').toLowerCase().trim();
   if(!t||t==='—'||t==='') return '<span style="color:var(--text3)">—</span>';
@@ -4082,17 +4078,8 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
   window._pendingPageRefresh=null;
   window._saveJustFired=true;
 
-  // Feature 2: Productivity tracking — hook into every task submit
-  try{
-    const _prodUser = localRow.user_name||localRow.assignedTo||localRow.user||supaRow?.user_name||supaRow?.assigned_to||'';
-    const _taskLabel = {
-      'lvs':'LVS','cls':'Classifier','comp':'Compliance',
-      'pars_docs':'PARS Docs','ocean_docs':'Ocean Docs','part_lot':'Part Lot',
-      'release':'Release','ocean_tt':'Ocean T&T','b2_entries':'B2 Entries',
-      'audit':'Audit'
-    }[supaTable] || supaTable;
-    if(_prodUser) _prodRecordSubmit(_prodUser, _taskLabel);
-  }catch(pe){ console.warn('Prod track err:',pe.message); }
+  // Feature 2: Productivity tracking — DISABLED (tab removed for performance)
+  // _prodRecordSubmit was removed to eliminate unnecessary DB writes on every submit
 
   closePanel();
   showToast('✅ Entry saved!');
@@ -4379,10 +4366,9 @@ function startBgPoll(){
         if(ap && !isPanelOpen()){
           // SPEED FIX: only refresh if user is on a relevant page
           const taskPages = ['lvs','classifier','compliance','parsdocs','oceandocs',
-            'partlot','release2','oceantt','b2entries','dashboard','status','reports'];
+            'partlot','release2','oceantt','b2entries','dashboard','status','reports','tatissue'];
           if(taskPages.includes(ap)) _silentRefreshPage(ap);
         }
-        console.log('[bgPoll] Data updated — silent refresh');
       }
       // Measure actual DB ping and show in UI
       const _pingEnd = Date.now();
@@ -4390,32 +4376,24 @@ function startBgPoll(){
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
   }, 90000); // Poll every 90s — still fresh, reduces DB calls by 33%
-  console.log('[bgPoll] Started — polling every 90s');
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
 let _keepAliveInterval = null;
 function startKeepAlive(){
   if(_keepAliveInterval) clearInterval(_keepAliveInterval);
-  _keepAliveInterval = setInterval(async()=>{
-    if(!_supa || !CU || document.hidden) return;
-    try{
-      await _supa.from('login_users').select('id').limit(1);
-      console.log('[KeepAlive] Ping sent');
-    }catch(e){ /* silent */ }
-  }, 4 * 60 * 1000); // every 4 minutes
+  // Duplicate keepAlive removed — _supaKeepAlive at top already pings every 8 min
+  // Saves ~15 unnecessary DB calls/hour per user
 }
 function stopKeepAlive(){
   if(_keepAliveInterval){ clearInterval(_keepAliveInterval); _keepAliveInterval=null; }
 }
 
 function stopBgPoll(){
-  if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null; console.log('[bgPoll] Stopped'); }
-}
+  if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null;}
 
 function setupRealtime(){
   // This app uses a custom REST client without WebSocket support
   // Realtime is implemented via smart polling instead
-  console.log('[Realtime] Using poll-based sync (REST client mode)');
 
   // Update the live indicator
   const ind = document.getElementById('realtimeIndicator');
@@ -4516,7 +4494,7 @@ function startETAPoll(){
       _etaLastChecked = new Date().toISOString();
 
     } catch(e){ /* silent fail */ }
-  }, 15000); // every 15 seconds — reduced DB load
+  }, 45000); // every 45 seconds — was 15s, reduced to cut DB calls by 67%
 }
 
 // ── ETA Acknowledgment Poll — TL sees acks in real-time ──
@@ -4554,7 +4532,7 @@ function startETAAckPoll(){
         }
       });
     } catch(e){ /* silent */ }
-  }, 20000); // every 20 seconds — reduced DB load
+  }, 45000); // every 45 seconds — was 20s, reduced to cut DB calls by 55%
 }
 
 function stopETAPoll(){
@@ -5351,7 +5329,6 @@ async function _etaAssignUser(txn, userId, userName){
       });
       if(savedEta && savedEta.id){
         window._etaAssignments[txn]._dbid = savedEta.id;
-        console.log('[ETA] Saved to DB, id='+savedEta.id);
       } else {
         console.warn('[ETA] DB save returned no id');
       }
@@ -5532,338 +5509,17 @@ function _etaCheckUserNotifications(){
 
 
 // ══════════════════════════════════════════════════════════════════════
-// FEATURE 2: PRODUCTIVITY TRACKING — Full UI
+// FEATURE 2: PRODUCTIVITY TRACKING — DISABLED FOR PERFORMANCE
+// Removed: tab, DB writes on every submit, dbLoad on page open, 60s interval
+// INP was 6,968ms on nb_productivity button — now eliminated entirely
 // ══════════════════════════════════════════════════════════════════════
 
-const PROD_IDLE_THRESHOLD_MIN = 15; // Flag if > 15 min between records
+const PROD_IDLE_THRESHOLD_MIN = 15; // kept to avoid reference errors
+function _prodRecordSubmit(){ /* no-op — productivity tracking disabled */ }
+function renderProductivity(c){ if(c) c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Productivity Tracker disabled.</div>'; }
+function _fmtTimeAgo(){ return '—'; }
+function _prodClearData(){ /* no-op */ }
 
-
-function _prodRecordSubmit(username, taskName){
-  if(!username) return;
-  if(!window._prodTracking) window._prodTracking = {};
-  if(!window._prodTracking[username]){
-    window._prodTracking[username] = {lastSubmit: null, gaps: [], task: taskName};
-  }
-  const tracker = window._prodTracking[username];
-  const now = new Date();
-  if(tracker.lastSubmit){
-    const gapMin = (now - tracker.lastSubmit) / 60000;
-    const gapRounded = Math.round(gapMin * 10) / 10;
-    tracker.gaps.push({gapMin: gapRounded, at: now.toISOString()});
-
-    // Persist every gap to Supabase productivity_log
-    if(_supa){
-      dbInsert('productivity_log', {
-        username,
-        task: taskName,
-        gap_minutes: gapRounded,
-        logged_at: now.toISOString()
-      }).catch(e => console.warn('productivity_log save failed:', e.message));
-    }
-
-    if(gapMin > PROD_IDLE_THRESHOLD_MIN){
-      // Alert visible to Manager/TL/Supervisor
-      const isMgrTL = CU.role==='Manager'||CU.role==='Supervisor'||CU.role==='Team Lead'||CU.task==='Manager';
-      if(isMgrTL){
-        showToast('⚠️ '+username+' ('+taskName+') — '+Math.round(gapMin)+'m gap between records', true);
-      }
-    }
-  }
-  tracker.lastSubmit = now;
-  // Update productivity page if open
-  if(_currentPage === 'productivity'){
-    renderProductivity(document.getElementById('pc'));
-  }
-}
-
-function renderProductivity(c){
-  const canView=CU.role==='Manager'||CU.role==='Supervisor'||
-                CU.role==='Team Lead'||CU.task==='Manager'||
-                CU.username===ADMIN_UNAME;
-  if(!canView){
-    c.innerHTML='<div class="ph"><div class="pt">📈 Productivity</div></div><div style="padding:40px;text-align:center;color:var(--text3)">Access restricted.</div>';
-    return;
-  }
-
-  // Load from DB if not done
-  if(_supa&&!window._prodDBLoaded&&!window._prodManualCleared){
-    window._prodDBLoaded=true;
-    c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading productivity data...</div>';
-    const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-    dbLoad('productivity_log').then(rows=>{
-      if(rows&&rows.length){
-        rows.filter(r=>r.logged_at&&new Date(r.logged_at).toISOString().slice(0,10)===_etToday)
-          .forEach(r=>{
-            if(!window._prodTracking) window._prodTracking={};
-            if(!window._prodTracking[r.username]) window._prodTracking[r.username]={lastSubmit:null,gaps:[],task:r.task};
-            window._prodTracking[r.username].gaps.push({gapMin:parseFloat(r.gap_minutes)||0,at:r.logged_at||new Date().toISOString(),fromDB:true});
-          });
-      }
-      const _pc=document.getElementById('pc');
-      if(_pc) renderProductivity(_pc);
-    }).catch(()=>{const _pc=document.getElementById('pc');if(_pc) renderProductivity(_pc);});
-    return;
-  }
-
-  const data=window._prodTracking||{};
-  const _etToday=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-  // Filter to today only
-  Object.keys(data).forEach(u=>{
-    if(data[u].gaps) data[u].gaps=data[u].gaps.filter(g=>!g.at||new Date(g.at).toISOString().slice(0,10)===_etToday);
-  });
-
-  const now=new Date();
-  const hours=['08','09','10','11','12','13','14','15','16','17','18','19','20'];
-  const nowH=String(now.getHours()).padStart(2,'0');
-
-  // Build per-user data from both _prodTracking AND DB task records
-  // Merge task submissions with productivity gaps to get a full hourly picture
-  const allTaskDBs = [
-    {db:DB.lvs,      fld:'assignedTo', task:'LVS'},
-    {db:DB.cls,      fld:'assignedTo', task:'Classifier'},
-    {db:DB.comp,     fld:'assignedTo', task:'Compliance'},
-    {db:DB.parsDocs, fld:'user',       task:'PARS Docs'},
-    {db:DB.oceanDocs,fld:'user',       task:'Ocean Docs'},
-    {db:DB.partLot,  fld:'user',       task:'Part Lot'},
-    {db:DB.release2, fld:'user',       task:'Release'},
-    {db:DB.oceanTT,  fld:'user',       task:'Ocean T&T'},
-    {db:DB.b2entries,fld:'user',       task:'B2 Entries'},
-  ];
-
-  // Build user map from task records
-  const userMap={};
-  const todayStr=new Date(new Date().getTime()-5*3600000).toISOString().slice(0,10);
-
-  allTaskDBs.forEach(({db,fld,task})=>{
-    (db||[]).forEach(r=>{
-      const created=parseAppDate(r._created)||new Date(0);
-      if(created.toISOString().slice(0,10)!==todayStr) return;
-      const uName=r[fld]||'';
-      if(!uName) return;
-      if(!userMap[uName]) userMap[uName]={name:uName,task,records:[],gaps:[]};
-      userMap[uName].records.push({time:created, r});
-    });
-  });
-
-  // Merge productivity gap data
-  Object.keys(data).forEach(username=>{
-    if(!userMap[username]) userMap[username]={name:username,task:data[username].task||'—',records:[],gaps:[]};
-    userMap[username].gaps=(data[username].gaps||[]).map(g=>({gapMin:g.gapMin,at:new Date(g.at||now)}));
-  });
-
-  const users=Object.keys(userMap).sort();
-  const totalUsers=users.length;
-  const totalRecords=users.reduce((s,u)=>s+userMap[u].records.length,0);
-  const flagged=users.filter(u=>(userMap[u].gaps||[]).some(g=>g.gapMin>PROD_IDLE_THRESHOLD_MIN)).length;
-
-  // ── Per-user hourly record count matrix ──
-  const getHour=r=>String((parseAppDate(r._created)||new Date(0)).getHours()).padStart(2,'0');
-  const getUserHourCount=(recs,h)=>recs.filter(r=>getHour(r.r||r)===h).length;
-  const heatClass=n=>n===0?'h0':n===1?'h1':n<=3?'h2':n<=5?'h3':'h4';
-
-  if(!users.length){
-    c.innerHTML=`
-    <div class="ph"><div><div class="pt">📈 Productivity Tracker <span class="pbadge">Live</span></div>
-      <div class="ps">Per-user hourly breakdown — records submitted each hour · gaps flagged</div></div>
-      <button onclick="renderProductivity(document.getElementById('pc'))" style="padding:7px 14px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
-    </div>
-    <div style="text-align:center;padding:60px 20px;color:var(--text3)">
-      <div style="font-size:48px;margin-bottom:12px">📊</div>
-      <div style="font-size:16px;font-weight:700;margin-bottom:6px">No activity recorded today yet</div>
-      <div style="font-size:13px">Data appears as users submit records throughout the day</div>
-    </div>`;
-    return;
-  }
-
-  const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
-
-  // ── Hourly heatmap header ──
-  const hourHeaders=hours.map(h=>`<th style="text-align:center;min-width:38px;font-size:10px;padding:6px 2px;font-family:var(--mono);${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
-
-  // ── Per-user rows ──
-  const tableRows=users.map((u,ui)=>{
-    const ud=userMap[u];
-    const col=palColors[ui%palColors.length];
-    const totalRecs=ud.records.length;
-    const gaps=ud.gaps||[];
-    const flaggedGaps=gaps.filter(g=>g.gapMin>PROD_IDLE_THRESHOLD_MIN);
-    const lastRec=ud.records.length?ud.records[ud.records.length-1]:null;
-    const lastRecTime=lastRec?parseAppDate(lastRec.r._created||''):null;
-    const idleSince=lastRecTime?Math.round((now-lastRecTime)/60000):null;
-    const isIdle=idleSince!==null&&idleSince>PROD_IDLE_THRESHOLD_MIN;
-
-    const heatCells=hours.map(h=>{
-      const cnt=getUserHourCount(ud.records,h);
-      return `<td class="hcell ${heatClass(cnt)}" style="text-align:center;min-width:38px;padding:6px 2px;font-size:13px">${cnt||'—'}</td>`;
-    }).join('');
-
-    const statusBadge=isIdle
-      ?`<span style="font-size:10px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">⏸ Idle ${idleSince}m</span>`
-      :`<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">✅ Active</span>`;
-
-    const lastTime=lastRecTime?lastRecTime.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Toronto'}):'—';
-
-    return `<tr onclick="(function(el){el.style.display=el.style.display==='none'?'table-row':'none'})(document.getElementById('prod_det_${ui}'))" style="cursor:pointer" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">
-      <td style="padding:10px 14px;min-width:160px">
-        <div style="display:flex;align-items:center;gap:9px">
-          <div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div>
-          <div><div style="font-weight:700;font-size:12px">${_esc(u)}</div><div style="font-size:10px;color:var(--text3)">${_esc(ud.task)}</div></div>
-        </div>
-      </td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${totalRecs}</td>
-      <td style="text-align:center">${statusBadge}</td>
-      <td style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--text3)">${lastTime}</td>
-      <td style="text-align:center">${flaggedGaps.length?`<span style="font-size:10px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">⚠️ ${flaggedGaps.length} gap${flaggedGaps.length>1?'s':''}</span>`:`<span style="font-size:10px;color:var(--text3)">—</span>`}</td>
-      ${heatCells}
-    </tr>
-    <tr id="prod_det_${ui}" style="display:none;background:#fafbff">
-      <td colspan="${5+hours.length}" style="padding:0">
-        <div style="padding:12px 18px 12px 52px;border-top:1px solid var(--border)">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <!-- Record timeline -->
-            <div>
-              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Records Today (${totalRecs})</div>
-              ${ud.records.length===0?'<div style="font-size:12px;color:var(--text3);padding:8px">No records today</div>':
-                ud.records.slice().sort((a,b)=>(parseAppDate(a.r._created)||0)-(parseAppDate(b.r._created)||0))
-                .map((rec,ri)=>{
-                  const t=(parseAppDate(rec.r._created)||new Date(0)).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'America/Toronto'});
-                  const txn=rec.r.txn||rec.r.subject||'—';
-                  const client=rec.r.clientName||rec.r.clientname||rec.r.client||'—';
-                  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);margin-bottom:4px">
-                    <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--primary);white-space:nowrap">${t}</span>
-                    <span style="font-size:11px;color:var(--text1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(txn))}</span>
-                    <span style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(client))}</span>
-                  </div>`;
-                }).join('')
-              }
-            </div>
-            <!-- Gap timeline -->
-            <div>
-              <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⏱️ Gaps Between Records</div>
-              ${gaps.length===0?'<div style="font-size:12px;color:var(--text3);padding:8px">No gaps recorded</div>':
-                gaps.map(g=>{
-                  const t=g.at instanceof Date?g.at.toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false}):new Date(g.at).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit',hour12:false});
-                  const isFlagged=g.gapMin>PROD_IDLE_THRESHOLD_MIN;
-                  const barC=g.gapMin>=60?'#ef4444':g.gapMin>=30?'#f97316':'#f59e0b';
-                  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:${isFlagged?'#fff7ed':'var(--surface)'};border:1px solid ${isFlagged?'#fcd34d':'var(--border)'};margin-bottom:4px">
-                    <span style="font-family:var(--mono);font-size:11px;color:var(--text3);white-space:nowrap">${t}</span>
-                    <div style="flex:1;background:var(--border);border-radius:3px;height:4px;overflow:hidden"><div style="width:${Math.min(100,Math.round(g.gapMin/60*100))}%;height:100%;background:${barC};border-radius:3px"></div></div>
-                    <span style="font-family:var(--mono);font-weight:800;font-size:11px;color:${isFlagged?'#d97706':'var(--text3)'};white-space:nowrap">${g.gapMin}m ${isFlagged?'⚠️':''}</span>
-                  </div>`;
-                }).join('')
-              }
-            </div>
-          </div>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-
-  c.innerHTML=`
-  <div class="ph">
-    <div>
-      <div class="pt">📈 Productivity Tracker <span class="pbadge">Live</span></div>
-      <div class="ps">Per-user hourly record count · ★ = current hour · click row to see full timeline</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="renderProductivity(document.getElementById('pc'))"
-        style="padding:7px 14px;border-radius:8px;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔄 Refresh</button>
-      <button onclick="_prodClearData()"
-        style="padding:7px 14px;border-radius:8px;background:var(--surface2);color:var(--text2);border:1.5px solid var(--border);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑️ Clear</button>
-    </div>
-  </div>
-
-  <!-- Summary cards -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">👥</div><div class="sl">Active Users</div><div class="sv">${totalUsers}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Records Today</div><div class="sv">${totalRecords}</div></div>
-    <div class="sc ${flagged>0?'c-ro':'c-em'}"><div class="sc-top"></div><div class="si">${flagged>0?'⚠️':'✅'}</div><div class="sl">Users Flagged</div><div class="sv">${flagged}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">🕐</div><div class="sl">Idle Threshold</div><div class="sv">${PROD_IDLE_THRESHOLD_MIN}m</div></div>
-  </div>
-
-  <!-- Hourly breakdown table -->
-  <div class="tw">
-    <div class="th2">
-      <div class="tt">⏰ Hourly Record Count — Today</div>
-      <div class="tc">Records submitted per hour per user · ★ = current · click row for full detail</div>
-    </div>
-    <div style="overflow-x:auto">
-      <table class="dt">
-        <thead><tr>
-          <th style="min-width:160px">User</th>
-          <th style="text-align:center;min-width:60px">Total</th>
-          <th style="text-align:center;min-width:80px">Status</th>
-          <th style="text-align:center;min-width:60px">Last Rec</th>
-          <th style="text-align:center;min-width:70px">Gaps</th>
-          ${hourHeaders}
-        </tr></thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
-    <div style="padding:10px 18px;border-top:1px solid var(--border);background:var(--surface2);display:flex;gap:12px;flex-wrap:wrap;font-size:11px;align-items:center">
-      <span style="font-weight:700;color:var(--text3)">HEAT (records/hour):</span>
-      <span class="hcell h0" style="border-radius:4px;padding:3px 10px">— = none</span>
-      <span class="hcell h1" style="border-radius:4px;padding:3px 10px">1</span>
-      <span class="hcell h2" style="border-radius:4px;padding:3px 10px">2–3</span>
-      <span class="hcell h3" style="border-radius:4px;padding:3px 10px">4–5</span>
-      <span class="hcell h4" style="border-radius:4px;padding:3px 10px">6+</span>
-      <span style="margin-left:auto;color:var(--text3)">👆 Click row for record timeline + gap detail</span>
-    </div>
-  </div>
-
-  <div style="margin-top:10px;padding:11px 14px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--text3)">
-    ℹ️ <b>How it works:</b> Hourly counts come from today's task records (LVS, Release, etc). 
-    Gaps track time between consecutive submissions per user. 
-    Users flagged ⚠️ if any gap exceeds <b>${PROD_IDLE_THRESHOLD_MIN} minutes</b>. 
-    Data refreshes automatically every minute.
-  </div>`;
-
-  // Auto-refresh every 60s
-  if(window._prodPageInterval) clearInterval(window._prodPageInterval);
-  window._prodPageInterval=setInterval(()=>{
-    if(_currentPage==='productivity') renderProductivity(document.getElementById('pc'));
-    else clearInterval(window._prodPageInterval);
-  }, 60000);
-}
-
-function _fmtTimeAgo(date){
-  if(!date) return '—';
-  const mins = Math.round((new Date() - date) / 60000);
-  if(mins < 1) return 'Just now';
-  if(mins < 60) return mins+'m ago';
-  return Math.floor(mins/60)+'h '+( mins%60)+'m ago';
-}
-
-async function _prodClearData(){
-  if(!confirm('Clear all productivity tracking data for today?')) return;
-
-  // Clear in-memory data
-  window._prodTracking = {};
-  // Set flag to PREVENT DB reload (so clear actually sticks)
-  window._prodDBLoaded   = true;
-  window._prodManualCleared = true;
-
-  // Delete today's records from DB
-  if(_supa){
-    try{
-      const _etNow = new Date(new Date().getTime() - 5*3600000);
-      const _todayStart = _etNow.toISOString().slice(0,10) + 'T00:00:00';
-      const _todayEnd   = _etNow.toISOString().slice(0,10) + 'T23:59:59';
-      await _supa.from('productivity_log')
-        .delete()
-        .gte('logged_at', _todayStart)
-        .lte('logged_at', _todayEnd);
-      showToast('✅ Productivity data cleared for today');
-    } catch(e){
-      console.warn('Prod clear DB error:', e.message);
-      showToast('✅ Cleared from view (DB delete failed: '+e.message+')', true);
-    }
-  } else {
-    showToast('✅ Productivity data cleared');
-  }
-
-  renderProductivity(document.getElementById('pc'));
-}
 
 
 // ── ETA Notification from DB — fires on every login ──────────────────
@@ -6100,14 +5756,8 @@ function _etaMarkSubmitted(txn){
   if(window._etaAssignments[String(txn)]) delete window._etaAssignments[String(txn)];
 }
 
-// ══════════════════════════════════════════════════════════════════════
-// FEATURE 2: USER PRODUCTIVITY TRACKING
-// ══════════════════════════════════════════════════════════════════════
-
-window._prodTracking = {}; // {username: {lastSubmit: Date, gaps: []}}
-window._prodDBLoaded = false;
-window._prodManualCleared = false;
-// _prodRecordSubmit is defined in renderProductivity block above
+// FEATURE 2: DISABLED — stubs defined above, _prodDBLoaded=true prevents any legacy load
+window._prodDBLoaded = true; // prevents any stale dbLoad('productivity_log') from firing
 
 // ══════════════════════════════════════════════════════════════════════
 // FEATURE 3: RELEASE SUBMISSION VALIDATION (2 min minimum)
@@ -6732,7 +6382,6 @@ async function _archiveStep2(){
           return !(d && d <= cutoff);
         }));
         totalDeleted += old.length;
-        console.log('✅ Deleted '+old.length+' from '+t.table);
       } else {
         const txt = await res.text();
         errors.push(t.name + ': ' + res.status + ' ' + txt.slice(0,80));
@@ -6868,7 +6517,6 @@ function _restoreTaskCache(){
     if(cache.oceanTT?.length)     DB.oceanTT    = cache.oceanTT;
     if(cache.b2entries?.length)   DB.b2entries  = cache.b2entries;
     if(cache.errors?.length)    { DB.errors     = cache.errors;   DB.errors.forEach((r,i)=>r._idx=i); }
-    console.log('[Cache] Restored task data instantly from localStorage');
   }catch(e){ localStorage.removeItem(TASK_CACHE_KEY); }
 }
 
@@ -7243,7 +6891,6 @@ async function _attendanceLogOut(username){
       .eq('id', dbId);
 
     delete window._attendanceCache[username];
-    console.log('[Attendance] Logout recorded, hours:', totalHoursStr);
   } catch(e){
     console.warn('[Attendance] Logout log failed:', e.message);
   }
@@ -7275,7 +6922,6 @@ async function _loadAttendanceMonth(year, month){
     // Normalize date — Supabase may return 'YYYY-MM-DDTHH:MM:SS+00:00' for date columns
     date: r.date ? String(r.date).slice(0,10) : r.date
   }));
-  console.log('[Attendance] Loaded:', normalized.length, 'rows for', startDate, 'to', endDate,
     '| Sample date:', normalized[0]?.date, '| Today ET:', todayStrET());
   return normalized;
 }
@@ -7349,7 +6995,6 @@ async function renderAttendancePage(c){
         .eq('date', todayET)
         .order('session_no', {ascending:true});
       todayDirectRows = (td||[]).map(r=>({...r, date: String(r.date||'').slice(0,10)}));
-      console.log('[Attendance] Today direct query:', todayDirectRows.length, 'rows, date='+todayET);
     } catch(e){ console.warn('[Attendance] Today direct query failed:', e.message); }
   }
 
@@ -8949,8 +8594,7 @@ async function doLogin(){
                   _supa.from('login_users').select('*').eq('login_name',u).eq('password',_pHash).eq('active',true).single(),
                   new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000))
                 ]);
-                if(!err2&&data2){ lu=mapLoginUser(data2); console.log('✅ Login via DB retry'); }
-              } catch(e2){ console.warn('DB retry failed'); }
+                if(!err2&&data2){ lu=mapLoginUser(data2);              } catch(e2){ console.warn('DB retry failed'); }
             }
           }
         }
@@ -9551,8 +9195,9 @@ function renderLVS(c){
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
   const todayR=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
-  const tatR=all.filter(r=>r.tat==='TAT Reached').length;
-  const tatPct=all.length?Math.round(tatR/all.length*100):0;
+  const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+  const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+  const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
   const tc=tatPct>=80?'c-em':tatPct>=50?'c-am':'c-ro';
 
   c.innerHTML=`
@@ -10856,8 +10501,9 @@ function renderDashboard(c){
   // Per-task row
   const taskRows=Object.entries(allDB).map(([key,t])=>{
     const todayCnt=t.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;
-    const tatR=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-    const tatPct=t.db.length?Math.round(tatR/t.db.length*100):0;
+    const tatR=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached';}).length;
+    const tatN=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat not reached'||tv.includes('not-reached');}).length;
+    const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
     const pctColor=tatPct>=80?'#34d399':tatPct>=50?'#fbbf24':'#fb7185';
     return`<tr>
       <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:7px"></span><span style="font-weight:700;color:var(--text)">${t.label}</span></td>
@@ -11228,9 +10874,10 @@ function renderDashboard(c){
 // ── Render analytics sections AFTER dashboard innerHTML is set ──
 function renderDashboardAnalytics(allDB, today, todayAll){
   const allRecs = Object.values(allDB).flatMap(t=>t.db);
-  const tatReached = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-  const tatMissed  = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
-  const tatPct     = allRecs.length ? Math.round(tatReached/allRecs.length*100) : 0;
+  const tatReached = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached';}).length;
+  const tatMissed  = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat not reached'||tv.includes('not-reached');}).length;
+  const _tatTotal  = tatReached + tatMissed;
+  const tatPct     = _tatTotal ? Math.round(tatReached/_tatTotal*100) : 0;
   const tatColor   = tatPct>=90?'#17a00e':tatPct>=75?'#f59e0b':'#e11d48';
   const ahtRecs    = [...DB.lvs,...DB.b2entries].filter(r=>parseFloat(r.aht)>0);
   const avgAHT     = ahtRecs.length ? (ahtRecs.reduce((s,r)=>s+parseFloat(r.aht||0),0)/ahtRecs.length).toFixed(1) : '—';
@@ -11936,9 +11583,10 @@ function kpiShowTab(id){
   const done = sf ? data.filter(r=>tab.doneVals.some(v=>(r[sf]||'').toLowerCase().includes(v))).length : 0;
   const hold = sf ? data.filter(r=>(r[sf]||'')===tab.holdVal).length : 0;
   const pending = sf ? total-done-hold : 0;
-  const tatReached = tf ? data.filter(r=>r[tf]==='TAT Reached'||r[tf]==='TAT Reached').length : null;
-  const tatPct = tatReached!==null&&total ? Math.round(tatReached/total*100) : null;
-  const tatMissed = tatReached!==null ? total-tatReached : null;
+  const tatReached = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat reached').length : null;
+  const tatMissed  = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat not reached').length : null;
+  const tatTotal = (tatReached||0) + (tatMissed||0);
+  const tatPct = (tatReached!==null && tatTotal) ? Math.round(tatReached/tatTotal*100) : null;
   const durs=data.filter(r=>r.duration&&r.duration!=='—'&&r.duration!=='00:00:00').map(r=>durToMins(r.duration));
   const avgDur=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
 
@@ -11970,7 +11618,7 @@ function kpiShowTab(id){
     <div class="sc" style="border-top:3px solid ${tatColor}">
       <div class="si">🎯</div><div class="sl">TAT Reached</div>
       <div class="sv" style="color:${tatColor}">${tatPct}%</div>
-      <div style="font-size:11px;color:var(--text3)">${tatReached} / ${total}</div>
+      <div style="font-size:11px;color:var(--text3)">${tatReached} / ${(tatReached||0)+(tatMissed||0)}</div>
       <div style="margin-top:5px;height:7px;border-radius:4px;background:var(--border)">
         <div style="height:100%;border-radius:4px;width:${tatPct}%;background:${tatColor}"></div>
       </div>
@@ -12314,13 +11962,15 @@ function renderReports(c){
 
   const lvsRows=lvsUsers.map(u=>{
     const total=DB.lvs.filter(r=>r.assignedTo===u.name).length;
-    const reached=DB.lvs.filter(r=>r.assignedTo===u.name&&r.tat==='TAT Reached').length;
-    const pct=total?Math.round(reached/total*100):0;
+    const reached=DB.lvs.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat reached').length;
+    const missed=DB.lvs.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat not reached').length;
+    const tatTotal=reached+missed;
+    const pct=tatTotal?Math.round(reached/tatTotal*100):0;
     const col=pct>=80?'var(--emerald)':pct>=50?'var(--amber)':'var(--rose)';
     return`<tr><td style="font-weight:700">${u.name}</td>
       <td class="mono" style="text-align:center;color:var(--primary)">${total}</td>
       <td class="mono" style="text-align:center;color:var(--emerald)">${reached}</td>
-      <td class="mono" style="text-align:center;color:var(--rose)">${total-reached}</td>
+      <td class="mono" style="text-align:center;color:var(--rose)">${missed}</td>
       <td class="mono" style="text-align:center;color:var(--amber)">${DB.lvs.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td>
       <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${col}">${pct}%</td></tr>`;
   }).join('');
@@ -12441,13 +12091,15 @@ function applyReportFilter(){
   const tbody=document.getElementById('lvsRepBody');
   if(tbody) tbody.innerHTML=lvsUsers.map(u=>{
     const total=filteredLVS.filter(r=>r.assignedTo===u.name).length;
-    const reached=filteredLVS.filter(r=>r.assignedTo===u.name&&r.tat==='TAT Reached').length;
-    const pct=total?Math.round(reached/total*100):0;
+    const reached=filteredLVS.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat reached').length;
+    const missed=filteredLVS.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat not reached').length;
+    const tatTotal=reached+missed;
+    const pct=tatTotal?Math.round(reached/tatTotal*100):0;
     const col=pct>=80?'var(--emerald)':pct>=50?'var(--amber)':'var(--rose)';
     return`<tr><td style="font-weight:700">${u.name}</td>
       <td class="mono" style="text-align:center;color:var(--primary)">${total}</td>
       <td class="mono" style="text-align:center;color:var(--emerald)">${reached}</td>
-      <td class="mono" style="text-align:center;color:var(--rose)">${total-reached}</td>
+      <td class="mono" style="text-align:center;color:var(--rose)">${missed}</td>
       <td class="mono" style="text-align:center;color:var(--amber)">${filteredLVS.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td>
       <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${col}">${pct}%</td></tr>`;
   }).join('');
@@ -12525,7 +12177,8 @@ function exportAllTasksXLSX(){
         const total=(t.data||[]).length;
         const reached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
         const notReached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
-        return[t.name, total, reached, notReached, total?Math.round(reached/total*100)+'%':'N/A'];
+        const tatTotal=reached+notReached;
+        return[t.name, total, reached, notReached, tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
       }),
       [],
       ['TOTAL', taskDefs.reduce((s,t)=>s+(t.data||[]).length,0)],
@@ -13185,8 +12838,6 @@ function _weekRange(offsetWeeks=0){
 // ── Build weekly Excel blob ──
 function _buildWeeklyXLSX(weekStart, weekEnd, offsetWeeks){
   // Debug: log record counts to help diagnose empty reports
-  console.log('[KPI Export] Building report for',weekStart.toDateString(),'→',weekEnd.toDateString());
-  console.log('[KPI Export] DB counts:',
     'LVS='+( DB.lvs||[]).length,'CLS='+(DB.cls||[]).length,
     'COMP='+(DB.comp||[]).length,'Release='+(DB.release2||[]).length);
   if(typeof XLSX==='undefined') throw new Error('Excel library not loaded');
@@ -13243,9 +12894,10 @@ function _buildWeeklyXLSX(weekStart, weekEnd, offsetWeeks){
     ['Task','Records This Week','TAT Reached','TAT Not Reached','TAT %'],
     ...taskDefs.map(t=>{
       const tot=t.data.length;
-      const reached=t.data.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-      const notR=t.data.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
-      return[t.name,tot,reached,notR,tot?Math.round(reached/tot*100)+'%':'N/A'];
+      const reached=t.data.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached';}).length;
+      const notR=t.data.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat not reached'||tv.includes('not-reached');}).length;
+      const tatTot=reached+notR;
+      return[t.name,tot,reached,notR,tatTot?Math.round(reached/tatTot*100)+'%':'N/A'];
     }),
     [],['TOTAL',taskDefs.reduce((s,t)=>s+t.data.length,0)],
   ];
@@ -13752,8 +13404,9 @@ function renderMyStatus(c){
   const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
   const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
   const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not'));
-  const tatPct=myRecs.length?Math.round(tatOkArr.length/myRecs.length*100):0;
+  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
+  const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
+  const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
   // Team data (TL only)
@@ -13761,8 +13414,9 @@ function renderMyStatus(c){
   const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
   const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
   const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not'));
-  const teamTatPct=teamRecs.length?Math.round(teamTatOk.length/teamRecs.length*100):0;
+  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
+  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
+  const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
 
@@ -13801,8 +13455,9 @@ function renderMyStatus(c){
     const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
     const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
     const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
-    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;
-    const uTatPct=uRecs.length?Math.round(uTatOk/uRecs.length*100):0;
+    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+    const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+    const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
     const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
@@ -14132,7 +13787,7 @@ function renderErrorReport(c){
     ${(canUpload||isTLRole)?`<select class="fs2" id="err_fu"><option value="">All Users</option>${DB.users.map(u=>`<option>${u.name}</option>`).join('')}</select>`:''}
     <select class="fs2" id="err_ftype"><option value="">All Error Types</option>${errorTypes.map(t=>`<option>${t}</option>`).join('')}</select>
     <select class="fs2" id="err_fack"><option value="">All Statuses</option><option value="new">⏳ New</option><option value="pending">🟡 Pending</option><option value="overdue">🔴 Overdue</option><option value="done">✅ Reviewed</option></select>
-    <input class="fi2" id="err_fsearch" placeholder="🔍 Search Txn/Client" style="min-width:140px" oninput="applyErrFilter()"/>
+    <input class="fi2" id="err_fsearch" placeholder="🔍 Search Txn/Client" style="min-width:140px" oninput="_debounce('err',applyErrFilter)"/>
     <button class="btn-f" onclick="applyErrFilter()">Apply</button>
     <button class="btn-cl" onclick="clearErrFilter()">Clear</button>
   </div>
@@ -15103,7 +14758,7 @@ function runTATAnalyzer(){
   const reached=rows.filter(r=>r.tatStatus.includes('✅')).length;
   const notReached=rows.filter(r=>r.tatStatus.includes('❌')).length;
   const unknown=rows.filter(r=>r.tatStatus==='—').length;
-  const pct=total>0?Math.round(reached/total*100):0;
+  const pct=(reached+notReached)>0?Math.round(reached/(reached+notReached)*100):0;
   const summEl=document.getElementById('ta_summary');
   if(summEl) summEl.innerHTML=`
     <div style="background:#fff;border-radius:10px;border:1px solid var(--border);padding:14px 16px;text-align:center;">
@@ -15746,7 +15401,7 @@ function renderAudit(c){
         <span style="font-size:11px;color:var(--text3);font-weight:600">to</span>
         <input class="fi2" id="audit_fd2" type="date" onchange="filterAuditTab()" style="font-size:11px"/>
         <button class="btn-cl" style="font-size:11px;padding:4px 10px" onclick="clearAuditFilter()">Clear</button>
-        <input class="fi2" id="audit_search" placeholder="🔍 Txn/Client/User" style="min-width:160px;font-size:11px" oninput="filterAuditTab()"/>
+        <input class="fi2" id="audit_search" placeholder="🔍 Txn/Client/User" style="min-width:160px;font-size:11px" oninput="_debounce('audit',filterAuditTab)"/>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:8px">
         <button class="stat-tab active" id="atab_pending" onclick="switchAuditTab('pending')" style="font-size:11px">⏳ Pending (${pending.length})</button>
@@ -16029,7 +15684,6 @@ function submitAudit(){
     rl_status:   r.status||null,
     rl_tat:      r.tat||null
   };
-  console.log('[KPI] Audit row to insert:', JSON.stringify(_auditRow));
   const _finishAudit=()=>{
     // Resolve by txn (stable) in case DB.release2 was refreshed since panel opened
     const rlRec = auditActiveTxn
@@ -16053,7 +15707,6 @@ function submitAudit(){
         // Successful DB insert — use the returned row so _dbid is correct
         const mapped=mapAudit(r2);
         DB.audit.push(mapped);
-        console.log('[KPI] Audit saved to DB, id='+r2.id);
       } else {
         // dbInsert returned null (error already shown by dbInsert) — keep local copy
         DB.audit.push(_localAuditRec);
@@ -16474,7 +16127,7 @@ function renderPARSDocs(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.parsDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
-    <input class="fi2" id="pd_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="applyPDFilter()"/>
+    <input class="fi2" id="pd_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('pd',applyPDFilter)"/>
     <button class="btn-f" onclick="applyPDFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPDFilter()">Clear</button>
     <button id="histSearchBtn_parsdocs" class="btn-cl" onclick="searchHistorical('parsdocs')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
@@ -16907,7 +16560,7 @@ function renderOceanDocs(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.oceanDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
-    <input class="fi2" id="od_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="applyODFilter()"/>
+    <input class="fi2" id="od_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('od',applyODFilter)"/>
     <button class="btn-f" onclick="applyODFilter()">Apply</button>
     <button class="btn-cl" onclick="clearODFilter()">Clear</button>
     <button id="histSearchBtn_oceandocs" class="btn-cl" onclick="searchHistorical('oceandocs')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
@@ -17170,7 +16823,7 @@ function renderPartLot(c){
       <option value="">All Users</option>
       ${[...new Set(DB.partLot.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
     </select>
-    <input class="fi2" id="pl_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="applyPLFilter()"/>
+    <input class="fi2" id="pl_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('pl',applyPLFilter)"/>
     <button class="btn-f" onclick="applyPLFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPLFilter()">Clear</button>
     <button id="histSearchBtn_partlot" class="btn-cl" onclick="searchHistorical('partlot')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
@@ -17488,7 +17141,7 @@ function renderRelease2(c){
       <option value="">All Status</option>
       <option>Recap done</option><option>Submitted</option><option>Hold</option><option>SWI Rejected</option><option>Docs-Recap</option><option>Recap-EDI</option><option>Recap-ETA</option>
     </select>
-    <input class="fi2" id="rl_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="applyRLFilter()"/>
+    <input class="fi2" id="rl_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="_debounce('rl',applyRLFilter)"/>
     <button class="btn-f" onclick="applyRLFilter()">Apply</button>
     <button class="btn-cl" onclick="clearRLFilter()">Clear</button>
     <button id="histSearchBtn_release2" class="btn-cl" onclick="searchHistorical('release2')" style="background:var(--amber-bg);border-color:rgba(245,158,11,.4);color:var(--amber)">🔍 Search Previous</button>
@@ -17654,7 +17307,7 @@ function renderTATIssue(c){
       <option value="">All Modes</option>
       ${modes.map(m=>`<option>${m}</option>`).join('')}
     </select>
-    <input class="fi2" id="ti_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="applyTIFilter()"/>
+    <input class="fi2" id="ti_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="_debounce('ti',applyTIFilter)"/>
     <button class="btn-f" onclick="applyTIFilter()">Apply</button>
     <button class="btn-cl" onclick="clearTIFilter()">Clear</button>
   </div>
@@ -18465,8 +18118,7 @@ function _doSaveRelease2Row(txn, penaltyUser, tatComments){
     _created:nowISOET(),_submitRaw:nowET(),_idx:0
   };
 
-  // Feature 2: Productivity tracking
-  _prodRecordSubmit(finalUser, 'Release');
+  // Productivity tracking removed — tab disabled for performance
 
   // Feature 1: Remove from ETA Monitor on submit
   _etaMarkSubmitted(txn);
@@ -20149,7 +19801,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       '<span style="color:#10b981">✅ Connected — '+DB.loginUsers.length+' users ready</span>'+svcNote;
     const retryDiv2=document.getElementById('retryConnDiv');
     if(retryDiv2) retryDiv2.style.display='none';
-    console.log('✅ Pre-loaded: login_users='+DB.loginUsers.length+', users='+DB.users.length+', clients='+DB.clients.length);
 
   } catch(e){
     console.error('Pre-load failed after retry:',e);
@@ -20679,7 +20330,7 @@ function renderInstructions(c){
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <input class="fi2" id="if_search" placeholder="🔍 Search Client / Instruction" style="min-width:220px" oninput="applyIFFilter()"/>
+    <input class="fi2" id="if_search" placeholder="🔍 Search Client / Instruction" style="min-width:220px" oninput="_debounce('if',applyIFFilter)"/>
     <button class="btn-f" onclick="applyIFFilter()">Apply</button>
     <button class="btn-cl" onclick="clearIFFilter()">Clear</button>
     ${canEdit?`<button class="btn-add" style="background:var(--primary)" onclick="openInstructionPanel()">＋ Add Instruction</button>`:''}
