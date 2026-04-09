@@ -3366,7 +3366,7 @@ async function dbLoadRecent(table, days=30){
     if(!isNaN(d)) return d;
     // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
     const m2 = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/);
-    if(m2){ d = new Date(m2[3]+'-'+m2[2]+'-'+m2[1]+(m2[4]?' '+m2[4]:'')); if(!isNaN(d)) return d; }
+    if(m2){ d = new Date(m2[3]+'-'+m2[2]+'-'+m2[1]+(m2[4]?'T'+m2[4]:'T00:00:00')); if(!isNaN(d)) return d; }
     // 3. M/D/YYYY H:MM  e.g. "1/4/2026 10:19"  (day/month/year — Invensis locale)
     const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))?/);
     if(m3){ d = new Date(m3[3]+'-'+m3[2].padStart(2,'0')+'-'+m3[1].padStart(2,'0')+(m3[4]?' '+m3[4]:'')); if(!isNaN(d)) return d; }
