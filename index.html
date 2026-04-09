@@ -70,6 +70,80 @@ html,body{background:#f4f6fa;overflow:hidden;height:100%;width:100%;}
   --tab-bg:#f4f6fa;
   --sb-width:240px;
 }
+
+/* ══════════════════════════════════════════════
+   DARK MODE
+   ══════════════════════════════════════════════ */
+[data-theme="dark"]{
+  --bg:#0f1117;--bg2:#161b27;--surface:#1a2035;--surface2:#1f2740;--surface3:#243050;
+  --border:#2a3550;--border2:#334068;
+  --text:#e2e8f5;--text2:#a8b8d8;--text3:#607090;
+  --navy:#e2e8f5;--navy2:#c8d8f0;
+  --shadow:0 4px 24px 0 rgba(0,0,0,.4);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.5);
+  --tab-bg:#0f1117;
+  --indigo-bg:rgba(77,121,255,.12);
+  --sky-bg:rgba(14,165,233,.10);
+  --teal-bg:rgba(13,148,136,.10);
+  --amber-bg:rgba(245,158,11,.10);
+  --rose-bg:rgba(225,29,72,.10);
+  --emerald-bg:rgba(23,160,14,.10);
+  --violet-bg:rgba(111,66,193,.12);
+  --primary-bg:rgba(111,66,193,.15);
+  --primary-pale:rgba(111,66,193,.18);
+  --primary-dim:rgba(111,66,193,.10);
+  --blue-pale:rgba(77,121,255,.12);
+  --blue-ghost:rgba(77,121,255,.08);
+  --blue-dim:rgba(77,121,255,.08);
+}
+
+/* Dark mode scrollbar */
+[data-theme="dark"] *{scrollbar-color:rgba(111,66,193,.3) #161b27;}
+[data-theme="dark"] ::-webkit-scrollbar-track{background:#161b27;}
+[data-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(111,66,193,.35);}
+[data-theme="dark"] body{background:#0f1117;}
+
+/* Dark mode overrides for hardcoded whites */
+[data-theme="dark"] .dt td,[data-theme="dark"] .dt th{border-color:var(--border);}
+[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{
+  background:var(--surface2)!important;color:var(--text)!important;border-color:var(--border)!important;
+}
+[data-theme="dark"] .tw{background:var(--surface)!important;}
+[data-theme="dark"] .sc{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .spanel{background:var(--surface)!important;}
+[data-theme="dark"] .sp-body{background:var(--surface)!important;}
+[data-theme="dark"] .fi2,[data-theme="dark"] .fs2{background:var(--surface2)!important;color:var(--text)!important;}
+[data-theme="dark"] .dt{background:var(--surface);}
+[data-theme="dark"] .dt tr:hover td{background:var(--surface2)!important;}
+[data-theme="dark"] #appShell{background:var(--bg)!important;}
+[data-theme="dark"] .topbar{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .nb{color:var(--text2)!important;}
+[data-theme="dark"] .nb:hover{background:var(--surface2)!important;color:var(--text)!important;}
+[data-theme="dark"] .nb.active{background:var(--primary-bg)!important;color:var(--primary)!important;}
+[data-theme="dark"] .uname,[data-theme="dark"] #hopeUname{color:var(--text)!important;}
+[data-theme="dark"] .pc{background:var(--bg)!important;}
+[data-theme="dark"] .sg{background:transparent!important;}
+[data-theme="dark"] .fb{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .ph{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .th2{background:var(--surface2)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .pg-btn{background:var(--surface2)!important;color:var(--text2)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .dash-ed{background:var(--bg)!important;}
+[data-theme="dark"] .dash-ed-kpi{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .stat-tab{background:var(--surface)!important;}
+[data-theme="dark"] .sl{color:var(--text3)!important;}
+[data-theme="dark"] .sf{color:var(--text3)!important;}
+[data-theme="dark"] .sv{color:var(--text)!important;}
+
+/* Theme switcher button */
+.theme-btn{
+  display:flex;align-items:center;gap:6px;padding:5px 11px;
+  border-radius:20px;border:1.5px solid var(--border);
+  background:var(--surface2);cursor:pointer;
+  font-size:12px;font-weight:700;color:var(--text2);
+  font-family:var(--font);transition:all .2s;white-space:nowrap;
+}
+.theme-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-bg);}
+
 /* ── Scrollbar — light to match page bg ── */
 *{scrollbar-width:thin;scrollbar-color:rgba(111,66,193,.2) #f4f6fa;}
 ::-webkit-scrollbar{width:6px;height:6px;}
@@ -1751,6 +1825,11 @@ body.role-client [data-col="clientname"]{
           " id="hopeAv"></div>
           <span id="hopeUname" style="font-size:12px;font-weight:700;color:var(--navy);"></span>
         </div>
+        <!-- Theme Switcher: Dark / Light -->
+        <button class="theme-btn" onclick="_toggleThemeMode()" id="themeSwitcherBtn" title="Toggle dark/light mode">
+          <span id="themeIcon">☀️</span>
+          <span id="themeLabel">Light</span>
+        </button>
       </div>
     </div>
     <div class="pc" id="pc" style="flex:1;"></div>
@@ -7539,6 +7618,38 @@ async function exportBreakViolationsExcel(){
   XLSX.writeFile(wb, 'BreakViolations_'+mn.replace(' ','_')+'.xlsx');
   showToast('✅ Break violations exported');
 }
+
+// ══════════════════════════════════════════════════════════
+// THEME SWITCHER — Dark / Light toggle
+// ══════════════════════════════════════════════════════════
+function _applyTheme(mode){
+  const html = document.documentElement;
+  const icon  = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if(mode === 'dark'){
+    html.setAttribute('data-theme','dark');
+    if(icon)  icon.textContent  = '🌙';
+    if(label) label.textContent = 'Dark';
+  } else {
+    html.removeAttribute('data-theme');
+    if(icon)  icon.textContent  = '☀️';
+    if(label) label.textContent = 'Light';
+  }
+}
+
+function _toggleThemeMode(){
+  const cur = localStorage.getItem('kpi_theme_mode') || 'light';
+  const next = cur === 'light' ? 'dark' : 'light';
+  localStorage.setItem('kpi_theme_mode', next);
+  _applyTheme(next);
+}
+
+function _initTheme(){
+  const mode = localStorage.getItem('kpi_theme_mode') || 'light';
+  _applyTheme(mode);
+}
+
+_initTheme();
 
 function bootApp(){
   // Set mobile task page based on user's role
