@@ -7471,7 +7471,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     }).join('');
 
     // Row highlight: absent = faded, active now = subtle blue tint
-    const rowBg = todayStatus==='Absent' ? 'opacity:.52;' : isActive ? 'background:#f0f7ff;' : '';
+    const rowBg = todayStatus==='Absent' ? 'opacity:.52;' : isActive ? 'background:rgba(59,130,246,.08);' : '';
 
     return `<tr style="${rowBg}border-top:1px solid var(--border)">
       <td style="padding:8px 10px;color:var(--text3);font-size:12px;text-align:center;font-family:var(--mono)">${i+1}</td>
@@ -7479,7 +7479,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
         <div style="display:flex;align-items:flex-start;gap:0">
           ${_av(name)}
           <div>
-            <div style="font-weight:700;font-size:13px">${_esc(name)}</div>
+            <div style="font-weight:700;font-size:13px;color:var(--text)">${_esc(name)}</div>
             ${todaySessions.length ? `<div style="margin-top:2px">${sessionPills}</div>` : ''}
           </div>
         </div>
