@@ -3326,18 +3326,15 @@ async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
 
-  // Cutoff as ISO string — used for JS-side filtering after fetch
+  // Fetch ALL rows by id DESC — no server-side date filter to avoid text comparison
+  // issues with mixed date formats (ISO vs DD-MM-YYYY in same column).
+  // Tables are small enough (max ~5000 rows) that fetching all is fine.
+  // Client-side filter below handles all date formats correctly.
   const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
-  const cutoffISO = new Date(cutoffMs).toISOString();
 
-  // Strategy: fetch by id DESC (always reliable integer sort, no text-date issues)
-  // then filter client-side by date. Fetches last N rows by id which covers
-  // the recent window for all practical table sizes.
-  // For large tables (release has 3490 rows), fetch up to 5000 by id then filter.
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
-  const MAX_ROWS = 5000; // fetch up to 5k newest rows by id, covers any 30-day window
 
   while(true){
     const {data, error} = await _supa.from(table).select('*')
@@ -3349,35 +3346,33 @@ async function dbLoadRecent(table, days=30){
       break;
     }
     if(data && data.length > 0) allRows = allRows.concat(data);
-    if(!data || data.length < BATCH) break; // last page
+    if(!data || data.length < BATCH) break; // reached last page
     from += BATCH;
-    if(from >= MAX_ROWS) break; // safety cap
+    if(from >= 10000) break; // hard safety cap
   }
 
-  // Client-side date filter — handles ALL known date formats:
-  //   ISO:        2026-04-01T14:36:31-05:00
-  //   DD-MM-YYYY: 31-03-2026 12:37:21
-  //   M/D/YYYY:   1/4/2026 10:19
-  function _parseAnyDate(raw){
-    if(!raw) return null;
-    const s = String(raw).trim();
-    // 1. ISO format — new Date() handles this natively
-    let d = new Date(s);
-    if(!isNaN(d)) return d;
-    // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
-    const m2 = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/);
-    if(m2){ d = new Date(m2[3]+'-'+m2[2]+'-'+m2[1]+(m2[4]?'T'+m2[4]:'T00:00:00')); if(!isNaN(d)) return d; }
-    // 3. M/D/YYYY H:MM  e.g. "1/4/2026 10:19"  (day/month/year — Invensis locale)
-    const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))?/);
-    if(m3){ d = new Date(m3[3]+'-'+m3[2].padStart(2,'0')+'-'+m3[1].padStart(2,'0')+(m3[4]?' '+m3[4]:'')); if(!isNaN(d)) return d; }
-    return null;
-  }
+  // Client-side date filter — handles all formats stored in DB:
+  //   ISO with tz:  2026-04-01T14:36:31-05:00  → new Date() handles natively
+  //   DD-MM-YYYY:   31-03-2026 12:37:21         → reorder to YYYY-MM-DDTHH:MM:SS
   const filtered = allRows.filter(r => {
     const raw = r[dateCol] || r.created_at;
-    if(!raw) return true; // no date — include
-    const d = _parseAnyDate(raw);
-    if(!d) return true; // unparseable — include rather than exclude
-    return d.getTime() >= cutoffMs;
+    if(!raw || raw === '—' || raw === '') return true; // no date — include
+    const s = String(raw).trim();
+    let ms = NaN;
+    // Try native parse first (ISO format)
+    const d1 = new Date(s);
+    if(!isNaN(d1)) { ms = d1.getTime(); }
+    else {
+      // DD-MM-YYYY HH:MM:SS — extract parts and reorder
+      const m = s.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
+      if(m){
+        const iso = m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00');
+        const d2 = new Date(iso);
+        if(!isNaN(d2)) ms = d2.getTime();
+      }
+    }
+    if(isNaN(ms)) return true; // unparseable — always include
+    return ms >= cutoffMs;
   });
 
   return filtered;
