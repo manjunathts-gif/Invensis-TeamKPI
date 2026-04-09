@@ -3366,8 +3366,10 @@ async function dbLoadRecent(table, days=30){
     if(!isNaN(d1)){ ms = d1.getTime(); }
 
     // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
+    // Also handles malformed double-colon e.g. "03-04-2026 14:00::00"
     if(isNaN(ms)){
-      const m = s.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
+      const sClean = s.replace(/::/g,':');
+      const m = sClean.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
       if(m){
         const d2 = new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00'));
         if(!isNaN(d2)) ms = d2.getTime();
