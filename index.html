@@ -3325,52 +3325,62 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
+  // Cutoff as ISO string — used for JS-side filtering after fetch
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoffISO = new Date(cutoffMs).toISOString();
+
+  // Strategy: fetch by id DESC (always reliable integer sort, no text-date issues)
+  // then filter client-side by date. Fetches last N rows by id which covers
+  // the recent window for all practical table sizes.
+  // For large tables (release has 3490 rows), fetch up to 5000 by id then filter.
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
-  let totalCount = null;
+  const MAX_ROWS = 5000; // fetch up to 5k newest rows by id, covers any 30-day window
 
   while(true){
-    const {data, error, count} = await _supa.from(table).select('*', {count:'exact'})
-      .gte(dateCol, cutoff)
-      .order(dateCol, {ascending:false})
+    const {data, error} = await _supa.from(table).select('*')
+      .order('id', {ascending:false})
       .range(from, from + BATCH - 1);
 
     if(error){
-      // Date column filter failed — fall back to id-ordered full fetch
-      console.warn('dbLoadRecent '+table+' fallback (no date filter):', error.message);
-      let allRows2 = [];
-      let from2 = 0;
-      while(true){
-        const {data:d2, error:e2} = await _supa.from(table).select('*')
-          .order('id', {ascending:false})
-          .range(from2, from2 + BATCH - 1);
-        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
-        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
-        if(!d2 || d2.length < BATCH) break;
-        from2 += BATCH;
-        if(from2 > 10000) break;
-      }
-      return allRows2;
+      console.error('dbLoadRecent '+table+' failed:', error.message);
+      break;
     }
-
     if(data && data.length > 0) allRows = allRows.concat(data);
-    // Capture exact total count from Supabase on first batch
-    if(totalCount === null && count !== null) totalCount = count;
-    // Use count-based termination — handles mixed date formats where text
-    // comparison causes short batches even when more records exist
-    if(totalCount !== null){
-      if(allRows.length >= totalCount) break;
-    } else {
-      if(!data || data.length < BATCH) break;
-    }
+    if(!data || data.length < BATCH) break; // last page
     from += BATCH;
-    if(from > 10000) break; // hard safety cap
+    if(from >= MAX_ROWS) break; // safety cap
   }
 
-  return allRows;
+  // Client-side date filter — handles ALL known date formats:
+  //   ISO:        2026-04-01T14:36:31-05:00
+  //   DD-MM-YYYY: 31-03-2026 12:37:21
+  //   M/D/YYYY:   1/4/2026 10:19
+  function _parseAnyDate(raw){
+    if(!raw) return null;
+    const s = String(raw).trim();
+    // 1. ISO format — new Date() handles this natively
+    let d = new Date(s);
+    if(!isNaN(d)) return d;
+    // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
+    const m2 = s.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/);
+    if(m2){ d = new Date(m2[3]+'-'+m2[2]+'-'+m2[1]+(m2[4]?' '+m2[4]:'')); if(!isNaN(d)) return d; }
+    // 3. M/D/YYYY H:MM  e.g. "1/4/2026 10:19"  (day/month/year — Invensis locale)
+    const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))?/);
+    if(m3){ d = new Date(m3[3]+'-'+m3[2].padStart(2,'0')+'-'+m3[1].padStart(2,'0')+(m3[4]?' '+m3[4]:'')); if(!isNaN(d)) return d; }
+    return null;
+  }
+  const filtered = allRows.filter(r => {
+    const raw = r[dateCol] || r.created_at;
+    if(!raw) return true; // no date — include
+    const d = _parseAnyDate(raw);
+    if(!d) return true; // unparseable — include rather than exclude
+    return d.getTime() >= cutoffMs;
+  });
+
+  return filtered;
 }
 
 // Paginated fetch — gets ALL rows even if > 1000
