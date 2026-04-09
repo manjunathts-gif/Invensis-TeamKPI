@@ -23,7 +23,7 @@ if(location.protocol === 'file:'){
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>KPI Tracking — Dynamic Island Dark</title>
+<title>KPI Tracking — Production Management</title>
 <link rel="canonical" href="https://invensis.myteamkpi.com/"/>
 <meta name="description" content="KPI Tracking — Daily Production Management for Custom Broker Teams"/>
 <meta property="og:title" content="KPI Tracking — Production Management"/>
@@ -34,98 +34,99 @@ if(location.protocol === 'file:'){
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html,body{background:#09090b;overflow:hidden;height:100%;width:100%;}
+html,body{background:#f4f6fa;overflow:hidden;height:100%;width:100%;}
 
 :root{
-  /* ══ Dynamic Island — Dark OS Theme ══ */
-  /* Primary Orange */
-  --primary:#f97316;--primary-dark:#ea6c0a;--primary-light:#fb923c;
-  --primary-bg:rgba(249,115,22,.12);--primary-pale:rgba(249,115,22,.10);--primary-dim:rgba(249,115,22,.07);
-  /* Violet secondary */
-  --navy:#f4f4f5;--navy2:#e4e4e7;--navy3:#d4d4d8;
-  --blue:#7c3aed;--blue-mid:#6d28d9;--blue-lt:#8b5cf6;--blue-sky:#a78bfa;
-  --blue-pale:rgba(124,58,237,.15);--blue-ghost:rgba(124,58,237,.08);--blue-dim:rgba(124,58,237,.07);
-  --blue-deep:#4c1d95;
-  /* Dark Backgrounds */
-  --bg:#09090b;--bg2:#111113;--surface:#18181b;--surface2:#1c1c1f;--surface3:#27272a;
-  --border:#27272a;--border2:#3f3f46;
-  /* Functional aliases — dark-adapted */
-  --indigo:#7c3aed;--indigo-bg:rgba(124,58,237,.12);
-  --sky:#0ea5e9;--sky-bg:rgba(14,165,233,.10);
-  --teal:#14b8a6;--teal-bg:rgba(20,184,166,.10);
-  --amber:#f59e0b;--amber-bg:rgba(245,158,11,.10);
-  --rose:#f43f5e;--rose-bg:rgba(244,63,94,.10);
-  --emerald:#10b981;--emerald-bg:rgba(16,185,129,.10);
-  --violet:#7c3aed;--violet-bg:rgba(124,58,237,.12);
-  /* Text — inverted for dark mode */
-  --text:#fafafa;--text2:#a1a1aa;--text3:#52525b;
-  /* Radius & shadow */
-  --radius:10px;--radius2:14px;--radius3:18px;
-  --shadow:0 4px 24px 0 rgba(0,0,0,.45);
-  --shadow-lg:0 8px 32px rgba(0,0,0,.55);
-  --shadow-xl:0 20px 60px rgba(0,0,0,.6),0 4px 16px rgba(249,115,22,.15);
+  /* ══ Hope UI — Purple Design System ══ */
+  /* Primary Purple */
+  --primary:#6f42c1;--primary-dark:#5a32a3;--primary-light:#8560d1;
+  --primary-bg:rgba(111,66,193,.10);--primary-pale:#f0ebff;--primary-dim:rgba(111,66,193,.08);
+  /* Semantic colors */
+  --navy:#232d42;--navy2:#1a2234;--navy3:#131b2d;
+  --blue:#4d79ff;--blue-mid:#3d6aff;--blue-lt:#7096ff;--blue-sky:#9ab4ff;
+  --blue-pale:#e8eeff;--blue-ghost:#f0f3ff;--blue-dim:rgba(77,121,255,.08);
+  /* Keep backward compat aliases */
+  --blue-deep:#2d3e6e;
+  /* Backgrounds */
+  --bg:#f4f6fa;--bg2:#eceef5;--surface:#fff;--surface2:#f8f9fc;--surface3:#f0f2f8;
+  --border:#e5e7f0;--border2:#d0d4e8;
+  /* Functional aliases */
+  --indigo:#4d79ff;--indigo-bg:#eef2ff;
+  --sky:#0ea5e9;--sky-bg:#f0f9ff;
+  --teal:#0d9488;--teal-bg:#f0fdfa;
+  --amber:#f59e0b;--amber-bg:#fffbeb;
+  --rose:#e11d48;--rose-bg:#fff1f2;
+  --emerald:#17a00e;--emerald-bg:#eefbee;
+  --violet:#6f42c1;--violet-bg:#f0ebff;
+  /* Text */
+  --text:#232d42;--text2:#4a5568;--text3:#8492a6;
+  /* Radius & shadow — Hope UI uses rounder corners */
+  --radius:8px;--radius2:12px;--radius3:16px;
+  --shadow:0 4px 24px 0 rgba(34,41,47,.1);
+  --shadow-lg:0 8px 32px rgba(34,41,47,.15);
+  --shadow-xl:0 20px 60px rgba(34,41,47,.2),0 4px 16px rgba(111,66,193,.12);
   /* Font */
   --font:'Nunito',sans-serif;--mono:'JetBrains Mono',monospace;
-  --tab-bg:#09090b;
+  --tab-bg:#f4f6fa;
   --sb-width:240px;
 }
-/* ── Scrollbar — dark Dynamic Island ── */
-*{scrollbar-width:thin;scrollbar-color:rgba(249,115,22,.25) #09090b;}
+/* ── Scrollbar — light to match page bg ── */
+*{scrollbar-width:thin;scrollbar-color:rgba(111,66,193,.2) #f4f6fa;}
 ::-webkit-scrollbar{width:6px;height:6px;}
-::-webkit-scrollbar-track{background:#09090b;}
-::-webkit-scrollbar-thumb{background:rgba(249,115,22,.3);border-radius:10px;}
-::-webkit-scrollbar-thumb:hover{background:rgba(249,115,22,.55);}
-::-webkit-scrollbar-corner{background:#09090b;}
+::-webkit-scrollbar-track{background:#f4f6fa;}
+::-webkit-scrollbar-thumb{background:rgba(111,66,193,.25);border-radius:10px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(111,66,193,.4);}
+::-webkit-scrollbar-corner{background:#f4f6fa;}
 
 
 /* ══════════════════════════════════════════════
    HOPE UI DESIGN SYSTEM v42
    Purple-first · Nunito · Rounded · Clean
    ══════════════════════════════════════════════ */
-body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100vh;font-size:14px;}
+body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100vh;font-size:14px;}
 
 /* ── ANIMATIONS ── */
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-@keyframes pulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,.3);}50%{box-shadow:0 0 0 8px rgba(249,115,22,0);}}
+@keyframes pulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(111,66,193,.3);}50%{box-shadow:0 0 0 8px rgba(111,66,193,0);}}
 
 /* ════════════════════════════
    LOGIN PAGE — Single Card (Clean)
 ════════════════════════════ */
 #loginPage{
   display:flex;align-items:center;justify-content:center;min-height:100vh;
-  background:linear-gradient(135deg,#09090b 0%,#0f0f12 50%,#120a04 100%);
+  background:linear-gradient(135deg,#232d42 0%,#1a2234 50%,#3d1b8e 100%);
   position:relative;overflow:hidden;
 }
 /* Animated grid */
 .grid-bg{
   position:absolute;inset:0;
   background-image:
-    linear-gradient(rgba(249,115,22,.05) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(249,115,22,.05) 1px,transparent 1px);
+    linear-gradient(rgba(96,165,250,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(96,165,250,.06) 1px,transparent 1px);
   background-size:52px 52px;
   animation:fadeIn 1.2s ease;
 }
 /* Glow orbs */
 #loginPage::before{
   content:'';position:absolute;width:500px;height:500px;border-radius:50%;
-  background:radial-gradient(circle,rgba(249,115,22,.18) 0%,transparent 65%);
+  background:radial-gradient(circle,rgba(111,66,193,.25) 0%,transparent 65%);
   top:-150px;right:-80px;pointer-events:none;
 }
 #loginPage::after{
   content:'';position:absolute;width:400px;height:400px;border-radius:50%;
-  background:radial-gradient(circle,rgba(124,58,237,.12) 0%,transparent 65%);
+  background:radial-gradient(circle,rgba(77,121,255,.15) 0%,transparent 65%);
   bottom:-80px;left:-80px;pointer-events:none;
 }
 
 /* Single centered card */
 .login-card{
   width:480px;max-width:94vw;
-  background:#18181b;
+  background:#fff;
   border-radius:24px;
-  box-shadow:0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(249,115,22,.12);
+  box-shadow:0 32px 80px rgba(0,0,0,.35);
   position:relative;z-index:1;
   animation:fadeUp .5s cubic-bezier(.22,.68,0,1.2);
   overflow:hidden;
@@ -136,9 +137,9 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
 .login-right-panel{background:transparent;padding:0;display:flex;flex-direction:column;justify-content:center;}
 .login-head{margin-bottom:28px;}
 .login-ico{display:none;}
-.login-title{font-size:26px;font-weight:900;color:#fafafa;letter-spacing:-.4px;margin-bottom:4px;}
+.login-title{font-size:26px;font-weight:900;color:var(--navy);letter-spacing:-.4px;margin-bottom:4px;}
 .login-title span{color:var(--primary);}
-.login-sub{font-size:13px;color:var(--text2);}
+.login-sub{font-size:13px;color:var(--text3);}
 .login-divider{height:1px;background:var(--border);margin:20px 0;}
 
 /* Form inputs */
@@ -152,10 +153,10 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
   transition:border-color .2s,box-shadow .2s,background .2s;outline:none;
 }
 .fi:focus,.fs:focus{
-  border-color:var(--primary);background:#1c1c1f;
-  box-shadow:0 0 0 3px rgba(249,115,22,.15);
+  border-color:var(--primary);background:#fff;
+  box-shadow:0 0 0 3px rgba(111,66,193,.12);
 }
-.fs option{background:#18181b;color:var(--text);}
+.fs option{background:#fff;color:var(--text);}
 
 /* Task grid */
 .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:4px;}
@@ -173,10 +174,10 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
 /* Login button */
 .btn-login{
   width:100%;padding:15px;
-  background:linear-gradient(135deg,#ea6c0a 0%,#f97316 60%,#fb923c 100%);
+  background:linear-gradient(135deg,var(--primary-dark) 0%,var(--primary) 60%,var(--primary-light) 100%);
   color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;
   cursor:pointer;margin-top:8px;letter-spacing:.3px;font-family:var(--font);
-  box-shadow:0 6px 20px rgba(249,115,22,.4);transition:all .2s;
+  box-shadow:0 6px 20px rgba(111,66,193,.4);transition:all .2s;
   position:relative;overflow:hidden;
 }
 .btn-login::after{
@@ -184,7 +185,7 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
   background:linear-gradient(135deg,rgba(255,255,255,.08),transparent);
   border-radius:inherit;
 }
-.btn-login:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(249,115,22,.55);}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(111,66,193,.5);}
 .btn-login:active{transform:translateY(0);}
 .btn-login:disabled{opacity:.7;cursor:not-allowed;transform:none;}
 
@@ -208,19 +209,19 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
 /* ════════════════════════════
    APP SHELL — Left Sidebar Layout
 ════════════════════════════ */
-#appShell{display:none;height:100vh;width:100vw;flex-direction:row;overflow:hidden;background:#09090b;}
+#appShell{display:none;height:100vh;width:100vw;flex-direction:row;overflow:hidden;background:#f4f6fa;}
 
 /* ── LEFT SIDEBAR ── */
 .topbar{
   width:240px;min-height:100vh;flex-shrink:0;
-  background:#18181b;
+  background:#fff;
   border-right:1.5px solid var(--border);
   display:flex;flex-direction:column;
   position:sticky;top:0;height:100vh;
   box-shadow:1px 0 0 var(--border);
   z-index:100;overflow-y:auto;overflow-x:hidden;
   transition:width .25s cubic-bezier(.4,0,.2,1), box-shadow .25s;
-  scrollbar-width:thin;scrollbar-color:rgba(249,115,22,.2) transparent;
+  scrollbar-width:thin;scrollbar-color:rgba(111,66,193,.2) transparent;
 }
 .topbar.sb-collapsed{
   width:64px;
@@ -275,7 +276,7 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
   cursor:pointer;flex-shrink:0;transition:all .18s;
   padding:0;
 }
-.sb-toggle-btn:hover{background:rgba(249,115,22,.12);border-color:rgba(249,115,22,.25);}
+.sb-toggle-btn:hover{background:var(--primary-pale);border-color:rgba(111,66,193,.2);}
 .sb-toggle-btn span{
   display:block;width:14px;height:2px;background:var(--text2);
   border-radius:2px;transition:all .25s;transform-origin:center;
@@ -290,9 +291,9 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
 }
 .brand-ico{
   width:38px;height:38px;
-  background:linear-gradient(135deg,#ea6c0a,#fb923c);
+  background:linear-gradient(135deg,var(--primary-dark),var(--primary-light));
   border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;
-  box-shadow:0 4px 14px rgba(249,115,22,.4);flex-shrink:0;
+  box-shadow:0 4px 14px rgba(111,66,193,.35);flex-shrink:0;
 }
 .brand-name{font-size:14px;font-weight:800;letter-spacing:-.3px;color:var(--navy);}
 .brand-name span{color:var(--primary);}
@@ -328,13 +329,13 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
   text-align:left;display:flex;align-items:center;gap:9px;
   white-space:nowrap;box-sizing:border-box;
 }
-.nb:hover{background:rgba(249,115,22,.10);color:var(--primary);}
+.nb:hover{background:var(--primary-pale);color:var(--primary);}
 .nb.active{
-  background:linear-gradient(135deg,rgba(249,115,22,.18),rgba(249,115,22,.10));
+  background:linear-gradient(135deg,#f0ebff,#e8dfff);
   color:var(--primary);
   font-weight:700;
-  box-shadow:0 2px 8px rgba(249,115,22,.18);
-  border:1px solid rgba(249,115,22,.22);
+  box-shadow:0 2px 8px rgba(111,66,193,.14);
+  border:1px solid rgba(111,66,193,.18);
 }
 
 /* User area at bottom */
@@ -351,10 +352,10 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
 }
 .uav{
   width:32px;height:32px;border-radius:9px;
-  background:linear-gradient(135deg,#ea6c0a,#fb923c);
+  background:linear-gradient(135deg,var(--primary-dark),var(--primary-light));
   display:flex;align-items:center;justify-content:center;
   font-size:12px;font-weight:800;color:#fff;
-  box-shadow:0 2px 8px rgba(249,115,22,.35);flex-shrink:0;
+  box-shadow:0 2px 8px rgba(111,66,193,.3);flex-shrink:0;
 }
 .uname{font-size:12px;font-weight:700;color:var(--navy);}
 .urole{font-size:10px;color:var(--text3);}
@@ -583,9 +584,9 @@ body{background:#09090b;color:var(--text);font-family:var(--font);min-height:100
   padding:3px 10px;border-radius:20px;font-family:var(--mono);border:1px solid rgba(96,165,250,.25);}
 .dt{width:100%;border-collapse:collapse;}
 .dt th{
-  padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#1e293b;
+  padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#fff;
   text-transform:uppercase;letter-spacing:.6px;
-  background:linear-gradient(to right,#232d42,#2d3e6e);
+  background:linear-gradient(to right,var(--navy),var(--blue-deep));
   border-bottom:2px solid rgba(96,165,250,.2);white-space:nowrap;
 }
 .dt td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle;}
@@ -1560,184 +1561,7 @@ body.role-client [data-col="clientname"]{
   border-color: #e2e8f0 !important;
   opacity: 0.55 !important;
 }
-.fpi:disabled::placeholder { color: #52525b !important; }
-
-/* ═══════════════════════════════════════════════════════════
-   DYNAMIC ISLAND — EMBER DARK THEME OVERRIDES
-   near-black #09090b · dark surface #18181b
-   orange #f97316 · violet #7c3aed
-   ═══════════════════════════════════════════════════════════ */
-.hope-card{background:#18181b!important;border-color:#27272a!important;box-shadow:0 4px 24px rgba(0,0,0,.45)!important;}
-.hope-card:hover{box-shadow:0 8px 32px rgba(249,115,22,.18)!important;}
-#hopeTopHeader{background:#18181b!important;border-bottom-color:#27272a!important;box-shadow:0 2px 10px rgba(0,0,0,.4)!important;}
-#hopePageTitle{color:#fafafa!important;}
-#hopeUname{color:#fafafa!important;}
-#globalRefreshBtn{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;box-shadow:0 2px 8px rgba(249,115,22,.3)!important;}
-#realtimeIndicator{background:rgba(16,185,129,.12)!important;border-color:rgba(16,185,129,.25)!important;}
-.upill{background:#1c1c1f!important;border-color:#27272a!important;}
-.task-tag{background:rgba(249,115,22,.12)!important;color:#fb923c!important;border-color:rgba(249,115,22,.22)!important;}
-.btn-out{background:rgba(244,63,94,.08)!important;border-color:rgba(244,63,94,.2)!important;color:#f43f5e!important;}
-.btn-out:hover{background:#f43f5e!important;color:#fff!important;}
-.sh{color:#fafafa!important;}
-.sh::before{background:linear-gradient(to bottom,#f97316,#fb923c)!important;}
-.sc{background:#18181b!important;border-color:#27272a!important;box-shadow:0 4px 24px rgba(0,0,0,.4)!important;}
-.sc:hover{box-shadow:0 16px 40px rgba(249,115,22,.2)!important;}
-.sl{color:#71717a!important;}
-.c-blue .sv{background:linear-gradient(135deg,#7c3aed,#a78bfa)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-sky .sv{background:linear-gradient(135deg,#0ea5e9,#38bdf8)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-em .sv{background:linear-gradient(135deg,#10b981,#34d399)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-am .sv{background:linear-gradient(135deg,#f59e0b,#fbbf24)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-ro .sv{background:linear-gradient(135deg,#f43f5e,#fb7185)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-in .sv,.c-vi .sv{background:linear-gradient(135deg,#f97316,#fb923c)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-te .sv{background:linear-gradient(135deg,#14b8a6,#2dd4bf)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.c-blue,.c-sky,.c-em,.c-am,.c-ro,.c-in,.c-vi,.c-te{background:#1c1c1f!important;border-color:#27272a!important;}
-.pc,.pc.tab-lvs,.pc.tab-classifier,.pc.tab-compliance,.pc.tab-parsdocs,.pc.tab-oceandocs,.pc.tab-partlot,.pc.tab-release,.pc.tab-dashboard,.pc.tab-reports,.pc.tab-status,.pc.tab-users,.pc.tab-clients,.pc.tab-oceantt,.pc.tab-b2{background:#09090b!important;}
-.pt{color:#fafafa!important;}
-.ps{color:#71717a!important;}
-.tw{background:#18181b!important;border-color:#27272a!important;}
-.th2{background:linear-gradient(to right,#1c1c1f,#27272a)!important;border-bottom-color:#3f3f46!important;}
-.tt{color:#fafafa!important;}
-.tc{color:#fb923c!important;background:rgba(249,115,22,.12)!important;border-color:rgba(249,115,22,.25)!important;}
-.dt thead tr,.dt th{background:#1c1c1f!important;color:#ffffff!important;border-bottom:2px solid #3f3f46!important;letter-spacing:.5px!important;}
-.dt thead tr th{text-shadow:none!important;}
-.dt td{border-bottom-color:#27272a!important;color:#e4e4e7!important;}
-.dt tbody tr:hover td{background:rgba(249,115,22,.05)!important;}
-.dt tbody tr:nth-child(even) td{background:rgba(255,255,255,.02)!important;}
-.fb{background:#18181b!important;border-color:#27272a!important;}
-.fi2,.fs2{background:#1c1c1f!important;border-color:#27272a!important;color:#fafafa!important;}
-.fi2:focus,.fs2:focus{border-color:#f97316!important;box-shadow:0 0 0 3px rgba(249,115,22,.15)!important;}
-.fs2 option{background:#18181b!important;color:#fafafa!important;}
-.btn-pri,.btn-add{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;box-shadow:0 4px 16px rgba(249,115,22,.35)!important;color:#fff!important;}
-.btn-sec,.btn-exp{background:#27272a!important;border-color:#3f3f46!important;color:#e4e4e7!important;}
-.btn-save{background:linear-gradient(135deg,#ea6c0a,#f97316,#fb923c)!important;box-shadow:0 4px 16px rgba(249,115,22,.4)!important;}
-.btn-canc{background:#1c1c1f!important;border-color:#3f3f46!important;color:#a1a1aa!important;}
-.btn-upd{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;}
-.spanel{background:#18181b!important;border-left-color:#27272a!important;}
-.sp-head{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;}
-.sp-body{background:#18181b!important;}
-.sp-sec-title{color:#fb923c!important;border-bottom-color:rgba(249,115,22,.18)!important;}
-.sp-foot{background:#18181b!important;border-top-color:#27272a!important;box-shadow:0 -4px 16px rgba(0,0,0,.4)!important;}
-.fpi,.fps,.fpta{background:#1c1c1f!important;border-color:#3f3f46!important;color:#fafafa!important;}
-.fpi:focus,.fps:focus,.fpta:focus{border-color:#f97316!important;box-shadow:0 0 0 3px rgba(249,115,22,.15)!important;}
-.fpi.auto{background:rgba(249,115,22,.10)!important;border-color:rgba(249,115,22,.3)!important;color:#fb923c!important;}
-.fps option{background:#18181b!important;color:#fafafa!important;}
-.fpl{color:#a1a1aa!important;}
-.fnote{color:#52525b!important;}
-.ferr,.req{color:#fb7185!important;}
-.ib{background:rgba(249,115,22,.10)!important;border-color:rgba(249,115,22,.2)!important;color:#fb923c!important;}
-.demo-info{background:rgba(249,115,22,.08)!important;border-color:rgba(249,115,22,.18)!important;color:#fb923c!important;}
-.toast{background:#27272a!important;border-color:rgba(249,115,22,.4)!important;color:#fafafa!important;}
-.toast.terr{background:#2d0a0a!important;border-color:rgba(244,63,94,.4)!important;}
-.h-badge-primary{background:rgba(249,115,22,.12)!important;color:#fb923c!important;}
-.h-badge-success{background:rgba(16,185,129,.12)!important;color:#34d399!important;}
-.h-badge-warning{background:rgba(245,158,11,.12)!important;color:#fbbf24!important;}
-.h-badge-danger{background:rgba(244,63,94,.12)!important;color:#fb7185!important;}
-.h-badge-info{background:rgba(14,165,233,.12)!important;color:#38bdf8!important;}
-.h-progress{background:#27272a!important;}
-.h-progress-bar{background:linear-gradient(90deg,#f97316,#fb923c)!important;}
-.iz{background:#1c1c1f!important;border-color:#3f3f46!important;}
-.iz:hover{border-color:#f97316!important;background:rgba(249,115,22,.08)!important;}
-.iz-title{color:#e4e4e7!important;}
-.iz-sub{color:#71717a!important;}
-.ucard{background:#18181b!important;border-color:#27272a!important;}
-.ucard:hover{box-shadow:0 8px 32px rgba(249,115,22,.18)!important;}
-.ucm{background:#1c1c1f!important;}
-.ucml{color:#71717a!important;}
-.ucmv,.ucname{color:#fafafa!important;}
-.ucrole{color:#71717a!important;}
-.dash-ed-hero{background:linear-gradient(135deg,#1a0800,#2d1200,#3d1900)!important;border:1px solid rgba(249,115,22,.2)!important;}
-.dash-ed-main-title{color:#fafafa!important;}
-.dash-ed-main-title strong{color:#fb923c!important;}
-.dash-ed-pill-time{background:rgba(249,115,22,.12)!important;border-color:rgba(249,115,22,.25)!important;color:#fb923c!important;}
-.dash-ed-pill-live{background:rgba(16,185,129,.10)!important;border-color:rgba(16,185,129,.25)!important;color:#34d399!important;}
-.dash-ed-kpi{background:#18181b!important;border-color:#27272a!important;box-shadow:0 2px 14px rgba(0,0,0,.4)!important;}
-.dash-ed-kpi:hover{border-color:rgba(249,115,22,.3)!important;box-shadow:0 12px 36px rgba(249,115,22,.15)!important;}
-.dash-ed-kpi-lbl{color:#71717a!important;}
-.dash-ed-kpi-num{color:#fafafa!important;}
-.dash-ed-kpi-foot{color:#52525b!important;}
-.dash-ed-audit-card{background:linear-gradient(135deg,#1a0800,#2d1200,#3d1900)!important;border:1px solid rgba(249,115,22,.2)!important;}
-.dash-ed-audit-num-val{color:#fafafa!important;}
-.dash-ed-progress{background:rgba(255,255,255,.1)!important;}
-.dash-ed-progress-fill{background:linear-gradient(90deg,#f97316,#fb923c)!important;}
-.dash-ed-panel{background:#18181b!important;border-color:#27272a!important;}
-.dash-ed-panel-hdr{background:#1c1c1f!important;border-bottom-color:#27272a!important;}
-.dash-ed-panel-title{color:#fafafa!important;}
-.dash-ed-panel-badge{background:rgba(249,115,22,.12)!important;border-color:rgba(249,115,22,.2)!important;color:#fb923c!important;}
-.dash-ed-table th{background:#1c1c1f!important;color:#a1a1aa!important;}
-.dash-ed-table td{border-bottom-color:#27272a!important;color:#e4e4e7!important;}
-.dash-ed-table tbody tr:hover td{background:rgba(249,115,22,.05)!important;}
-.dash-ed .h0,.dash-ed .dash-heat-cell.h0{color:#3f3f46!important;background:transparent!important;}
-.dash-ed .h1,.dash-ed .dash-heat-cell.h1{background:rgba(249,115,22,.12)!important;color:#fb923c!important;}
-.dash-ed .h2,.dash-ed .dash-heat-cell.h2{background:rgba(249,115,22,.22)!important;color:#fdba74!important;}
-.dash-ed .h3,.dash-ed .dash-heat-cell.h3{background:rgba(249,115,22,.38)!important;color:#fed7aa!important;}
-.dash-ed .h4,.dash-ed .dash-heat-cell.h4{background:#f97316!important;color:#fff!important;}
-.dash-kpi{background:#18181b!important;border-color:#27272a!important;}
-.dash-kpi:hover{box-shadow:0 16px 40px rgba(249,115,22,.18)!important;border-color:rgba(249,115,22,.3)!important;}
-.dash-kpi-label{color:#71717a!important;}
-.dash-kpi.kpi-blue .dash-kpi-val,.dash-kpi.kpi-indigo .dash-kpi-val{background:linear-gradient(135deg,#f97316,#fb923c)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-teal .dash-kpi-val{background:linear-gradient(135deg,#14b8a6,#2dd4bf)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-violet .dash-kpi-val{background:linear-gradient(135deg,#7c3aed,#a78bfa)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-emerald .dash-kpi-val{background:linear-gradient(135deg,#10b981,#34d399)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-amber .dash-kpi-val{background:linear-gradient(135deg,#f59e0b,#fbbf24)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-rose .dash-kpi-val{background:linear-gradient(135deg,#f43f5e,#fb7185)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.dash-kpi.kpi-sky .dash-kpi-val{background:linear-gradient(135deg,#0ea5e9,#38bdf8)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important;background-clip:text!important;}
-.idle-card{background:#18181b!important;border-color:#f97316!important;}
-.idle-title{color:#fafafa!important;}
-.idle-sub{color:#71717a!important;}
-.idle-timer-box{background:rgba(249,115,22,.10)!important;border-color:rgba(249,115,22,.3)!important;}
-.idle-timer-val{color:#fb923c!important;}
-.idle-rbtn{background:#1c1c1f!important;border-color:#27272a!important;color:#a1a1aa!important;}
-.idle-rbtn:hover,.idle-rbtn.sel{background:rgba(249,115,22,.12)!important;border-color:#f97316!important;color:#fb923c!important;}
-.idle-other-wrap textarea{background:#1c1c1f!important;border-color:#27272a!important;color:#fafafa!important;}
-.idle-other-wrap textarea:focus{border-color:#f97316!important;}
-.idle-submit-btn{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;}
-#idleTopBadge{background:rgba(249,115,22,.12)!important;border-color:rgba(249,115,22,.3)!important;color:#fb923c!important;}
-.idle-log-row{background:rgba(249,115,22,.04)!important;}
-.idle-log-row:hover{background:rgba(249,115,22,.08)!important;}
-#auditPanel{background:#18181b!important;border-color:#27272a!important;}
-.hhas{color:#fb923c!important;background:rgba(249,115,22,.10)!important;}
-.hnone{color:#3f3f46!important;}
-.status-sel{background:#1c1c1f!important;border-color:#27272a!important;color:#fafafa!important;}
-.status-sel:focus{border-color:#f97316!important;}
-.cbw{background:#1c1c1f!important;border-color:#3f3f46!important;}
-.cbw input[type=checkbox]{accent-color:#f97316!important;}
-.tat-ok{background:rgba(16,185,129,.08)!important;border-color:rgba(16,185,129,.25)!important;}
-.tat-no{background:rgba(244,63,94,.08)!important;border-color:rgba(244,63,94,.25)!important;}
-.tat-ok .tat-ttl{color:#34d399!important;}
-.tat-no .tat-ttl{color:#fb7185!important;}
-#mobBottomNav{background:#18181b!important;border-top-color:#27272a!important;box-shadow:0 -2px 12px rgba(0,0,0,.4)!important;}
-.mob-nav-item.active .mob-nav-lbl{color:#f97316!important;}
-.mob-nav-item.active .mob-nav-ico-wrap{background:rgba(249,115,22,.12)!important;}
-.brand-name{color:#fafafa!important;}
-.brand-name span{color:#f97316!important;}
-.brand-sub{color:#52525b!important;}
-.sb-grp-lbl,.sb-section-lbl{color:#52525b!important;}
-.uname{color:#fafafa!important;}
-.urole{color:#71717a!important;}
-.empty-t{color:#a1a1aa!important;}
-.empty-s{color:#52525b!important;}
-.main{background:#09090b!important;}
-.th-btn{background:#1c1c1f!important;border-color:#27272a!important;color:#a1a1aa!important;}
-.th-btn:hover{background:rgba(249,115,22,.10)!important;color:#f97316!important;border-color:rgba(249,115,22,.2)!important;}
-#hopeAv{background:linear-gradient(135deg,#ea6c0a,#fb923c)!important;}
-#hopeBreadcrumb{color:#f97316!important;}
-.dash-ed-bar-cnt{color:#fb923c!important;}
-.dash-ed-bar-fill{background:linear-gradient(to top,#f97316,#fb923c)!important;}
-.dash-ed-btn-pri{background:linear-gradient(135deg,#ea6c0a,#f97316)!important;}
-.dash-ed-btn-ghost{background:#1c1c1f!important;border-color:#27272a!important;color:#a1a1aa!important;}
-.dash-ed-filter input{background:#1c1c1f!important;border-color:#27272a!important;color:#fafafa!important;}
-.dash-ed-filter input:focus{border-color:#f97316!important;}
-#etaNotifCount{background:#f43f5e!important;}
-.login-err{background:rgba(244,63,94,.08)!important;border-color:rgba(244,63,94,.25)!important;color:#fb7185!important;}
-#lDbStatus{color:#52525b!important;}
-#localFileNote{background:rgba(249,115,22,.08)!important;border-color:rgba(249,115,22,.3)!important;color:#fb923c!important;}
-#offlineBanner{background:linear-gradient(90deg,#7c2d12,#c2410c)!important;}
-#mobSidebarBackdrop.show{display:block;}
-.topbar.sb-collapsed .nb:hover::after{background:#f97316!important;}
-.topbar.sb-collapsed .nb:hover::before{border-right-color:#f97316!important;}
-.shimmer-row td{background:linear-gradient(90deg,#18181b 25%,#27272a 50%,#18181b 75%)!important;background-size:200% 100%!important;animation:skeletonShimmer 1.4s infinite!important;}
-@keyframes newRow{0%{background:rgba(249,115,22,.18);transform:translateX(-8px);}100%{background:transparent;transform:translateX(0);}}
-@keyframes rowPop{0%{background:rgba(249,115,22,.15);}100%{background:transparent;}}
+.fpi:disabled::placeholder { color: #cbd5e1 !important; }
 </style>
 
 <!-- ═══ SUPABASE CLIENT ═══ -->
@@ -3332,12 +3156,6 @@ function _makeSupaClient(){
       gte(c,v){_filters.push(c+'=gte.'+v);return builder;},
       lt(c,v){_filters.push(c+'=lt.'+v);return builder;},
       lte(c,v){_filters.push(c+'=lte.'+v);return builder;},
-      is(c,v){
-        // PostgREST IS filter: .is('col', null) → col=is.null
-        const val = v === null ? 'null' : v === true ? 'true' : v === false ? 'false' : String(v);
-        _filters.push(c+'=is.'+val);
-        return builder;
-      },
       in(c,vals){_filters.push(c+'=in.('+vals.map(v=>encodeURIComponent(v)).join(',')+')');return builder;},
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
@@ -3525,86 +3343,49 @@ const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
+
+  // ── Compute ISO cutoff date for the date filter ──
+  // This is the critical fix: actually apply the days filter so we don't fetch ALL rows
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  // ── Tables where the primary date column can be NULL (e.g. release.submitted is
-  //    NULL for in-progress records). For these tables we fetch in two passes:
-  //    Pass A: rows where dateCol >= cutoff (recent completed records)
-  //    Pass B: rows where dateCol IS NULL (in-progress / no submit date yet)
-  //    Pass C: rows where start_time >= cutoff AND dateCol IS NULL (safety net)
-  //    We merge and deduplicate by id.
-  const NULLABLE_DATE_TABLES = ['release','ocean_tt','b2_entries','part_lot','comp','lvs','cls','pars_docs','ocean_docs'];
-  const useNullableStrategy = NULLABLE_DATE_TABLES.includes(table);
-
+  let allRows = [];
+  let from = 0;
   const BATCH = 1000;
 
-  async function _fetchWithFilter(extraFilter){
-    let rows = [], from = 0;
-    while(true){
-      let q = _supa.from(table).select('*')
-        .order(dateCol, {ascending:false})
-        .range(from, from + BATCH - 1);
-      if(extraFilter) q = extraFilter(q);
-      const {data, error} = await q;
-      if(error) return null; // signal error to caller
-      if(data && data.length > 0) rows = rows.concat(data);
-      if(!data || data.length < BATCH) break;
-      from += BATCH;
-      if(from > 10000) break;
-    }
-    return rows;
-  }
-
-  if(useNullableStrategy){
-    // Pass A: records with dateCol set and within the date window
-    const passA = await _fetchWithFilter(q => q.gte(dateCol, cutoff));
-
-    // Pass B: records with NULL dateCol (in-progress / not yet submitted)
-    // Use start_time as fallback filter so we don't pull very old nulls
-    const passB_raw = await _fetchWithFilter(q =>
-      q.is(dateCol, null).gte('start_time', cutoff)
-    );
-
-    // If both passes worked, merge and deduplicate
-    if(passA !== null){
-      const seen = new Set();
-      const merged = [];
-      for(const r of [...(passA||[]), ...(passB_raw||[])]){
-        const key = String(r.id);
-        if(!seen.has(key)){ seen.add(key); merged.push(r); }
-      }
-      return merged;
-    }
-    // If passA failed (column error), fall through to id-sort fallback below
-  }
-
-  // Standard path: date-filtered fetch for tables with reliable date columns
-  let allRows = [], from = 0;
   while(true){
-    let query = _supa.from(table).select('*')
+    // Apply .gte(dateCol, cutoff) — only fetch rows newer than cutoff date
+    let query = _supa.from(table).select('*', {count:'exact'})
       .gte(dateCol, cutoff)
       .order(dateCol, {ascending:false})
       .range(from, from + BATCH - 1);
-    const {data, error} = await query;
+
+    const {data, error, count} = await query;
+
     if(error){
-      // Column missing — fall back to id sort with no date filter
-      let fallback = [], f2 = 0;
+      // If date column doesn't exist, retry without date filter but with id sort
+      console.warn('dbLoadRecent '+table+' on '+dateCol+': '+error.message+' — retrying without date filter');
+      let allRows2 = [];
+      let from2 = 0;
       while(true){
         const {data:d2, error:e2} = await _supa.from(table).select('*')
-          .order('id', {ascending:false}).range(f2, f2 + BATCH - 1);
-        if(e2) return fallback;
-        if(d2 && d2.length > 0) fallback = fallback.concat(d2);
+          .order('id', {ascending:false})
+          .range(from2, from2 + BATCH - 1);
+        if(e2){ console.error('dbLoadRecent '+table+' failed:', e2.message); return allRows2; }
+        if(d2 && d2.length > 0) allRows2 = allRows2.concat(d2);
         if(!d2 || d2.length < BATCH) break;
-        f2 += BATCH;
-        if(f2 > 10000) break;
+        from2 += BATCH;
+        if(from2 > 10000) break; // safety cap
       }
-      return fallback;
+      return allRows2;
     }
+
     if(data && data.length > 0) allRows = allRows.concat(data);
+    // Stop if we got fewer rows than batch size (last page)
     if(!data || data.length < BATCH) break;
     from += BATCH;
-    if(from > 10000) break;
+    if(from > 10000) break; // safety cap — 10k rows max per table is enough
   }
+
   return allRows;
 }
 
@@ -4015,13 +3796,13 @@ async function loadAllFromSupabase(){
       DB.instructions = (instructions||[]).map(mapInstruction);
 
       if(bar) bar.style.width='50%';
-      // Load last 2 days of task data first for speed, but release/audit always load ALL rows
+      // Load last 2 days of task data first — user sees data instantly
       const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
         dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
         dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
-        dbLoadRecent('part_lot',2), dbLoad('release'),
+        dbLoadRecent('part_lot',2), dbLoadRecent('release',2),
         dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
-        dbLoadRecent('client_errors',2), dbLoad('audit')
+        dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
       ]);
       DB.lvs       = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls       = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4046,9 +3827,9 @@ async function loadAllFromSupabase(){
           const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoad('release'),
+            dbLoadRecent('part_lot',30), dbLoadRecent('release',30),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',30), dbLoad('audit')
+            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4070,10 +3851,10 @@ async function loadAllFromSupabase(){
 
 
     } else if(isRlTL){
-      // Release Team Lead: ALL release + ALL audit + errors + clients + instructions + users
+      // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoad('release'), dbLoad('audit'), dbLoadRecent('client_errors',90), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs',90), dbLoad('login_users')
+        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4092,9 +3873,9 @@ async function loadAllFromSupabase(){
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
-        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoad('release'),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release'),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
-        dbLoad('audit'),dbLoad('instructions')
+        dbLoadRecent('audit'),dbLoad('instructions')
       ]);
       DB.users=users.map(mapUser);
       if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
@@ -4136,7 +3917,7 @@ async function loadAllFromSupabase(){
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoad('release'),
+        dbLoadRecent('part_lot'), dbLoadRecent('release'),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
         dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
@@ -4431,11 +4212,8 @@ async function globalRefresh(){
       for(const t of tables){
         // Load recent 30 days for task tables (much faster than full load)
         const taskTables = ['lvs','cls','comp','pars_docs','ocean_docs',
-          'part_lot','ocean_tt','b2_entries','client_errors'];
-        const fullLoadTables = ['release','audit']; // always load ALL rows — count must match DB
-        const rows = fullLoadTables.includes(t)
-          ? await dbLoad(t)
-          : taskTables.includes(t)
+          'part_lot','release','ocean_tt','b2_entries','audit','client_errors'];
+        const rows = taskTables.includes(t)
           ? await dbLoadRecent(t, 30)
           : await dbLoad(t);
         if(!rows) continue;
@@ -4542,14 +4320,8 @@ function startBgPoll(){
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle
-          // release/audit use dbLoad (ALL rows, no date filter) — ensures count matches DB
-          // Other tables use dbLoadRecent (30 days) — keeps payload small
-          if(tbl === 'release' || tbl === 'audit'){
-            rows = await dbLoad(tbl);
-          } else {
-            rows = await dbLoadRecent(tbl, 30);
-          }
+          // FULL PATH: every 6th cycle — fetch last 30 days only (date-filtered)
+          rows = await dbLoadRecent(tbl, 30);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
@@ -7471,7 +7243,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     }).join('');
 
     // Row highlight: absent = faded, active now = subtle blue tint
-    const rowBg = todayStatus==='Absent' ? 'opacity:.52;' : isActive ? 'background:rgba(59,130,246,.08);' : '';
+    const rowBg = todayStatus==='Absent' ? 'opacity:.52;' : isActive ? 'background:#f0f7ff;' : '';
 
     return `<tr style="${rowBg}border-top:1px solid var(--border)">
       <td style="padding:8px 10px;color:var(--text3);font-size:12px;text-align:center;font-family:var(--mono)">${i+1}</td>
@@ -7479,7 +7251,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
         <div style="display:flex;align-items:flex-start;gap:0">
           ${_av(name)}
           <div>
-            <div style="font-weight:700;font-size:13px;color:var(--text)">${_esc(name)}</div>
+            <div style="font-weight:700;font-size:13px">${_esc(name)}</div>
             ${todaySessions.length ? `<div style="margin-top:2px">${sessionPills}</div>` : ''}
           </div>
         </div>
