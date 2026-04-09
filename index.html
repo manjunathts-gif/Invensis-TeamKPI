@@ -70,7 +70,95 @@ html,body{background:#f4f6fa;overflow:hidden;height:100%;width:100%;}
   --tab-bg:#f4f6fa;
   --sb-width:240px;
 }
-/* ── Scrollbar — light to match page bg ── */
+
+/* ══════════════════════════════════════════════════════════
+   THEME SWITCHER — 6 themes via data-theme on <html>
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Theme: Ocean Blue ── */
+[data-theme="ocean"] {
+  --primary:#0369a1;--primary-dark:#075985;--primary-light:#0284c7;
+  --primary-bg:rgba(3,105,161,.10);--primary-pale:#e0f2fe;--primary-dim:rgba(3,105,161,.08);
+  --navy:#0c2340;--navy2:#071a30;--navy3:#040f1e;
+  --violet:#0369a1;--violet-bg:#e0f2fe;
+  --tab-bg:#f0f9ff;
+}
+[data-theme="ocean"] body{background:#f0f9ff;}
+[data-theme="ocean"] .brand-icon{background:linear-gradient(135deg,#075985,#0369a1);}
+[data-theme="ocean"] .topbar{background:linear-gradient(180deg,#0c2340,#075985);}
+[data-theme="ocean"] *{scrollbar-color:rgba(3,105,161,.2) #f0f9ff;}
+
+/* ── Theme: Emerald ── */
+[data-theme="emerald"] {
+  --primary:#059669;--primary-dark:#047857;--primary-light:#10b981;
+  --primary-bg:rgba(5,150,105,.10);--primary-pale:#ecfdf5;--primary-dim:rgba(5,150,105,.08);
+  --navy:#064e3b;--navy2:#022c22;--navy3:#011a14;
+  --violet:#059669;--violet-bg:#ecfdf5;
+  --tab-bg:#f0fdf4;
+}
+[data-theme="emerald"] body{background:#f0fdf4;}
+[data-theme="emerald"] .brand-icon{background:linear-gradient(135deg,#047857,#059669);}
+[data-theme="emerald"] .topbar{background:linear-gradient(180deg,#064e3b,#047857);}
+[data-theme="emerald"] *{scrollbar-color:rgba(5,150,105,.2) #f0fdf4;}
+
+/* ── Theme: Midnight Dark ── */
+[data-theme="midnight"] {
+  --primary:#818cf8;--primary-dark:#6366f1;--primary-light:#a5b4fc;
+  --primary-bg:rgba(129,140,248,.15);--primary-pale:#1e1b4b;--primary-dim:rgba(129,140,248,.10);
+  --navy:#e2e8f0;--navy2:#f1f5f9;--navy3:#f8fafc;
+  --bg:#0f172a;--bg2:#1e293b;--surface:#1e293b;--surface2:#293548;--surface3:#334155;
+  --border:#334155;--border2:#475569;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --violet:#818cf8;--violet-bg:rgba(129,140,248,.15);
+  --tab-bg:#0f172a;
+  --shadow:0 4px 24px 0 rgba(0,0,0,.4);
+}
+[data-theme="midnight"] body{background:#0f172a;color:#e2e8f0;}
+[data-theme="midnight"] .brand-icon{background:linear-gradient(135deg,#4f46e5,#818cf8);}
+[data-theme="midnight"] .topbar{background:linear-gradient(180deg,#1e293b,#0f172a);}
+[data-theme="midnight"] .nb:hover{background:rgba(129,140,248,.12);}
+[data-theme="midnight"] .nb.active{background:rgba(129,140,248,.2);}
+[data-theme="midnight"] *{scrollbar-color:rgba(129,140,248,.25) #0f172a;}
+[data-theme="midnight"] #hopeTopHeader{background:#1e293b;border-color:#334155;}
+[data-theme="midnight"] .tw,.sc,.ph,.fb{background:#1e293b;border-color:#334155;}
+[data-theme="midnight"] .dt th{background:#293548;border-color:#334155;color:#94a3b8;}
+[data-theme="midnight"] .dt td{border-color:#334155;}
+[data-theme="midnight"] .dt tr:hover td{background:rgba(129,140,248,.06);}
+
+/* ── Theme: Sunset Orange ── */
+[data-theme="sunset"] {
+  --primary:#ea580c;--primary-dark:#c2410c;--primary-light:#f97316;
+  --primary-bg:rgba(234,88,12,.10);--primary-pale:#fff7ed;--primary-dim:rgba(234,88,12,.08);
+  --navy:#431407;--navy2:#2c0a03;--navy3:#1a0601;
+  --violet:#ea580c;--violet-bg:#fff7ed;
+  --tab-bg:#fff7ed;
+}
+[data-theme="sunset"] body{background:#fff7ed;}
+[data-theme="sunset"] .brand-icon{background:linear-gradient(135deg,#c2410c,#ea580c);}
+[data-theme="sunset"] .topbar{background:linear-gradient(180deg,#431407,#c2410c);}
+[data-theme="sunset"] *{scrollbar-color:rgba(234,88,12,.2) #fff7ed;}
+
+/* ── Theme: Steel Gray ── */
+[data-theme="steel"] {
+  --primary:#475569;--primary-dark:#334155;--primary-light:#64748b;
+  --primary-bg:rgba(71,85,105,.10);--primary-pale:#f1f5f9;--primary-dim:rgba(71,85,105,.08);
+  --navy:#0f172a;--navy2:#0c1325;--navy3:#080d1a;
+  --violet:#475569;--violet-bg:#f1f5f9;
+  --tab-bg:#f8fafc;
+}
+[data-theme="steel"] body{background:#f8fafc;}
+[data-theme="steel"] .brand-icon{background:linear-gradient(135deg,#334155,#475569);}
+[data-theme="steel"] .topbar{background:linear-gradient(180deg,#0f172a,#334155);}
+[data-theme="steel"] *{scrollbar-color:rgba(71,85,105,.2) #f8fafc;}
+
+/* ── Theme Switcher UI ── */
+.theme-picker{padding:8px 10px;border-top:1px solid rgba(255,255,255,.08);margin-bottom:6px;}
+.theme-picker-label{font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;font-weight:700;}
+.theme-swatches{display:flex;gap:6px;flex-wrap:wrap;}
+.theme-swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s,border-color .15s;flex-shrink:0;}
+.theme-swatch:hover{transform:scale(1.2);}
+.theme-swatch.active{border-color:#fff;transform:scale(1.1);}
+/* ── Scrollbar — light to match page bg (overridden by themes) ── */
 *{scrollbar-width:thin;scrollbar-color:rgba(111,66,193,.2) #f4f6fa;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:#f4f6fa;}
@@ -1568,6 +1656,10 @@ body.role-client [data-col="clientname"]{
 <!-- Supabase JS removed — using direct REST API -->
 
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,700;1,800;1,900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+// Apply theme immediately — prevents flash of default theme
+(function(){try{var t=localStorage.getItem('kpi_theme_v1');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+</script>
 </head>
 <body>
 
@@ -1677,6 +1769,18 @@ body.role-client [data-col="clientname"]{
           ⏱ Idle: <span id="idleTopTime">--:--</span>
         </span>
         <span onclick="clearIdleBadge(event)" title="Clear idle alert (no log)" style="cursor:pointer;background:rgba(251,191,36,.25);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fbbf24;flex-shrink:0;margin-left:2px;">✕</span>
+      </div>
+      <!-- Theme Switcher -->
+      <div class="theme-picker" id="themePicker">
+        <div class="theme-picker-label">🎨 Theme</div>
+        <div class="theme-swatches">
+          <div class="theme-swatch" data-theme="" style="background:linear-gradient(135deg,#6f42c1,#4d79ff)" title="Purple (Default)" onclick="applyTheme('')"></div>
+          <div class="theme-swatch" data-theme="ocean" style="background:linear-gradient(135deg,#0369a1,#06b6d4)" title="Ocean Blue" onclick="applyTheme('ocean')"></div>
+          <div class="theme-swatch" data-theme="emerald" style="background:linear-gradient(135deg,#059669,#10b981)" title="Emerald Green" onclick="applyTheme('emerald')"></div>
+          <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1e293b,#4f46e5)" title="Midnight Dark" onclick="applyTheme('midnight')"></div>
+          <div class="theme-swatch" data-theme="sunset" style="background:linear-gradient(135deg,#c2410c,#f97316)" title="Sunset Orange" onclick="applyTheme('sunset')"></div>
+          <div class="theme-swatch" data-theme="steel" style="background:linear-gradient(135deg,#334155,#64748b)" title="Steel Gray" onclick="applyTheme('steel')"></div>
+        </div>
       </div>
       <button class="btn-out" onclick="doLogout()">
         <span style="font-size:14px;">⇠</span>
@@ -17140,6 +17244,10 @@ function renderRelease2(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.release2.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
+    <select class="fs2" id="rl_fmode">
+      <option value="">All Modes</option>
+      <option>Truck</option><option>Ocean</option><option>Air</option><option>Rail</option>
+    </select>
     <select class="fs2" id="rl_fstatus">
       <option value="">All Status</option>
       <option>Recap done</option><option>Submitted</option><option>Hold</option><option>SWI Rejected</option><option>Docs-Recap</option><option>Recap-EDI</option><option>Recap-ETA</option>
@@ -17242,18 +17350,21 @@ function updateRLStatus(dbid){
 }
 
 function applyRLFilter(){
-  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
   const u=document.getElementById('rl_fu')?.value;
   const tm=document.getElementById('rl_fteam')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
+  // rl_fmode is read inside filter loop below
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.release2,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
+  const md=document.getElementById('rl_fmode')?.value;
+  if(md) data=data.filter(r=>(r.mode||'')===md);
   if(s) data=data.filter(r=>r.status===s);
   if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('rl', data);
@@ -17264,7 +17375,7 @@ function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
 function clearRLFilter(){
-  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
   const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
 }
 
@@ -21278,6 +21389,57 @@ async function triggerPWAInstall(){
   const btn = document.getElementById('pwaInstallBtn');
   if(btn) btn.style.display = 'none';
 }
+
+
+// ══════════════════════════════════════════════════════════
+// THEME SWITCHER — 6 themes, saved to localStorage
+// ══════════════════════════════════════════════════════════
+const THEME_KEY = 'kpi_theme_v1';
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  if (theme) {
+    html.setAttribute('data-theme', theme);
+  } else {
+    html.removeAttribute('data-theme');
+  }
+  // Update body bg for midnight (needed for full-page coverage)
+  if (theme === 'midnight') {
+    document.body.style.background = '#0f172a';
+  } else {
+    document.body.style.background = '';
+  }
+  // Persist
+  try { localStorage.setItem(THEME_KEY, theme || ''); } catch(e) {}
+  // Update swatch active state
+  document.querySelectorAll('.theme-swatch').forEach(sw => {
+    sw.classList.toggle('active', sw.dataset.theme === theme);
+  });
+  showToast('🎨 Theme changed' + (theme ? ': ' + sw_name(theme) : ': Purple (Default)'));
+}
+
+function sw_name(t) {
+  return {ocean:'Ocean Blue',emerald:'Emerald',midnight:'Midnight Dark',sunset:'Sunset Orange',steel:'Steel Gray'}[t] || 'Default';
+}
+
+function loadSavedTheme() {
+  try {
+    const saved = localStorage.getItem(THEME_KEY) || '';
+    if (saved) {
+      document.documentElement.setAttribute('data-theme', saved);
+      if (saved === 'midnight') document.body.style.background = '#0f172a';
+    }
+    // Mark active swatch after DOM ready
+    setTimeout(() => {
+      document.querySelectorAll('.theme-swatch').forEach(sw => {
+        sw.classList.toggle('active', sw.dataset.theme === saved);
+      });
+    }, 200);
+  } catch(e) {}
+}
+
+// Apply saved theme immediately on load
+loadSavedTheme();
 
 </script>
 
