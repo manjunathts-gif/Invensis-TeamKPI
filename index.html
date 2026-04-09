@@ -865,8 +865,6 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
   .sp-form{padding:16px 14px!important;}
   .spanel .ph{padding:16px 14px!important;}
 
-  /* ── ETA Monitor table: scroll ── */
-  #etaMonitorTable{min-width:700px;}
 
   /* ── Productivity table: scroll ── */
   .prod-table-wrap{overflow-x:auto;}
@@ -1752,21 +1750,6 @@ body.role-client [data-col="clientname"]{
             font-size:11px;font-weight:800;color:#fff;
           " id="hopeAv"></div>
           <span id="hopeUname" style="font-size:12px;font-weight:700;color:var(--navy);"></span>
-        </div>
-        <!-- ETA Notification Bell -->
-        <div id="etaNotifBell" onclick="_showPendingETAPopup()"
-          style="display:none;position:relative;cursor:pointer;margin-left:8px;
-                 width:32px;height:32px;border-radius:8px;
-                 background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.3);
-                 align-items:center;justify-content:center;flex-shrink:0;"
-          title="ETA assignment pending — click to view">
-          <span style="font-size:16px;line-height:1">⚡</span>
-          <span id="etaNotifCount"
-            style="position:absolute;top:-6px;right:-6px;
-                   background:#ef4444;color:#fff;border-radius:50%;
-                   width:18px;height:18px;font-size:10px;font-weight:800;
-                   display:flex;align-items:center;justify-content:center;
-                   animation:etaPulse 1.5s ease-in-out infinite;">1</span>
         </div>
       </div>
     </div>
@@ -3320,8 +3303,7 @@ const NO_CREATED_AT=['clients','users','login_users','cls','lvs','comp','pars_do
 // Each task table is ordered by its own submission/completion timestamp DESC
 // so the most recent entry always appears at the top of the table.
 const TABLE_SORT_COL={
-  eta_assignments:  'created_at',
-  // productivity_log removed — tab disabled
+  // productivity_log + eta_assignments removed — features disabled
   lvs:          'submitted_time',
   cls:          'submitted_time',
   comp:         'completed_time',
@@ -3391,7 +3373,7 @@ async function dbLoadRecent(table, days=30){
 
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
-const OPTIONAL_TABLES=['idle_log','eta_assignments','tat_reasons','attendance_log']; // productivity_log removed — tab disabled
+const OPTIONAL_TABLES=['idle_log','tat_reasons','attendance_log']; // productivity_log + eta_assignments removed — features disabled
 // Track which missing-table warnings already shown
 const _missingTableWarned={};
 
@@ -3951,11 +3933,6 @@ async function loadAllFromSupabase(){
       if(results[eIdx]) { DB.errors=results[eIdx].map(mapError); DB.errors.forEach((r,i)=>r._idx=i); }
       if(results[luIdx]) DB.loginUsers=results[luIdx].map(mapLoginUser);
       if(results[instrIdx]) DB.instructions=results[instrIdx].map(mapInstruction);
-      // pars_docs loaded separately for Release users who need ETA monitor
-      if(userTask==='Release'){
-        try{ const pd=await dbLoadRecent('pars_docs'); DB.parsDocs=(pd||[]).map(mapPARSDocs); }
-        catch(e){ console.warn('pars_docs load skipped for Release user',e); DB.parsDocs=[]; }
-      }
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
     }
 
@@ -4413,136 +4390,11 @@ function setupRealtime(){
   }
 }
 
-// ── ETA Assignment Poll — checks for new assignments every 8 seconds ──
-let _etaPollInterval = null;
-let _etaLastChecked = null;
+// ── ETA Monitor removed — all polls and DB writes eliminated ──
+function startETAPoll(){}
+function startETAAckPoll(){}
+function stopETAPoll(){ }
 
-function startETAPoll(){
-  if(_etaPollInterval) clearInterval(_etaPollInterval);
-  _etaLastChecked = new Date().toISOString();
-
-  _etaPollInterval = setInterval(async()=>{
-    if(!CU || !_supa) return;
-    if(document.hidden) return; // skip if tab hidden
-    try{
-      // Check for new unacknowledged assignments for this user
-      const myLogin = CU.username || '';
-      const myName  = CU.name || '';
-      // Query ALL unacknowledged assignments for this user
-      // Use both login identifiers since stored value varies
-      const myEmpNamePoll = CU.empName || CU.name || '';
-      const myUsernamePoll = CU.username || CU.loginName || '';
-      const {data} = await _supa.from('eta_assignments')
-        .select('*')
-        .eq('acknowledged', false)
-        .order('created_at', {ascending: false})
-        .limit(100);
-
-      if(!data || !data.length) return;
-
-      data.forEach(row => {
-        if(!row || !row.txn) return;
-
-        // Update memory
-        if(!window._etaAssignments) window._etaAssignments = {};
-        if(!window._etaAssignments[row.txn]){
-          window._etaAssignments[row.txn] = {
-            userId: row.assigned_to,
-            userName: row.assigned_to_name || row.assigned_to,
-            assignedBy: row.assigned_by,
-            assignedAt: row.created_at,
-            acknowledged: row.acknowledged || false,
-            ackNote: row.ack_note || '',
-            _dbid: row.id
-          };
-        }
-
-        // Is this assignment for ME?
-        // Match by any known identifier for this user
-        const myTaskUsername = CU.task_username || CU.username || '';
-        const myEmpName = CU.empName || CU.name || '';
-        const myLoginName = CU.loginName || CU.login_name || '';
-        const isForMe = row.assigned_to === myLogin ||
-                        row.assigned_to === myName ||
-                        row.assigned_to === myTaskUsername ||
-                        row.assigned_to === myLoginName ||
-                        row.assigned_to_name === myEmpName ||
-                        row.assigned_to_name === myName ||
-                        row.assigned_to_name === myLogin;
-
-        if(isForMe){
-          // POPUP STUCK FIX: skip if already acknowledged this session
-          const _ackedThisSession = JSON.parse(sessionStorage.getItem('eta_acked_txns')||'[]');
-          if(_ackedThisSession.includes(String(row.txn))) return; // already acked — skip
-          // Also skip if window._etaAssignments already marked as acknowledged
-          if(window._etaAssignments && window._etaAssignments[row.txn]?.acknowledged) return;
-
-          _smartETANotify({
-            txn: row.txn,
-            message: 'Process the file.',
-            assignedBy: row.assigned_by || 'Team Lead',
-            id: 'poll_' + row.id
-          });
-          if(!isPanelOpen()) showToast('⚡ TXN ' + row.txn + ' assigned to you — process the file!');
-        }
-
-        // TL/Manager: refresh ETA monitor
-        const isMgrTL = CU.role==='Manager'||CU.role==='Supervisor'||
-                        CU.role==='Team Lead'||CU.task==='Manager';
-        if(isMgrTL && _currentPage==='etamonitor'){
-          renderETAMonitor(document.getElementById('pc'));
-        }
-      });
-
-      // Update timestamp for next poll
-      _etaLastChecked = new Date().toISOString();
-
-    } catch(e){ /* silent fail */ }
-  }, 45000); // every 45 seconds — was 15s, reduced to cut DB calls by 67%
-}
-
-// ── ETA Acknowledgment Poll — TL sees acks in real-time ──
-let _etaAckPollInterval = null;
-
-function startETAAckPoll(){
-  if(_etaAckPollInterval) clearInterval(_etaAckPollInterval);
-  const isMgrTL = CU && (CU.role==='Manager'||CU.role==='Supervisor'||
-                   CU.role==='Team Lead'||CU.task==='Manager');
-  if(!isMgrTL) return; // only TL/Manager needs ack updates
-
-  _etaAckPollInterval = setInterval(async()=>{
-    if(!CU || !_supa) return;
-    if(document.hidden) return; // skip if tab hidden
-    try{
-      // Check for recently acknowledged assignments
-      const since = new Date(Date.now() - 30000).toISOString(); // last 30s
-      const {data} = await _supa.from('eta_assignments')
-        .select('*')
-        .eq('acknowledged', true)
-        .gte('ack_at', since);
-
-      if(!data || !data.length) return;
-
-      data.forEach(row => {
-        if(!row || !row.txn) return;
-        const existing = window._etaAssignments && window._etaAssignments[row.txn];
-        if(existing && !existing.acknowledged){
-          // New acknowledgment!
-          existing.acknowledged = true;
-          existing.ackNote = row.ack_note || '';
-          _showETATLNotification(row.txn, row.ack_note || 'Acknowledged');
-          showToast('✅ TXN ' + row.txn + ' acknowledged by ' + (row.assigned_to_name||row.assigned_to));
-          if(_currentPage==='etamonitor') renderETAMonitor(document.getElementById('pc'));
-        }
-      });
-    } catch(e){ /* silent */ }
-  }, 45000); // every 45 seconds — was 20s, reduced to cut DB calls by 55%
-}
-
-function stopETAPoll(){
-  if(_etaPollInterval){ clearInterval(_etaPollInterval); _etaPollInterval=null; }
-  if(_etaAckPollInterval){ clearInterval(_etaAckPollInterval); _etaAckPollInterval=null; }
-}
 
 
 // ══════════════════════════════════════════════════════════
@@ -5085,14 +4937,7 @@ function closePanel(){
     window._pendingPageRefresh=null;
     setTimeout(()=>_silentRefreshPage(pg),50);
   }
-  // After form closes — show any pending ETA notifications
-  if(window._etaPendingNotifs && window._etaPendingNotifs.length > 0){
-    setTimeout(()=>{
-      _showPendingETAPopup();
-    }, 300); // small delay so form fully closes first
-  }
   // Remove in-form banner if it's still showing
-  document.getElementById('etaFormBanner')?.remove();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -5241,524 +5086,11 @@ function selTask(btn,task){
 
 // ── Central function: boot app after CU is set ──
 
-// ══════════════════════════════════════════════════════════════════════
-// FEATURE 1: ETA MONITOR
-// ══════════════════════════════════════════════════════════════════════
-
-// Global: assigned users per TXN {txn: {userId, userName, assignedAt, acknowledged}}
+// FEATURE 1: ETA MONITOR — REMOVED (eliminated eta_assignments DB polling)
 window._etaAssignments = {};
-// Notification queue for users {username: [{txn, message, assignedBy, id}]}
-window._etaNotifications = {};
-// Poll interval handle
-window._etaMonitorInterval = null;
-
-function _etaGetEligibleRecords(){
-  const now = new Date();
-  const in2h = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-  const todayStr = now.toDateString();
-
-  // Source: PARS Docs — PARS team creates transactions with ETA for Truck/Rail shipments
-  // TL uses ETA Monitor to assign Release users to process these transactions
-  return (DB.parsDocs || []).filter(r => {
-    // Only Truck or Rail mode
-    const mode = (r.mode || '').trim().toLowerCase();
-    if(mode !== 'truck' && mode !== 'rail') return false;
-    // Must have an ETA value
-    if(!r.eta || r.eta === '—') return false;
-    // Parse ETA — stored as DD-MM-YYYY HH:MM:SS
-    const etaDate = _parseRawDateTime(r.eta);
-    if(!etaDate || isNaN(etaDate)) return false;
-    // ETA must be today
-    if(etaDate.toDateString() !== todayStr) return false;
-    // ETA within next 2 hours OR up to 30 min overdue
-    const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
-    if(etaDate < thirtyMinAgo || etaDate > in2h) return false;
-    // Check if already processed in Release — skip if TXN exists in Release
-    const alreadyReleased = (DB.release2 || []).some(rel =>
-      String(rel.txn) === String(r.txn) &&
-      ['recap done','submitted','released','completed'].includes((rel.status||'').toLowerCase())
-    );
-    if(alreadyReleased) return false;
-    return true;
-  });
-}
-
-function _parseRawDateTime(str){
-  if(!str || str === '—') return null;
-  // DD-MM-YYYY HH:MM:SS
-  const m = str.match(/^(\d{2})-(\d{2})-(\d{4})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-  if(m) return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]),
-    parseInt(m[4]||0), parseInt(m[5]||0), parseInt(m[6]||0));
-  return null;
-}
-
-function _etaTimeLeft(etaStr){
-  const eta = _parseRawDateTime(etaStr);
-  if(!eta) return '—';
-  const diff = eta - new Date();
-  if(diff < 0) return 'OVERDUE';
-  const h = Math.floor(diff / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  return h > 0 ? h+'h '+ m+'m' : m+'m';
-}
-
-async function _etaAssignUser(txn, userId, userName){
-  const assignment = {
-    userId, userName,
-    assignedBy: CU.name,
-    assignedAt: new Date().toISOString(),
-    acknowledged: false,
-    ackNote: ''
-  };
-  window._etaAssignments[String(txn)] = assignment;
-
-  // Persist to Supabase eta_assignments table
-  // Resolve loginName from loginUsers so it matches CU.username on receiving end
-  const _lu = (DB.loginUsers||[]).find(u =>
-    (u.username||u.loginName) === userId ||
-    (u.empName||u.username) === userName
-  );
-  const _loginName = _lu ? (_lu.loginName||_lu.username||userId) : userId;
-
-  if(_supa){
-    try{
-      const savedEta = await dbInsert('eta_assignments', {
-        txn: String(txn),          // DB column is TEXT
-        assigned_to: _loginName,
-        assigned_to_name: userName,
-        assigned_by: CU.name,
-        acknowledged: false,
-        ack_note: null,
-        created_at: nowISOET()     // ET timestamp
-      });
-      if(savedEta && savedEta.id){
-        window._etaAssignments[txn]._dbid = savedEta.id;
-      } else {
-        console.warn('[ETA] DB save returned no id');
-      }
-    } catch(e){ console.warn('eta_assignments save failed:', e.message); }
-  }
-
-  // Send notification to that user
-  if(!window._etaNotifications[userId]) window._etaNotifications[userId] = [];
-  const notifId = 'eta_' + txn + '_' + Date.now();
-  window._etaNotifications[userId].push({
-    id: notifId, txn,
-    message: 'Process the file.',
-    assignedBy: CU.name,
-    timestamp: new Date().toISOString(),
-    read: false
-  });
-  // If user is currently logged in show popup immediately
-  if(CU.username === userId || CU.name === userName){
-    _showETANotificationPopup({txn, message:'Process the file.', assignedBy: CU.name, id: notifId});
-  }
-  showToast('✅ Assigned '+ userName +' to TXN '+ txn);
-  renderETAMonitor(document.getElementById('pc'));
-}
-
-function _showETANotificationPopup(notif){
-  // Remove any existing popup first
-  const existing = document.getElementById('etaNotifOverlay');
-  if(existing) existing.remove();
-
-  // Build popup using DOM (not innerHTML template) to avoid escaping issues
-  const overlay = document.createElement('div');
-  overlay.id = 'etaNotifOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:999999;display:flex;align-items:center;justify-content:center;font-family:var(--font)';
-  document.body.appendChild(overlay);
-
-  const box = document.createElement('div');
-  box.style.cssText = 'background:#1e1b4b;border:2px solid #7c3aed;border-radius:16px;padding:28px 28px 24px;max-width:420px;width:90%;text-align:center;position:relative';
-  overlay.appendChild(box);
-
-  // ── X close button — always visible, always works ──────────────
-  const xBtn = document.createElement('button');
-  xBtn.textContent = '✕';
-  xBtn.style.cssText = 'position:absolute;top:12px;right:14px;background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1';
-  xBtn.title = 'Close popup';
-  xBtn.onclick = function(){ overlay.remove(); if(window._etaPendingNotifs) window._etaPendingNotifs=[]; if(typeof _updateETABell==='function') _updateETABell(); };
-  box.appendChild(xBtn);
-
-  // ── Content ────────────────────────────────────────────────────
-  box.innerHTML += '<div style="font-size:40px;margin-bottom:10px">⚡</div>'
-    + '<div style="font-size:18px;font-weight:800;color:#e0e7ff;margin-bottom:6px">Action Required</div>'
-    + '<div style="font-size:14px;color:#a5b4fc;margin-bottom:4px">TXN: <b style="color:#fbbf24">'+String(notif.txn||'')+'</b></div>'
-    + '<div style="font-size:13px;color:#6b7280;margin-bottom:14px">Assigned by: '+String(notif.assignedBy||'Team Lead')+'</div>'
-    + '<textarea id="etaAckNote" placeholder="Enter what action you are taking..." rows="3" '
-    + 'style="width:100%;background:rgba(255,255,255,.08);border:1px solid rgba(139,92,246,.4);border-radius:8px;color:#fff;padding:10px;font-size:13px;resize:none;margin-bottom:12px;box-sizing:border-box;font-family:var(--font)"></textarea>'
-    + '<div id="etaAckErr" style="display:none;color:#f87171;font-size:12px;margin-bottom:8px">⚠️ Please enter what action you are taking</div>';
-
-  // Re-append xBtn after innerHTML reset
-  box.insertBefore(xBtn, box.firstChild);
-
-  // ── Acknowledge button ─────────────────────────────────────────
-  const ackBtn = document.createElement('button');
-  ackBtn.textContent = '✅ Acknowledge & Continue';
-  ackBtn.style.cssText = 'width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px;font-family:var(--font)';
-  ackBtn.onclick = function(){
-    const note = (document.getElementById('etaAckNote')?.value||'').trim();
-    if(!note){ document.getElementById('etaAckErr').style.display='block'; document.getElementById('etaAckNote')?.focus(); return; }
-    // Close IMMEDIATELY — no waiting
-    overlay.remove();
-    _etaAcknowledge(String(notif.txn), String(notif.id||''), note);
-  };
-  box.appendChild(ackBtn);
-
-  // ── Already processed button ───────────────────────────────────
-  const skipBtn = document.createElement('button');
-  skipBtn.textContent = '✕ Already processed by someone else — Close';
-  skipBtn.style.cssText = 'width:100%;padding:9px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:transparent;color:#9ca3af;font-size:12px;cursor:pointer;font-family:var(--font)';
-  skipBtn.onclick = function(){
-    overlay.remove();
-    // Mark as acked so it never shows again
-    try{ const a=JSON.parse(sessionStorage.getItem('eta_acked_txns')||'[]'); if(!a.includes(String(notif.txn))) a.push(String(notif.txn)); sessionStorage.setItem('eta_acked_txns',JSON.stringify(a)); }catch(e){}
-    if(window._etaPendingNotifs) window._etaPendingNotifs=window._etaPendingNotifs.filter(n=>String(n.txn)!==String(notif.txn));
-    if(typeof _updateETABell==='function') _updateETABell();
-  };
-  box.appendChild(skipBtn);
-
-  // ESC key closes
-  const escFn = function(e){ if(e.key==='Escape'){ overlay.remove(); document.removeEventListener('keydown',escFn); } };
-  document.addEventListener('keydown', escFn);
-}
-
-
-// Emergency close — always works, no DB call needed
-function _etaForceClose(){
-  const overlay = document.getElementById('etaNotifOverlay');
-  if(overlay){
-    // Remove ESC listener
-    if(overlay._escHandler) document.removeEventListener('keydown', overlay._escHandler);
-    overlay.style.display = 'none';
-    overlay.innerHTML = '';
-  }
-  // Clear any pending notifs from the queue
-  if(window._etaPendingNotifs) window._etaPendingNotifs = [];
-  if(typeof _updateETABell==='function') _updateETABell();
-}
-
-async function _etaAcknowledge(txn, notifId, noteParam){
-  // note is passed directly from button — no need to read from DOM
-  const note = noteParam || (document.getElementById('etaAckNote')?.value||'').trim();
-  if(!note){ showToast('⚠️ Please enter what action you are taking', true); return; }
-
-  // Popup already closed by caller — just do cleanup and DB save
-
-  // Mark as acked in memory & sessionStorage
-  const asgn = window._etaAssignments[txn];
-  if(asgn){ asgn.acknowledged = true; asgn.ackNote = note; asgn.ackedAt = new Date().toISOString(); }
-  try{
-    const _acked = JSON.parse(sessionStorage.getItem('eta_acked_txns')||'[]');
-    if(!_acked.includes(String(txn))){ _acked.push(String(txn)); sessionStorage.setItem('eta_acked_txns', JSON.stringify(_acked)); }
-    if(window._etaPendingNotifs) window._etaPendingNotifs = window._etaPendingNotifs.filter(n=>String(n.txn)!==String(txn));
-    if(typeof _updateETABell==='function') _updateETABell();
-  }catch(e){}
-
-  showToast('✅ Acknowledged — TL will be notified');
-  _showETATLNotification(txn, note);
-  if(_currentPage === 'etamonitor') renderETAMonitor(document.getElementById('pc'));
-
-  // Save to Supabase in background (fire-and-forget)
-  if(_supa){
-    (async()=>{
-      try{
-        const asnDbid = window._etaAssignments[txn]?._dbid;
-        let rowId = asnDbid;
-        if(!rowId){
-          const {data} = await _supa.from('eta_assignments').select('id').eq('txn', String(txn)).limit(1);
-          rowId = data && data.length > 0 ? data[0].id : null;
-        }
-        if(rowId){
-          await _supa.from('eta_assignments').update({
-            acknowledged: true, ack_note: note,
-            ack_by: CU.name, ack_at: new Date().toISOString()
-          }).eq('id', rowId);
-        }
-      } catch(e){ console.warn('eta_assignments ack save failed:', e.message); }
-    })();
-  }
-}
-
-function _showETATLNotification(txn, note){
-  // Show a banner visible to TL/Manager notifying them of acknowledgment
-  let banner = document.getElementById('etaTLBanner');
-  if(!banner){
-    banner = document.createElement('div');
-    banner.id = 'etaTLBanner';
-    banner.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9998;max-width:340px;';
-    document.body.appendChild(banner);
-  }
-  const asgn = window._etaAssignments[txn];
-  banner.innerHTML += `
-    <div style="background:#065f46;border:1px solid #10b981;border-radius:12px;padding:14px 16px;margin-top:8px;box-shadow:0 4px 20px rgba(0,0,0,.4);">
-      <div style="font-size:12px;font-weight:700;color:#6ee7b7;margin-bottom:4px;">✅ User Acknowledged</div>
-      <div style="font-size:13px;color:#d1fae5;">TXN <b>${txn}</b> acknowledged by <b>${asgn?.userName||'user'}</b></div>
-      <div style="font-size:11px;color:#a7f3d0;margin-top:4px;">"${note}"</div>
-      <button onclick="this.parentElement.remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;color:#6b7280;cursor:pointer;font-size:14px;">✕</button>
-    </div>`;
-  setTimeout(() => { const el = banner.querySelector('div'); if(el) el.remove(); }, 15000);
-}
-
-// Check for notifications for current user on each page load
-function _etaCheckUserNotifications(){
-  const userId = CU.username || CU.name;
-  const notifs = window._etaNotifications[userId] || [];
-  const unread = notifs.filter(n => !n.read);
-  unread.forEach(n => {
-    n.read = true;
-    _showETANotificationPopup(n);
-  });
-}
-
-
-// ══════════════════════════════════════════════════════════════════════
-// FEATURE 2: PRODUCTIVITY TRACKING — DISABLED FOR PERFORMANCE
-// Removed: tab, DB writes on every submit, dbLoad on page open, 60s interval
-// INP was 6,968ms on nb_productivity button — now eliminated entirely
-// ══════════════════════════════════════════════════════════════════════
-
-const PROD_IDLE_THRESHOLD_MIN = 15; // kept to avoid reference errors
-function _prodRecordSubmit(){ /* no-op — productivity tracking disabled */ }
-function renderProductivity(c){ if(c) c.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Productivity Tracker disabled.</div>'; }
-function _fmtTimeAgo(){ return '—'; }
-function _prodClearData(){ /* no-op */ }
-
-
-
-// ── ETA Notification from DB — fires on every login ──────────────────
-async function _etaCheckUserNotificationsFromDB(){
-  const userId   = CU.username || CU.name;
-  const userName = CU.name || CU.username;
-
-  // 1. Check in-memory notifications (same-session, immediate)
-  const memNotifs = window._etaNotifications[userId] || [];
-  memNotifs.filter(n=>!n.read).forEach(n=>{
-    n.read = true;
-    _showETANotificationPopup(n);
-  });
-
-  // 2. Check DB for unacknowledged assignments (survives page reload)
-  if(!_supa) return;
-  try{
-    const rows = await dbLoad('eta_assignments');
-    if(!rows || !rows.length) return;
-
-    const mine = rows.filter(r =>
-      !r.acknowledged &&
-      (r.assigned_to === userId || r.assigned_to_name === userName ||
-       r.assigned_to === userName)
-    );
-
-    if(mine.length === 0) return;
-
-    // Restore to memory
-    mine.forEach(r => {
-      if(!window._etaAssignments[r.txn]){
-        window._etaAssignments[r.txn] = {
-          userId: r.assigned_to,
-          userName: r.assigned_to_name || r.assigned_to,
-          assignedBy: r.assigned_by,
-          assignedAt: r.created_at,
-          acknowledged: false,
-          ackNote: '',
-          _dbid: r.id
-        };
-      }
-    });
-
-    // Show popup for the first unacknowledged assignment (smart — deferred if form open)
-    const first = mine[0];
-    _smartETANotify({
-      txn: first.txn,
-      message: 'Process the file.',
-      assignedBy: first.assigned_by || 'Team Lead',
-      id: 'db_' + first.id
-    });
-
-  } catch(e){
-    console.warn('[ETA] DB notification check failed:', e.message);
-  }
-}
-
-function renderETAMonitor(c){
-  const canView = CU.role==='Manager'||CU.role==='Supervisor'||CU.role==='Team Lead'||CU.task==='Manager'||CU.username===ADMIN_UNAME;
-  if(!canView){
-    c.innerHTML = '<div class="ph"><div class="pt">⏱️ ETA Monitor</div></div><div style="padding:40px;text-align:center;color:var(--text3)">Access restricted to Team Leads, Supervisors and Managers.</div>';
-    return;
-  }
-
-  // Load existing assignments from DB on first open
-  if(_supa && !window._etaDBLoaded){
-    window._etaDBLoaded = true;
-    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3);">⏳ Loading ETA data...</div>';
-    // Load pars_docs if TL/Supervisor doesn't have it
-    const loadPars = (!DB.parsDocs || DB.parsDocs.length === 0)
-      ? dbLoad('pars_docs').then(rows => { if(rows) DB.parsDocs = rows.map(mapPARSDocs); })
-      : Promise.resolve();
-    // Load release2 if TL/Supervisor doesn't have it — needed to check completed TXNs
-    const loadRelease = (!DB.release2 || DB.release2.length === 0)
-      ? dbLoad('release').then(rows => { if(rows){ DB.release2 = rows.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i); } })
-      : Promise.resolve();
-    // Load loginUsers if TL/Supervisor doesn't have it — needed for "Assign to Release" dropdown
-    const loadUsers = (!DB.loginUsers || DB.loginUsers.length === 0)
-      ? dbLoad('login_users').then(rows => { if(rows) DB.loginUsers = rows.map(mapLoginUser); })
-      : Promise.resolve();
-    // Wait for ALL data loads to complete before loading assignments then rendering
-    Promise.all([loadPars, loadRelease, loadUsers]).then(() => {
-      return dbLoad('eta_assignments');
-    }).then(rows => {
-      if(rows && rows.length){
-        rows.forEach(r => {
-          if(!window._etaAssignments[String(r.txn)]){
-            window._etaAssignments[String(r.txn)] = {
-              userId: r.assigned_to,
-              userName: r.assigned_to_name||r.assigned_to,
-              assignedBy: r.assigned_by,
-              assignedAt: r.created_at,
-              acknowledged: r.acknowledged||false,
-              ackNote: r.ack_note||''
-            };
-          }
-        });
-      }
-      renderETAMonitor(c);
-    }).catch(() => renderETAMonitor(c));
-    return;
-  }
-
-  const records = _etaGetEligibleRecords();
-  // Show ALL active users — manager decides who to assign (not limited to Release task)
-  const users = (DB.loginUsers || []).filter(u => u.active !== false)
-    .sort((a,b)=>(a.empName||a.username).localeCompare(b.empName||b.username));
-
-  const userOpts = users.length
-    ? users.map(u => {
-        const name = u.empName || u.username;
-        const taskLabel = u.task ? ` (${u.task})` : '';
-        return `<option value="${u.loginName||u.username}" data-name="${name}">${name}${taskLabel}</option>`;
-      }).join('')
-    : '<option value="" disabled>No users found — check DB connection</option>';
-
-  const rows = records.length === 0
-    ? `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text3);">No PARS Truck/Rail transactions with ETA in next 2 hours today</td></tr>`
-    : records.map((r, i) => {
-      const asgn = window._etaAssignments[String(r.txn)]||window._etaAssignments[r.txn];
-      const ackBadge = asgn?.acknowledged
-        ? `<span style="background:#065f46;color:#6ee7b7;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;">✅ Acknowledged</span>`
-        : asgn
-          ? `<span style="background:#78350f;color:#fde68a;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;">⏳ Awaiting Ack</span>`
-          : '';
-      const timeLeft = _etaTimeLeft(r.eta);
-      const urgentStyle = timeLeft !== '—' && !timeLeft.includes('h') && parseInt(timeLeft) <= 30
-        ? 'background:rgba(239,68,68,.08);'
-        : '';
-      const modeColor = (r.mode||'').toLowerCase()==='truck'?'var(--amber)':'var(--primary)';
-      return `<tr style="${urgentStyle}">
-        <td style="font-weight:700;color:var(--primary);">${r.txn||'—'}</td>
-        <td style="font-size:11px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.subject||''}">${r.subject||'—'}</td>
-        <td class="hide-client">${_clientName(r.clientname||r.client)}</td>
-        <td><span style="background:rgba(16,185,129,.12);color:var(--emerald);padding:2px 8px;border-radius:20px;font-size:11px;">${r.team||'—'}</span></td>
-        <td><span style="background:rgba(245,158,11,.12);color:${modeColor};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">${r.mode||'—'}</span></td>
-        <td>
-          <div style="font-size:11px;color:var(--text3);">ETA: ${r.eta||'—'}</div>
-          <div style="font-weight:700;color:${timeLeft==='OVERDUE'?'var(--rose)':parseInt(timeLeft)<=30?'var(--amber)':'var(--emerald)'};">⏱ ${timeLeft}</div>
-        </td>
-        <td>
-          <span style="background:rgba(239,68,68,.12);color:var(--rose);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">Pending Release</span>
-          ${ackBadge}
-          ${asgn ? `<div style="font-size:10px;color:var(--text3);margin-top:3px;">👤 ${asgn.userName}</div>` : ''}
-        </td>
-        <td>
-          ${!asgn ? `
-            <select id="eta_assign_${r.txn}" style="font-size:11px;padding:4px 6px;border-radius:6px;background:var(--surface2);border:1px solid var(--border);color:var(--text1);margin-bottom:4px;">
-              <option value="">— Select User —</option>${userOpts}
-            </select>
-            <button onclick="_etaDoAssign('${r.txn}')"
-              style="display:block;width:100%;background:var(--primary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">
-              Assign
-            </button>` : `
-            <button onclick="_etaReassign('${r.txn}')"
-              style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;">
-              Reassign
-            </button>`}
-        </td>
-      </tr>`;
-    }).join('');
-
-  c.innerHTML = `
-  <div class="ph">
-    <div>
-      <div class="pt">⏱️ ETA Monitor <span class="pbadge">Live</span></div>
-      <div class="ps">PARS Docs Truck &amp; Rail transactions with ETA within 2 hours — assign to Release user</div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <div style="background:rgba(239,68,68,.12);color:var(--rose);padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;">${records.length} pending</div>
-      <button onclick="window._etaDBLoaded=false;renderETAMonitor(document.getElementById('pc'))"
-        style="background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
-    </div>
-  </div>
-
-  <div style="padding:16px;">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:var(--surface2);">
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">TXN</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Subject</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Client</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Team</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Mode</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">ETA / Time Left</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Status</th>
-            <th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">Assign to Release</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  </div>`;
-
-  // Start auto-refresh every 60s while on this page
-  if(window._etaMonitorInterval) clearInterval(window._etaMonitorInterval);
-  window._etaMonitorInterval = setInterval(() => {
-    if(_currentPage === 'etamonitor'){
-      // Reload release2 each time so completed TXNs are removed
-      const needsRelease = !DB.release2 || DB.release2.length === 0;
-      if(needsRelease){
-        dbLoad('release').then(rows=>{
-          if(rows){ DB.release2=rows.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i); }
-          renderETAMonitor(document.getElementById('pc'));
-        }).catch(()=>renderETAMonitor(document.getElementById('pc')));
-      } else {
-        renderETAMonitor(document.getElementById('pc'));
-      }
-    } else {
-      clearInterval(window._etaMonitorInterval);
-    }
-  }, 60000);
-}
-
-function _etaDoAssign(txn){
-  const sel = document.getElementById('eta_assign_' + txn);
-  if(!sel || !sel.value){ showToast('⚠️ Please select a user first', true); return; }
-  const userId = sel.value;
-  const lu = (DB.loginUsers||[]).find(u => (u.loginName||u.username) === userId || u.username === userId);
-  const userName = lu ? (lu.empName || lu.username) : userId;
-  const loginName = lu ? (lu.loginName || lu.username || userId) : userId;
-  _etaAssignUser(txn, userId, userName);
-}
-
-function _etaReassign(txn){
-  delete window._etaAssignments[String(txn)];
-  renderETAMonitor(document.getElementById('pc'));
-}
-
-// Remove from ETA Monitor when Release record is submitted
-function _etaMarkSubmitted(txn){
-  // When a TXN is submitted in Release, remove its assignment
-  if(window._etaAssignments[String(txn)]) delete window._etaAssignments[String(txn)];
-}
+function _etaMarkSubmitted(){}
+function _etaCheckUserNotificationsFromDB(){}
+function renderETAMonitor(c){ if(c) c.innerHTML='<div class="ph"><div class="pt">⏱️ ETA Monitor</div></div><div style="padding:40px;text-align:center;color:var(--text3)">ETA Monitor removed.</div>'; }
 
 // FEATURE 2: DISABLED — stubs defined above, _prodDBLoaded=true prevents any legacy load
 window._prodDBLoaded = true; // prevents any stale dbLoad('productivity_log') from firing
@@ -7633,114 +6965,6 @@ function clearHistorical(pageId){
 // SMART ETA NOTIFICATION — non-blocking when form is open
 // ══════════════════════════════════════════════════════════════════
 
-window._etaPendingNotifs = []; // queue of pending notifications
-
-// Called by ETA poll when assignment is detected
-function _smartETANotify(notif){
-  if(isPanelOpen()){
-    // User is filling a form — don't interrupt!
-    // 1. Queue the notification
-    window._etaPendingNotifs.push(notif);
-    // 2. Show small non-blocking banner inside the open panel
-    _showETAFormBanner(notif);
-    // 3. Show pulsing bell in topbar
-    _updateETABell();
-  } else {
-    // No form open — show full popup immediately
-    _showETANotificationPopup(notif);
-  }
-}
-
-// Show small urgent banner INSIDE the open add form
-function _showETAFormBanner(notif){
-  // Remove existing banner
-  document.getElementById('etaFormBanner')?.remove();
-
-  const banner = document.createElement('div');
-  banner.id = 'etaFormBanner';
-  banner.style.cssText = [
-    'position:sticky;top:0;z-index:10;',
-    'background:linear-gradient(135deg,#7c3aed,#4f46e5);',
-    'color:#fff;padding:10px 16px;',
-    'display:flex;align-items:center;gap:10px;',
-    'animation:etaPulse 1.5s ease-in-out infinite;',
-    'border-radius:0;font-family:var(--font);'
-  ].join('');
-
-  banner.innerHTML = `
-    <span style="font-size:20px;flex-shrink:0">⚡</span>
-    <div style="flex:1;min-width:0">
-      <div style="font-size:13px;font-weight:800;">
-        New ETA Transaction Assigned: <span style="color:#fbbf24">${notif.txn}</span>
-      </div>
-      <div style="font-size:11px;opacity:.85;margin-top:1px">
-        Assigned by ${notif.assignedBy} · Save your current entry first, then process TXN ${notif.txn}
-      </div>
-    </div>
-    <button onclick="document.getElementById('etaFormBanner')?.remove()"
-      style="background:rgba(255,255,255,.2);border:none;color:#fff;
-             border-radius:6px;padding:4px 10px;font-size:12px;
-             cursor:pointer;flex-shrink:0;font-family:var(--font);">
-      OK
-    </button>`;
-
-  // Insert at top of any open panel
-  const panel = document.querySelector('.spanel.open');
-  if(panel){
-    const spHead = panel.querySelector('.sp-head') || panel.querySelector('.sp-body') || panel.firstElementChild;
-    if(spHead) spHead.insertAdjacentElement('beforebegin', banner);
-    else panel.prepend(banner);
-    panel.scrollTop = 0;
-  }
-  // Also play a sound/vibrate if browser supports
-  try{ if(window.navigator.vibrate) window.navigator.vibrate([200,100,200]); }catch(e){}
-}
-
-// Update the pulsing bell badge in topbar
-function _updateETABell(){
-  const bell  = document.getElementById('etaNotifBell');
-  const count = document.getElementById('etaNotifCount');
-  const n = window._etaPendingNotifs.length;
-  if(!bell) return;
-  if(n > 0){
-    bell.style.display = 'flex';
-    if(count) count.textContent = n;
-  } else {
-    bell.style.display = 'none';
-  }
-}
-
-// When user clicks the bell — show the pending popup
-function _showPendingETAPopup(){
-  if(!window._etaPendingNotifs.length) return;
-  const notif = window._etaPendingNotifs[0]; // show first pending
-  _showETANotificationPopup(notif);
-}
-
-// After user acknowledges — remove from queue and update bell
-const _origETAAck = window._etaAcknowledge;
-async function _etaAcknowledge(txn, notifId){
-  // Remove from pending queue
-  window._etaPendingNotifs = window._etaPendingNotifs
-    .filter(n => n.txn !== txn);
-  _updateETABell();
-  // Show next pending if any
-  if(window._etaPendingNotifs.length > 0){
-    setTimeout(() => _showPendingETAPopup(), 500);
-  }
-  // Call original acknowledge
-  if(typeof _origETAAck === 'function') await _origETAAck(txn, notifId);
-  else {
-    // Inline ack logic if original not available
-    const note = (document.getElementById('etaAckNote')?.value || '').trim();
-    if(!note){ showToast('⚠️ Please enter what action you are taking', true); return; }
-    const overlay = document.getElementById('etaNotifOverlay');
-    if(overlay) overlay.style.display = 'none';
-    showToast('✅ Acknowledged — TL will be notified');
-  }
-}
-
-// Hook into closePanel — show pending popups after form closes
 
 // ══════════════════════════════════════════════════════════════════
 // CLIENT LOGIN NOTIFICATION SYSTEM
@@ -8140,8 +7364,8 @@ function _showBreakViolationBadge(count){
     badge.id='breakViolationBadge';
     badge.onclick=function(){ if(CU) showPage('attendance'); };
     badge.style.cssText='cursor:pointer;background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;color:#dc2626;display:flex;align-items:center;gap:4px;margin-left:8px;font-family:var(--font);';
-    var bell=document.getElementById('etaNotifBell');
-    if(bell) bell.insertAdjacentElement('beforebegin',badge);
+    var topbarRight=document.querySelector('.hope-topbar-right')||document.getElementById('hopeTopbarRight')||document.body;
+    if(topbarRight) topbarRight.prepend(badge);
   }
   badge.innerHTML='&#9888; '+count+' break violation'+(count>1?'s':'');
 }
@@ -8294,8 +7518,6 @@ async function exportBreakViolationsExcel(){
 }
 
 function bootApp(){
-  // Check for ETA Monitor notifications for current user (from DB)
-  setTimeout(_etaCheckUserNotificationsFromDB, 2000);
   // Set mobile task page based on user's role
   const _taskPageMap2 = {
     'LVS':'lvs','Classifier':'classifier','Compliance':'compliance',
@@ -8359,11 +7581,6 @@ function bootApp(){
   if(_supa) setupRealtime();
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
-  // Only start ETA poll for TL/Manager/Supervisor — saves DB calls for regular users
-  const _canSeeETA = CU.role==='Manager'||CU.role==='Team Lead'||
-                     CU.role==='Supervisor'||CU.task==='Manager';
-  if(_supa && _canSeeETA) startETAPoll();
-  if(_supa && _canSeeETA) startETAAckPoll();
   if(_supa) startKeepAlive(); // prevent Supabase cold start
   _updateLastRefreshed(); // mark initial load time
   // Normalize task casing from DB (handles 'release' vs 'Release' etc.)
@@ -8716,7 +7933,6 @@ async function _proceedWithLogin(lu, u){
 function doLogout(){
   if(CU) secLogEvent('LOGOUT', CU.username, 'User logged out');
   idleStop();
-  stopETAPoll();
   // Clear single-session tracking
   if(CU) _clearSession(CU.username||'');
   try{sessionStorage.removeItem('kpi_session');}catch(e){} // clear session on logout
@@ -8836,7 +8052,6 @@ function buildNav(){
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'gdrive',l:'📤 Google Drive',g:'admin'},
       {id:'clients',l:'🏢 Clients',g:'admin'},
-      {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       {id:'tatreasons',l:'💬 TAT Reasons',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
@@ -8862,7 +8077,6 @@ function buildNav(){
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'tatanalyzer',l:'🎯 TAT Analyzer',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
-      {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
@@ -8879,7 +8093,6 @@ function buildNav(){
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
-      {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
@@ -8911,7 +8124,6 @@ function buildNav(){
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
-      {id:'etamonitor',l:'⏱️ ETA Monitor',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
@@ -9148,7 +8360,6 @@ function showPage(id){
   else if(id==='release2') renderRelease2(c);
   else if(id==='oceantt') renderOceanTT(c);
   else if(id==='b2entries') renderB2Entries(c);
-  else if(id==='etamonitor') renderETAMonitor(c);
   else if(id==='productivity') renderProductivity(c);
   else if(id==='loginusers'){
     // Always reload from DB when opening the page so changes by others appear instantly
@@ -18130,9 +17341,6 @@ function _doSaveRelease2Row(txn, penaltyUser, tatComments){
   };
 
   // Productivity tracking removed — tab disabled for performance
-
-  // Feature 1: Remove from ETA Monitor on submit
-  _etaMarkSubmitted(txn);
 
   // Show penalty toast if applicable
   if(penaltyUser){
