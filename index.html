@@ -2685,6 +2685,7 @@ body.role-client [data-col="clientname"]{
         <label class="fpl" for="rl_txn">Transaction Number <span class="req">*</span></label>
         <input class="fpi" id="rl_txn" maxlength="8" placeholder="8-digit starts 6,7,8,4" oninput="vTxnRL(this);rlCheckClientErrors()"/>
         <div class="ferr" id="rle_txn">Must be 8 digits starting with 6,7,8 or 4</div>
+        <div class="ferr" id="rle_txn_dup" style="background:var(--rose-bg);border:1px solid rgba(225,29,72,.3);padding:6px 10px;border-radius:6px;display:none">⚠️ Duplicate — this Transaction Number already exists in Release!</div>
       </div>
       <div style="display:none"><input class="fpi auto" id="rl_start" readonly/><input type="hidden" id="rl_start_iso"/></div>
     </div>
@@ -8856,11 +8857,30 @@ function vTxn(el,pfx){
   const dupErr=document.getElementById('le_txn_dup');
   const ok=/^[4678]\d{7}$/.test(v);
   if(err) err.style.display=(v.length===8&&!ok)?'block':'none';
-  // Real-time duplicate check
+  // Real-time duplicate check — local cache first, then DB
   if(dupErr){
-    const isDup=v.length===8&&ok&&DB.lvs.some(r=>r.txn===v);
-    dupErr.style.display=isDup?'block':'none';
-    el.style.borderColor=isDup?'var(--rose)':'';
+    if(v.length===8&&ok){
+      const isDup=DB.lvs.some(r=>String(r.txn)===String(v));
+      if(isDup){
+        dupErr.style.display='block';
+        el.style.borderColor='var(--rose)';
+      } else {
+        dupErr.style.display='none';
+        el.style.borderColor='var(--emerald)';
+        // Check DB for records outside 30-day cache
+        if(_supa){
+          _supa.from('lvs').select('id').eq('txn',v).limit(1).then(({data})=>{
+            if(data&&data.length>0){
+              dupErr.style.display='block';
+              el.style.borderColor='var(--rose)';
+            }
+          }).catch(()=>{});
+        }
+      }
+    } else {
+      dupErr.style.display='none';
+      el.style.borderColor='';
+    }
   }
   el.classList.toggle('err2',v.length===8&&!ok);
 }
@@ -9038,6 +9058,7 @@ function submitLVS(){
   if(!lines){showToast('⚠️ Lines count is required',true);return;}
   if(!/^[4678]\d{7}$/.test(txn)){showToast('⚠️ Invalid Transaction Number',true);return;}
   if(DB.lvs.find(r=>String(r.txn)===String(txn))){showToast('⚠️ Duplicate Transaction Number!',true);return;}
+  if(document.getElementById('le_txn_dup')?.style.display==='block'){showToast('⚠️ Duplicate Transaction Number — already exists!',true);return;}
   if(parseInt(client)>999999){showToast('⚠️ Client max 6 digits',true);return;}
   const now=nowET();
   const releaseDate2=parseLVSDate(release);
@@ -15779,14 +15800,31 @@ function vTxnPD(el){
   const dupErr=document.getElementById('pde_txn_dup');
   if(err) err.style.display=(v.length===8&&!ok)?'block':'none';
   el.classList.toggle('err2',v.length===8&&!ok);
-  // Real-time duplicate check against existing PARS Docs records
+  // Real-time duplicate check — local cache first, then DB
   if(dupErr){
-    const editIdx=parseInt(document.getElementById('pd_edit_idx')?.value);
-    const isDup=v.length===8&&ok&&DB.parsDocs.some((r,i)=>r.txn===v&&i!==editIdx);
-    dupErr.style.display=isDup?'block':'none';
-    if(isDup) el.style.borderColor='var(--rose)';
-    else if(ok) el.style.borderColor='var(--emerald)';
-    else el.style.borderColor='';
+    if(v.length===8&&ok){
+      const editIdx=parseInt(document.getElementById('pd_edit_idx')?.value);
+      const isDup=DB.parsDocs.some((r,i)=>String(r.txn)===String(v)&&i!==editIdx);
+      if(isDup){
+        dupErr.style.display='block';
+        el.style.borderColor='var(--rose)';
+      } else {
+        dupErr.style.display='none';
+        el.style.borderColor='var(--emerald)';
+        // Check DB for records outside 30-day cache (skip on edit mode)
+        if(_supa&&isNaN(editIdx)){
+          _supa.from('pars_docs').select('id').eq('txn',v).limit(1).then(({data})=>{
+            if(data&&data.length>0){
+              dupErr.style.display='block';
+              el.style.borderColor='var(--rose)';
+            }
+          }).catch(()=>{});
+        }
+      }
+    } else {
+      dupErr.style.display='none';
+      el.style.borderColor='';
+    }
   }
 }
 
@@ -15832,6 +15870,7 @@ function submitPARSDocs(){
   // Block duplicate transaction on new entry
   const pdEditIdx=parseInt(document.getElementById('pd_edit_idx')?.value);
   if(DB.parsDocs.some((r,i)=>String(r.txn)===String(txn)&&i!==pdEditIdx)){showToast('⚠️ Duplicate Transaction Number — already exists in PARS Docs!',true);return;}
+  if(document.getElementById('pde_txn_dup')?.style.display==='block'){showToast('⚠️ Duplicate Transaction Number — already exists in PARS Docs!',true);return;}
   const tatVal=document.getElementById('pd_tat')?.value||'—';
   const _tatNormalized = (tatVal==='TAT Not Reached'||tatVal.toLowerCase().includes('not')) ? 'TAT Not Reached' : (tatVal==='TAT Reached'||tatVal.toLowerCase().includes('reached')) ? 'TAT Reached' : '—';
   if(_tatNormalized==='TAT Not Reached'){
@@ -16832,18 +16871,39 @@ function vTxnRL(el){
   const v=el.value;
   const ok=/^[6784]\d{7}$/.test(v);
   const err=document.getElementById('rle_txn');
+  const dupErr=document.getElementById('rle_txn_dup');
   if(err) err.style.display=(v.length===8&&!ok)?'block':'none';
   el.classList.toggle('err2',v.length===8&&!ok);
-  if(v.length===8&&ok&&DB.release2.find(r=>String(r.txn)===String(v))){
-    showToast('⚠️ Duplicate Transaction Number — already exists in Release!',true);
-    el.style.borderColor='var(--rose)';
-  } else if(v.length===8&&ok){
-    el.style.borderColor='var(--emerald)';
+  if(dupErr){
+    if(v.length===8&&ok){
+      // 1. Check local cache first (instant)
+      const localDup=DB.release2.some(r=>String(r.txn)===String(v));
+      if(localDup){
+        dupErr.style.display='block';
+        el.style.borderColor='var(--rose)';
+      } else {
+        dupErr.style.display='none';
+        el.style.borderColor='var(--emerald)';
+        // 2. Also check DB for records outside 30-day cache
+        if(_supa){
+          _supa.from('release').select('id').eq('txn',v).limit(1).then(({data})=>{
+            if(data&&data.length>0){
+              dupErr.style.display='block';
+              el.style.borderColor='var(--rose)';
+              showToast('⚠️ Duplicate — TXN '+v+' already exists in Release (older record)!',true);
+            }
+          }).catch(()=>{});
+        }
+      }
+    } else {
+      dupErr.style.display='none';
+      if(!ok) el.style.borderColor='';
+    }
   }
   if(!releaseStart&&v.length>0){
     releaseStart=nowET();
     document.getElementById('rl_start').value=nowStr();
-  document.getElementById('rl_start_iso').value=nowISOET();
+    document.getElementById('rl_start_iso').value=nowISOET();
   }
   rlCalcTATAnalytics();
 }
@@ -17372,6 +17432,8 @@ function submitRelease2(){
   if(!txn){showToast('⚠️ Transaction Number is required',true);return;}
   if(!/^[6784]\d{7}$/.test(txn)){showToast('⚠️ Invalid Transaction Number',true);return;}
   if(DB.release2.find(r=>String(r.txn)===String(txn))){showToast('⚠️ Duplicate Transaction Number!',true);return;}
+  // Also block if the real-time DB check flagged it
+  if(document.getElementById('rle_txn_dup')?.style.display==='block'){showToast('⚠️ Duplicate Transaction Number — already exists!',true);return;}
   const eta=document.getElementById('rl_eta').value;
   if(!eta){showToast('⚠️ ETA (Date & Time) is required',true);return;}
   if(!mode){showToast('⚠️ Please select a Mode (Step 8)',true);return;}
