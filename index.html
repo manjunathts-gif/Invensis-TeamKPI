@@ -488,38 +488,33 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 
 
 /* ════════════════════════════
-   DASHBOARD KPI CARDS — Blue Premium
+   DASHBOARD KPI CARDS — Full Gradient Fill
 ════════════════════════════ */
 .dash-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px;}
 .dash-kpi{
-  background:#fff;
-  border:1px solid var(--border);
-  border-radius:14px;
+  border:none;
+  border-radius:16px;
   padding:20px 18px;
   position:relative;overflow:hidden;
   transition:all .22s cubic-bezier(.22,.68,0,1.2);
-  box-shadow:var(--shadow);
+  box-shadow:0 4px 20px rgba(0,0,0,.12);
 }
-.dash-kpi:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg);}
-.dash-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;border-radius:14px 14px 0 0;}
-.dash-kpi.kpi-blue::before{background:linear-gradient(90deg,#1a3a6e,#1d4ed8,#60a5fa);}
-.dash-kpi.kpi-blue .dash-kpi-val{color:var(--primary);}
-.dash-kpi.kpi-teal::before{background:linear-gradient(90deg,#134e4a,#0d9488,#2dd4bf);}
-.dash-kpi.kpi-teal .dash-kpi-val{color:#0d9488;}
-.dash-kpi.kpi-violet::before{background:linear-gradient(90deg,#3730a3,#6d28d9,#a78bfa);}
-.dash-kpi.kpi-violet .dash-kpi-val{color:#6d28d9;}
-.dash-kpi.kpi-sky::before{background:linear-gradient(90deg,#0369a1,#0ea5e9,#7dd3fc);}
-.dash-kpi.kpi-sky .dash-kpi-val{color:#0ea5e9;}
-.dash-kpi.kpi-emerald::before{background:linear-gradient(90deg,#065f46,#059669,#34d399);}
-.dash-kpi.kpi-emerald .dash-kpi-val{color:#059669;}
-.dash-kpi.kpi-amber::before{background:linear-gradient(90deg,#92400e,#d97706,#fbbf24);}
-.dash-kpi.kpi-amber .dash-kpi-val{color:#d97706;}
-.dash-kpi.kpi-rose::before{background:#e11d48;} .dash-kpi.kpi-rose .dash-kpi-val{color:#e11d48;}
-.dash-kpi.kpi-indigo::before{background:#4f46e5;} .dash-kpi.kpi-indigo .dash-kpi-val{color:#4f46e5;}
-.dash-kpi-ico{font-size:20px;margin-bottom:8px;opacity:.8;}
-.dash-kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:5px;}
-.dash-kpi-val{font-size:30px;font-weight:800;font-family:var(--mono);letter-spacing:-1.5px;color:var(--text);line-height:1;}
-.dash-kpi-sub{font-size:10px;color:var(--text3);margin-top:5px;}
+.dash-kpi::after{content:'';position:absolute;right:-10px;top:-10px;width:80px;height:80px;
+  border-radius:50%;background:rgba(255,255,255,.12);pointer-events:none;}
+.dash-kpi:hover{transform:translateY(-5px);box-shadow:0 16px 36px rgba(0,0,0,.2);}
+.dash-kpi::before{display:none;}
+.dash-kpi.kpi-blue{background:linear-gradient(135deg,#1d4ed8,#60a5fa);}
+.dash-kpi.kpi-teal{background:linear-gradient(135deg,#0d9488,#2dd4bf);}
+.dash-kpi.kpi-violet{background:linear-gradient(135deg,#6f42c1,#c084fc);}
+.dash-kpi.kpi-sky{background:linear-gradient(135deg,#0369a1,#38bdf8);}
+.dash-kpi.kpi-emerald{background:linear-gradient(135deg,#059669,#4ade80);}
+.dash-kpi.kpi-amber{background:linear-gradient(135deg,#d97706,#fcd34d);}
+.dash-kpi.kpi-rose{background:linear-gradient(135deg,#e11d48,#fb7185);}
+.dash-kpi.kpi-indigo{background:linear-gradient(135deg,#4f46e5,#a5b4fc);}
+.dash-kpi-ico{font-size:20px;margin-bottom:8px;opacity:.9;}
+.dash-kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.8);margin-bottom:5px;}
+.dash-kpi-val{font-size:30px;font-weight:800;font-family:var(--mono);letter-spacing:-1.5px;color:#fff!important;-webkit-text-fill-color:#fff!important;background:none!important;line-height:1;}
+.dash-kpi-sub{font-size:10px;color:rgba(255,255,255,.7);margin-top:5px;}
 
 /* Summary table - light professional */
 .dash-table-wrap{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px;box-shadow:var(--shadow);}
@@ -1390,14 +1385,7 @@ body.role-client [data-col="clientname"]{
 .dash-kpi-grid .dash-kpi:nth-child(3){animation-delay:.14s;} .dash-kpi-grid .dash-kpi:nth-child(4){animation-delay:.19s;}
 .dash-kpi-grid .dash-kpi:nth-child(5){animation-delay:.24s;} .dash-kpi-grid .dash-kpi:nth-child(6){animation-delay:.29s;}
 .dash-kpi:hover{transform:translateY(-6px) scale(1.02)!important;box-shadow:0 16px 40px rgba(111,66,193,.2)!important;}
-.dash-kpi.kpi-blue .dash-kpi-val   {background:linear-gradient(135deg,#1e3a8a,#3b82f6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-teal .dash-kpi-val   {background:linear-gradient(135deg,#134e4a,#0d9488);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-violet .dash-kpi-val {background:linear-gradient(135deg,#3730a3,#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-sky .dash-kpi-val    {background:linear-gradient(135deg,#0c4a6e,#0ea5e9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-emerald .dash-kpi-val{background:linear-gradient(135deg,#064e3b,#059669);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-amber .dash-kpi-val  {background:linear-gradient(135deg,#78350f,#d97706);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-rose .dash-kpi-val   {background:linear-gradient(135deg,#881337,#e11d48);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.dash-kpi.kpi-indigo .dash-kpi-val {background:linear-gradient(135deg,#1e1b4b,#4f46e5);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+/* dash-kpi-val gradient text removed — now white text on gradient bg */
 
 /* ──────────────────────────────────────────────
    3. ANIMATED TABLE ROWS — glow left-border + new-entry flash
@@ -10008,7 +9996,58 @@ function renderDashboard(c){
       </div>
     </div>
 
-
+    <!-- ══ MODE-WISE AUDIT STATUS ══ -->
+    ${(()=>{
+      if(isTL&&!isMgr&&CU.task!=='Release') return '';
+      const modes=['Truck','Ocean','Air','Rail'];
+      const modeColors={'Truck':'#4d79ff','Ocean':'#0d9488','Air':'#e11d48','Rail':'#f59e0b'};
+      const modeRows = modes.map(m => {
+        const relByMode = DB.release2.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
+        const auditedByMode = relByMode.filter(r=>DB.audit.find(a=>a.txn===r.txn));
+        const total = relByMode.length;
+        const audited = auditedByMode.length;
+        const pending = total - audited;
+        const pct = total ? Math.round(audited/total*100) : 0;
+        const scores = auditedByMode.map(r=>{const a=DB.audit.find(x=>x.txn===r.txn);return parseFloat(a?.score)||0;});
+        const avg = scores.length ? (scores.reduce((s,v)=>s+v,0)/scores.length).toFixed(1) : '—';
+        const col = modeColors[m]||'#888';
+        return `<tr>
+          <td style="padding:9px 12px;font-weight:700;display:flex;align-items:center;gap:7px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>${m}
+          </td>
+          <td style="text-align:center;font-family:var(--mono);font-weight:700">${total}</td>
+          <td style="text-align:center;font-family:var(--mono);color:#17a00e;font-weight:700">${audited}</td>
+          <td style="text-align:center;font-family:var(--mono);color:#e11d48;font-weight:700">${pending}</td>
+          <td style="padding:9px 12px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:${col};border-radius:4px;transition:width .5s"></div>
+              </div>
+              <span style="font-size:11px;font-weight:800;color:${col};min-width:32px;text-align:right">${pct}%</span>
+            </div>
+          </td>
+          <td style="text-align:center;font-family:var(--mono);font-weight:700;color:var(--amber)">${avg}${avg!=='—'?'%':''}</td>
+        </tr>`;
+      }).join('');
+      const totalAudit = DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length;
+      return `<div class="dash-ed-panel" style="margin-top:0">
+        <div class="dash-ed-panel-hdr">
+          <div class="dash-ed-panel-title">🚢 Audit — Mode-wise Status</div>
+          <div class="dash-ed-panel-badge">${totalAudit} audited</div>
+        </div>
+        <table class="dash-ed-table" style="width:100%">
+          <thead><tr>
+            <th>Mode</th>
+            <th style="text-align:center">Release</th>
+            <th style="text-align:center">Audited</th>
+            <th style="text-align:center">Pending</th>
+            <th style="min-width:140px">Coverage</th>
+            <th style="text-align:center">Avg Score</th>
+          </tr></thead>
+          <tbody>${modeRows}</tbody>
+        </table>
+      </div>`;
+    })()}
 
   </div>
 
@@ -10963,47 +11002,49 @@ function kpiShowTab(id){
 
   // ── Stat cards ──
   const tatColor=tatPct===null?tab.color:tatPct>=80?'#17a00e':tatPct>=50?'#f59e0b':'#e11d48';
+  const _gcCard=(bg1,bg2)=>`background:linear-gradient(135deg,${bg1},${bg2})!important`;
   let statCards=`
-    <div class="sc" style="border-top:3px solid ${tab.color}">
+    <div class="sc" style="${_gcCard(tab.color, tab.color+'bb')}">
       <div class="si">📦</div><div class="sl">Total</div>
-      <div class="sv" style="color:${tab.color}">${total}</div>
+      <div class="sv">${total}</div>
     </div>`;
   if(sf){
     statCards+=`
-    <div class="sc" style="border-top:3px solid #17a00e">
+    <div class="sc" style="${_gcCard('#059669','#34d399')}">
       <div class="si">✅</div><div class="sl">Completed</div>
-      <div class="sv" style="color:#17a00e">${done}</div>
-      <div style="font-size:11px;color:var(--text3)">${total?Math.round(done/total*100):0}%</div>
+      <div class="sv">${done}</div>
+      <div class="sf">${total?Math.round(done/total*100):0}%</div>
     </div>
-    <div class="sc" style="border-top:3px solid #f59e0b">
+    <div class="sc" style="${_gcCard('#d97706','#fcd34d')}">
       <div class="si">⏸️</div><div class="sl">On Hold</div>
-      <div class="sv" style="color:#f59e0b">${hold}</div>
+      <div class="sv">${hold}</div>
     </div>
-    <div class="sc" style="border-top:3px solid #4d79ff">
+    <div class="sc" style="${_gcCard('#4f46e5','#818cf8')}">
       <div class="si">⏳</div><div class="sl">Pending</div>
-      <div class="sv" style="color:#4d79ff">${pending}</div>
+      <div class="sv">${pending}</div>
     </div>`;
   }
   if(tatPct!==null){
+    const _tatG=tatPct>=80?'#059669,#4ade80':tatPct>=50?'#d97706,#fcd34d':'#e11d48,#fb7185';
     statCards+=`
-    <div class="sc" style="border-top:3px solid ${tatColor}">
+    <div class="sc" style="${_gcCard(..._tatG.split(','))}">
       <div class="si">🎯</div><div class="sl">TAT Reached</div>
-      <div class="sv" style="color:${tatColor}">${tatPct}%</div>
-      <div style="font-size:11px;color:var(--text3)">${tatReached} / ${(tatReached||0)+(tatMissed||0)}</div>
-      <div style="margin-top:5px;height:7px;border-radius:4px;background:var(--border)">
-        <div style="height:100%;border-radius:4px;width:${tatPct}%;background:${tatColor}"></div>
+      <div class="sv">${tatPct}%</div>
+      <div class="sf">${tatReached} / ${(tatReached||0)+(tatMissed||0)}</div>
+      <div style="margin-top:8px;height:6px;border-radius:4px;background:rgba(255,255,255,.25)">
+        <div style="height:100%;border-radius:4px;width:${tatPct}%;background:#fff;opacity:.8"></div>
       </div>
     </div>
-    <div class="sc" style="border-top:3px solid #e11d48">
+    <div class="sc" style="${_gcCard('#e11d48','#fb7185')}">
       <div class="si">❌</div><div class="sl">TAT Missed</div>
-      <div class="sv" style="color:#e11d48">${tatMissed}</div>
+      <div class="sv">${tatMissed}</div>
     </div>`;
   }
   if(avgDur){
     statCards+=`
-    <div class="sc" style="border-top:3px solid #0d9488">
+    <div class="sc" style="${_gcCard('#0d9488','#2dd4bf')}">
       <div class="si">⏱️</div><div class="sl">Avg Duration</div>
-      <div class="sv" style="color:#0d9488;font-size:17px">${fmtMins(avgDur)}</div>
+      <div class="sv" style="font-size:17px">${fmtMins(avgDur)}</div>
     </div>`;
   }
 
