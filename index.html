@@ -17791,14 +17791,14 @@ function renderQualityAnalytics(c){
     const pct=Math.min(100,Math.round((v/Math.max(max,1))*100));
     return '<div style="background:#fee2e2;border-radius:4px;height:7px;width:100%"><div style="background:#dc2626;height:7px;border-radius:4px;width:'+pct+'%"></div></div>';
   }
-  function hasErr(r){ return r.errorType&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!==''; }
+  function hasErr(r){ return r.errorType&&r.errorType!=='Good Job'&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!==''; }
   function pill(txt,bg,col){ return '<span style="background:'+bg+';color:'+col+';border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700">'+txt+'</span>'; }
   function empty(msg){ return '<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">'+msg+'</div>'; }
 
   // ── KPI cards (always visible) ──
   const totalErrors=errors.length;
   const totalAudits=audits.length;
-  const auditedWithErr=audits.filter(hasErr).length;
+  const auditedWithErr=audits.filter(r=>r.errorType&&r.errorType!=='Good Job'&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!=='').length;
   const repeatUsers=Object.values(errors.reduce(function(a,r){var u=r.userName||'?';a[u]=(a[u]||0)+1;return a;},{})).filter(function(n){return n>=2;}).length;
   const avgAudit=totalAudits?(audits.reduce(function(s,r){return s+(parseFloat(r.score)||0);},0)/totalAudits).toFixed(1):'—';
 
@@ -18350,20 +18350,22 @@ function renderQualityAnalytics(c){
       // Internal audit records for this user
       const userAudits = audits.filter(a=>a.user===u);
       const auditCount = userAudits.length;
-      const auditWithErr = userAudits.filter(hasErr).length;
-      const auditScores = userAudits.map(a=>parseFloat(a.score)||0).filter(v=>v>0);
+      // Error = any audit where errorType is NOT 'Good Job' (and is a real error value)
+      const isRealError = a => a.errorType && a.errorType!=='Good Job' && a.errorType!=='None' && a.errorType!=='—' && a.errorType!=='';
+      const auditWithErr = userAudits.filter(isRealError).length;
+      // Average score — only from audits that have a valid score
+      const auditScores = userAudits.map(a=>parseFloat(a.score)).filter(v=>!isNaN(v)&&v>0);
       const avgAuditScore = auditScores.length ? (auditScores.reduce((s,v)=>s+v,0)/auditScores.length).toFixed(1) : '—';
-      // Quality score = average of audit scores
       const internalQuality = avgAuditScore;
 
-      // Error types breakdown for this user (internal)
+      // Error types breakdown — only real errors, exclude Good Job
       const errTypes = {};
-      userAudits.filter(hasErr).forEach(a=>{
+      userAudits.filter(isRealError).forEach(a=>{
         const t = a.errorType||'Unknown';
         errTypes[t] = (errTypes[t]||0)+1;
       });
       const errTypeStr = Object.entries(errTypes).sort((a,b)=>b[1]-a[1])
-        .map(([t,n])=>t+'('+n+')').join(', ')||'—';
+        .map(([t,n])=>t+'('+n+')').join(', ')||'No Errors';
 
       // Client errors for this user
       const userClientErrs = errors.filter(e=>e.userName===u);
@@ -18583,7 +18585,7 @@ function exportQASummaryCSV(){
   function recDate(r){ var t=r._created||r.date||''; if(!t||t==='—') return null; var d=new Date(t); return isNaN(d)?null:d; }
   var errors2=(DB.errors||[]).filter(r=>{ if(!f.from&&!f.to) return true; var d=recDate(r); if(!d) return true; if(f.from&&d<new Date(f.from+'T00:00:00')) return false; if(f.to&&d>new Date(f.to+'T23:59:59')) return false; return true; });
   var audits2=(DB.audit||[]).filter(r=>{ if(!f.from&&!f.to) return true; var d=recDate(r); if(!d) return true; if(f.from&&d<new Date(f.from+'T00:00:00')) return false; if(f.to&&d>new Date(f.to+'T23:59:59')) return false; return true; });
-  function hasErrX(r){ return r.errorType&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!==''; }
+  function hasErrX(r){ return r.errorType&&r.errorType!=='Good Job'&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!==''; }
   var releaseUsers=[...new Set([...DB.release2.map(r=>r.user).filter(Boolean)])].sort();
   var csvRows=[['User','Task','Files Done','Sum of Lines','Internal Audit Count','Internal Error Count','Internal Quality %','Dominant Error Types','Client Error Count','Client Quality %']];
   releaseUsers.forEach(function(u){
@@ -18592,10 +18594,11 @@ function exportQASummaryCSV(){
     var linesSum=userRels.reduce((s,r)=>s+(parseInt(r.lines)||0),0);
     var userAudits=audits2.filter(a=>a.user===u);
     var auditWithErr=userAudits.filter(hasErrX).length;
-    var auditScores=userAudits.map(a=>parseFloat(a.score)||0).filter(v=>v>0);
+    var auditScores=userAudits.map(a=>parseFloat(a.score)).filter(v=>!isNaN(v)&&v>0);
     var avgScore=auditScores.length?(auditScores.reduce((s,v)=>s+v,0)/auditScores.length).toFixed(1):'';
     var errTypes={};
     userAudits.filter(hasErrX).forEach(a=>{ var t=a.errorType||'Unknown'; errTypes[t]=(errTypes[t]||0)+1; });
+    // hasErrX already excludes Good Job so errTypes only has real errors
     var errTypeStr=Object.entries(errTypes).sort((a,b)=>b[1]-a[1]).map(([t,n])=>t+'('+n+')').join('; ');
     var clientErrs=errors2.filter(e=>e.userName===u);
     var clientErrCount=clientErrs.length;
