@@ -18312,6 +18312,7 @@ function renderQualityAnalytics(c){
     {key:'user',    label:'👤 User Performance'},
     {key:'auditor', label:'🔍 Auditor Performance'},
     {key:'improve', label:'📈 Improvements & Progress'},
+    {key:'summary', label:'📋 Summary Report'},
   ];
   var tabNav='<div class="stat-tabs" style="margin-bottom:20px">';
   tabs.forEach(function(t){
@@ -18325,6 +18326,7 @@ function renderQualityAnalytics(c){
   else if(tab==='user')     tabBody=buildUserTab();
   else if(tab==='auditor')  tabBody=buildAuditorTab();
   else if(tab==='improve')  tabBody=buildImprovTab();
+  else if(tab==='summary')  tabBody=buildSummaryTab();
 
   c.innerHTML=''
     +'<div class="ph"><div>'
@@ -18332,15 +18334,26 @@ function renderQualityAnalytics(c){
     +'<div class="ps">Combined Error Report &amp; Audit Analysis · '+periodLabel+'</div>'
     +'</div></div>'
 
-    +'<div class="fb" style="margin-bottom:16px;flex-wrap:wrap">'
-    +'<span class="flbl">📅 From</span>'
+    // Build month quick-select options
+  var nowYM=new Date(); var monthOpts='<option value="">All Time</option>';
+  for(var mi=0;mi<12;mi++){
+    var md=new Date(nowYM.getFullYear(),nowYM.getMonth()-mi,1);
+    var ym=md.getFullYear()+'-'+String(md.getMonth()+1).padStart(2,'0');
+    var lbl=md.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    monthOpts+='<option value="'+ym+'" '+(window._qaMonth===ym?'selected':'')+'>'+lbl+'</option>';
+  }
+  +'<div class="fb" style="margin-bottom:16px;flex-wrap:wrap">'
+    +'<span class="flbl">📅 Month</span>'
+    +'<select class="fs2" id="qa_month" onchange="applyQAMonth(this.value)" style="min-width:160px">'+monthOpts+'</select>'
+    +'<span class="flbl" style="margin-left:8px">or Custom</span>'
     +'<input class="fi2" type="date" id="qa_from" value="'+f.from+'" style="width:150px"/>'
     +'<span class="flbl">To</span>'
     +'<input class="fi2" type="date" id="qa_to" value="'+f.to+'" style="width:150px"/>'
     +'<button class="btn-f" onclick="applyQAFilter()">Apply</button>'
     +'<button class="btn-cl" onclick="clearQAFilter()">Clear</button>'
-    +((f.from||f.to)?'<span style="font-size:12px;color:var(--primary);font-weight:700;margin-left:4px">🔍 '+periodLabel+'</span>':'')
-    +'<span style="margin-left:auto;font-size:12px;color:var(--text3)">'+errors.length+' errors · '+audits.length+' audits</span>'
+    +((f.from||f.to||window._qaMonth)?'<span style="font-size:12px;color:var(--primary);font-weight:700;margin-left:4px">🔍 '+periodLabel+'</span>':'')
+    +'<button class="btn-cl" onclick="exportQASummaryCSV()" style="margin-left:auto;background:var(--emerald-bg);border-color:rgba(23,160,14,.3);color:var(--emerald)">📥 Export CSV</button>'
+    +'<span style="font-size:12px;color:var(--text3);margin-left:8px">'+errors.length+' errors · '+audits.length+' audits</span>'
     +'</div>'
 
     +kpiCards
@@ -18348,19 +18361,257 @@ function renderQualityAnalytics(c){
     +'<div id="qa_tab_body">'+tabBody+'</div>';
 }
 
+  // ════ TAB 6 — SUMMARY REPORT ════
+  function buildSummaryTab(){
+    // Get all Release users from DB
+    const releaseUsers = [...new Set([
+      ...DB.release2.map(r=>r.user).filter(Boolean),
+      ...(DB.loginUsers||[]).filter(u=>u.task==='Release'&&u.active!==false).map(u=>u.name)
+    ])].sort();
+
+    if(!releaseUsers.length) return empty('No Release users found.');
+
+    const rows = releaseUsers.map(u=>{
+      // Files done = release records for this user
+      const userRels = DB.release2.filter(r=>r.user===u);
+      const filesDone = userRels.length;
+      if(!filesDone && !DB.audit.some(a=>a.user===u) && !DB.errors.some(e=>e.userName===u)) return null;
+
+      // Sum of lines
+      const linesSum = userRels.reduce((s,r)=>s+(parseInt(r.lines)||0),0);
+
+      // Internal audit records for this user
+      const userAudits = audits.filter(a=>a.user===u);
+      const auditCount = userAudits.length;
+      const auditWithErr = userAudits.filter(hasErr).length;
+      const auditScores = userAudits.map(a=>parseFloat(a.score)||0).filter(v=>v>0);
+      const avgAuditScore = auditScores.length ? (auditScores.reduce((s,v)=>s+v,0)/auditScores.length).toFixed(1) : '—';
+      // Quality score = average of audit scores
+      const internalQuality = avgAuditScore;
+
+      // Error types breakdown for this user (internal)
+      const errTypes = {};
+      userAudits.filter(hasErr).forEach(a=>{
+        const t = a.errorType||'Unknown';
+        errTypes[t] = (errTypes[t]||0)+1;
+      });
+      const errTypeStr = Object.entries(errTypes).sort((a,b)=>b[1]-a[1])
+        .map(([t,n])=>t+'('+n+')').join(', ')||'—';
+
+      // Client errors for this user
+      const userClientErrs = errors.filter(e=>e.userName===u);
+      const clientErrCount = userClientErrs.length;
+      // Client quality score: % of files without client error
+      const clientQuality = filesDone ? ((filesDone-clientErrCount)/filesDone*100).toFixed(1) : '—';
+
+      return {u, filesDone, linesSum, auditCount, auditWithErr, internalQuality, avgAuditScore, errTypeStr, clientErrCount, clientQuality, errTypes};
+    }).filter(Boolean);
+
+    if(!rows.length) return empty('No data for selected period.');
+
+    // Totals
+    const totFiles = rows.reduce((s,r)=>s+r.filesDone,0);
+    const totLines = rows.reduce((s,r)=>s+r.linesSum,0);
+    const totAudits = rows.reduce((s,r)=>s+r.auditCount,0);
+    const totAuditErr = rows.reduce((s,r)=>s+r.auditWithErr,0);
+    const totClientErr = rows.reduce((s,r)=>s+r.clientErrCount,0);
+    const allScores = rows.filter(r=>r.avgAuditScore!=='—').map(r=>parseFloat(r.avgAuditScore));
+    const overallAvg = allScores.length?(allScores.reduce((s,v)=>s+v,0)/allScores.length).toFixed(1):'—';
+
+    // Error type summary
+    const allErrTypes = {};
+    rows.forEach(r=>{ Object.entries(r.errTypes||{}).forEach(([t,n])=>{ allErrTypes[t]=(allErrTypes[t]||0)+n; }); });
+    const topErrTypes = Object.entries(allErrTypes).sort((a,b)=>b[1]-a[1]);
+
+    let html = '<div class="tw" style="margin-bottom:16px">'
+      +'<div class="th2"><div class="tt">📋 User Quality Summary — '+periodLabel+'</div>'
+      +'<div class="tc">'+rows.length+' users</div></div>'
+      +'<div style="overflow-x:auto"><table class="dt" id="qaSummaryTable">'
+      +'<thead><tr>'
+      +'<th>User</th>'
+      +'<th style="text-align:center">Files Done</th>'
+      +'<th style="text-align:center">Lines</th>'
+      +'<th style="text-align:center">Audits</th>'
+      +'<th style="text-align:center">Int. Errors</th>'
+      +'<th style="min-width:120px">Int. Quality</th>'
+      +'<th style="text-align:center">Client Errors</th>'
+      +'<th style="min-width:120px">Client Quality</th>'
+      +'<th>Error Types</th>'
+      +'</tr></thead><tbody>';
+
+    rows.sort((a,b)=>b.filesDone-a.filesDone).forEach(r=>{
+      const iq = r.internalQuality==='—'?'—':r.internalQuality+'%';
+      const cq = r.clientQuality==='—'?'—':r.clientQuality+'%';
+      const iqCol = r.internalQuality==='—'?'var(--text3)':scoreColor(r.internalQuality);
+      const cqCol = r.clientQuality==='—'?'var(--text3)':scoreColor(r.clientQuality);
+      html += '<tr>'
+        +'<td style="font-weight:700">'+r.u+'</td>'
+        +'<td style="text-align:center;font-family:var(--mono);font-weight:700">'+r.filesDone+'</td>'
+        +'<td style="text-align:center;font-family:var(--mono)">'+r.linesSum.toLocaleString()+'</td>'
+        +'<td style="text-align:center;font-family:var(--mono)">'+r.auditCount+'</td>'
+        +'<td style="text-align:center"><span style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:2px 10px;font-weight:800;font-family:var(--mono)">'+r.auditWithErr+'</span></td>'
+        +'<td><span style="font-family:var(--mono);font-weight:800;color:'+iqCol+'">'+iq+'</span>'
+        +(r.internalQuality!=='—'?'<div style="margin-top:3px">'+scoreBar(r.internalQuality)+'</div>':'')+'</td>'
+        +'<td style="text-align:center"><span style="background:#fef9c3;color:#b45309;border-radius:8px;padding:2px 10px;font-weight:800;font-family:var(--mono)">'+r.clientErrCount+'</span></td>'
+        +'<td><span style="font-family:var(--mono);font-weight:800;color:'+cqCol+'">'+cq+'</span>'
+        +(r.clientQuality!=='—'?'<div style="margin-top:3px">'+scoreBar(r.clientQuality)+'</div>':'')+'</td>'
+        +'<td style="font-size:11px;color:var(--text2)">'+r.errTypeStr+'</td>'
+        +'</tr>';
+    });
+
+    // Totals row
+    html += '<tr style="background:var(--surface2);font-weight:800;border-top:2px solid var(--border)">'
+      +'<td>TOTAL ('+rows.length+' users)</td>'
+      +'<td style="text-align:center;font-family:var(--mono)">'+totFiles+'</td>'
+      +'<td style="text-align:center;font-family:var(--mono)">'+totLines.toLocaleString()+'</td>'
+      +'<td style="text-align:center;font-family:var(--mono)">'+totAudits+'</td>'
+      +'<td style="text-align:center"><span style="background:#fee2e2;color:#dc2626;border-radius:8px;padding:2px 10px;font-weight:800;font-family:var(--mono)">'+totAuditErr+'</span></td>'
+      +'<td><span style="font-family:var(--mono);font-weight:800;color:'+scoreColor(overallAvg)+'">'+overallAvg+(overallAvg!=='—'?'%':'')+'</span></td>'
+      +'<td style="text-align:center"><span style="background:#fef9c3;color:#b45309;border-radius:8px;padding:2px 10px;font-weight:800;font-family:var(--mono)">'+totClientErr+'</span></td>'
+      +'<td>—</td><td>—</td>'
+      +'</tr>';
+    html += '</tbody></table></div></div>';
+
+    // Error type breakdown
+    if(topErrTypes.length){
+      const maxE = topErrTypes[0][1];
+      html += '<div class="tw" style="margin-bottom:16px">'
+        +'<div class="th2"><div class="tt">⚠️ Error Type Breakdown — Most Common Internal Errors</div>'
+        +'<div class="tc">'+topErrTypes.length+' error types</div></div>'
+        +'<div style="padding:16px 18px"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">';
+      topErrTypes.forEach(([t,n])=>{
+        const pct = Math.round(n/totAuditErr*100);
+        const barW = Math.max(2,Math.round(n/maxE*100));
+        html += '<div style="background:var(--surface2);border-radius:8px;padding:12px 14px">'
+          +'<div style="display:flex;justify-content:space-between;margin-bottom:6px">'
+          +'<span style="font-weight:700;font-size:13px">'+t+'</span>'
+          +'<span style="font-family:var(--mono);font-weight:800;color:#dc2626">'+n+' <span style="color:var(--text3);font-size:11px">('+pct+'%)</span></span>'
+          +'</div>'
+          +'<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">'
+          +'<div style="height:100%;width:'+barW+'%;background:linear-gradient(90deg,#dc2626,#fb7185);border-radius:4px"></div>'
+          +'</div>'
+          +'</div>';
+      });
+      html += '</div></div></div>';
+    }
+
+    // Root cause + action targets
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">';
+
+    // Most errors user
+    const worstUser = rows.filter(r=>r.auditWithErr>0).sort((a,b)=>b.auditWithErr-a.auditWithErr)[0];
+    const worstClient = rows.filter(r=>r.clientErrCount>0).sort((a,b)=>b.clientErrCount-a.clientErrCount)[0];
+    html += '<div class="tw"><div class="th2"><div class="tt">🎯 Action Targets</div></div>'
+      +'<div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px">';
+    if(worstUser) html += '<div style="background:#fff1f2;border-radius:8px;padding:10px 14px;border-left:4px solid #e11d48">'
+      +'<div style="font-size:11px;font-weight:700;color:#9f1239;text-transform:uppercase;letter-spacing:.5px">Most Internal Errors</div>'
+      +'<div style="font-size:15px;font-weight:800;color:#232d42;margin-top:2px">'+worstUser.u+'</div>'
+      +'<div style="font-size:12px;color:#dc2626;margin-top:2px">'+worstUser.auditWithErr+' errors in '+worstUser.auditCount+' audits — needs coaching</div>'
+      +'</div>';
+    if(worstClient) html += '<div style="background:#fffbeb;border-radius:8px;padding:10px 14px;border-left:4px solid #f59e0b">'
+      +'<div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">Most Client Errors</div>'
+      +'<div style="font-size:15px;font-weight:800;color:#232d42;margin-top:2px">'+worstClient.u+'</div>'
+      +'<div style="font-size:12px;color:#d97706;margin-top:2px">'+worstClient.clientErrCount+' client-reported errors</div>'
+      +'</div>';
+    if(topErrTypes[0]) html += '<div style="background:#eff6ff;border-radius:8px;padding:10px 14px;border-left:4px solid #2563eb">'
+      +'<div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.5px">Top Error Type to Target</div>'
+      +'<div style="font-size:15px;font-weight:800;color:#232d42;margin-top:2px">'+topErrTypes[0][0]+'</div>'
+      +'<div style="font-size:12px;color:#2563eb;margin-top:2px">'+topErrTypes[0][1]+' occurrences — create SOP/training</div>'
+      +'</div>';
+    html += '</div></div>';
+
+    // Score targets
+    html += '<div class="tw"><div class="th2"><div class="tt">📊 Score Targets</div></div>'
+      +'<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px">';
+    const needsImprovement = rows.filter(r=>r.internalQuality!=='—'&&parseFloat(r.internalQuality)<95);
+    const onTarget = rows.filter(r=>r.internalQuality!=='—'&&parseFloat(r.internalQuality)>=95);
+    html += '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--emerald-bg);border-radius:8px">'
+      +'<span style="font-weight:600">✅ Meeting target (≥95%)</span>'
+      +'<span style="font-family:var(--mono);font-weight:800;color:var(--emerald)">'+onTarget.length+' users</span></div>';
+    html += '<div style="display:flex;justify-content:space-between;padding:8px 12px;background:#fff1f2;border-radius:8px">'
+      +'<span style="font-weight:600">⚠️ Below target (&lt;95%)</span>'
+      +'<span style="font-family:var(--mono);font-weight:800;color:#dc2626">'+needsImprovement.length+' users</span></div>';
+    if(needsImprovement.length){
+      html += '<div style="margin-top:4px;font-size:12px;font-weight:700;color:var(--text3)">Users needing attention:</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">';
+      needsImprovement.sort((a,b)=>parseFloat(a.internalQuality)-parseFloat(b.internalQuality)).forEach(r=>{
+        html += '<span style="background:#fee2e2;color:#dc2626;border-radius:10px;padding:3px 10px;font-size:11px;font-weight:700">'+r.u+' ('+r.internalQuality+'%)</span>';
+      });
+      html += '</div>';
+    }
+    html += '</div></div>';
+    html += '</div>';
+
+    return html;
+  }
+
 function switchQATab(t){
   window._qaTab=t;
   renderQualityAnalytics(document.getElementById('pc'));
 }
+function applyQAMonth(ym){
+  window._qaMonth=ym;
+  if(ym){
+    var yr=parseInt(ym.split('-')[0]), mo=parseInt(ym.split('-')[1])-1;
+    var from=new Date(yr,mo,1), to=new Date(yr,mo+1,0);
+    var pad=n=>String(n).padStart(2,'0');
+    window._qaFilter={
+      from:yr+'-'+pad(mo+1)+'-01',
+      to:yr+'-'+pad(mo+1)+'-'+pad(to.getDate())
+    };
+  } else {
+    window._qaFilter={from:'',to:''};
+  }
+  renderQualityAnalytics(document.getElementById('pc'));
+}
 function applyQAFilter(){
+  window._qaMonth='';
   var from=document.getElementById('qa_from')?document.getElementById('qa_from').value:'';
   var to  =document.getElementById('qa_to')  ?document.getElementById('qa_to').value  :'';
   window._qaFilter={from:from,to:to};
   renderQualityAnalytics(document.getElementById('pc'));
 }
 function clearQAFilter(){
+  window._qaMonth='';
   window._qaFilter={from:'',to:''};
   renderQualityAnalytics(document.getElementById('pc'));
+}
+function exportQASummaryCSV(){
+  // Rebuild summary rows for export
+  var f=window._qaFilter||{from:'',to:''};
+  function recDate(r){ var t=r._created||r.date||''; if(!t||t==='—') return null; var d=new Date(t); return isNaN(d)?null:d; }
+  var errors2=(DB.errors||[]).filter(r=>{ if(!f.from&&!f.to) return true; var d=recDate(r); if(!d) return true; if(f.from&&d<new Date(f.from+'T00:00:00')) return false; if(f.to&&d>new Date(f.to+'T23:59:59')) return false; return true; });
+  var audits2=(DB.audit||[]).filter(r=>{ if(!f.from&&!f.to) return true; var d=recDate(r); if(!d) return true; if(f.from&&d<new Date(f.from+'T00:00:00')) return false; if(f.to&&d>new Date(f.to+'T23:59:59')) return false; return true; });
+  function hasErrX(r){ return r.errorType&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!==''; }
+  var releaseUsers=[...new Set([...DB.release2.map(r=>r.user).filter(Boolean)])].sort();
+  var csvRows=[['User','Task','Files Done','Sum of Lines','Internal Audit Count','Internal Error Count','Internal Quality %','Dominant Error Types','Client Error Count','Client Quality %']];
+  releaseUsers.forEach(function(u){
+    var userRels=DB.release2.filter(r=>r.user===u);
+    var filesDone=userRels.length;
+    var linesSum=userRels.reduce((s,r)=>s+(parseInt(r.lines)||0),0);
+    var userAudits=audits2.filter(a=>a.user===u);
+    var auditWithErr=userAudits.filter(hasErrX).length;
+    var auditScores=userAudits.map(a=>parseFloat(a.score)||0).filter(v=>v>0);
+    var avgScore=auditScores.length?(auditScores.reduce((s,v)=>s+v,0)/auditScores.length).toFixed(1):'';
+    var errTypes={};
+    userAudits.filter(hasErrX).forEach(a=>{ var t=a.errorType||'Unknown'; errTypes[t]=(errTypes[t]||0)+1; });
+    var errTypeStr=Object.entries(errTypes).sort((a,b)=>b[1]-a[1]).map(([t,n])=>t+'('+n+')').join('; ');
+    var clientErrs=errors2.filter(e=>e.userName===u);
+    var clientErrCount=clientErrs.length;
+    var clientQuality=filesDone?((filesDone-clientErrCount)/filesDone*100).toFixed(1):'';
+    if(filesDone>0||userAudits.length>0||clientErrCount>0){
+      csvRows.push([u,'Release',filesDone,linesSum,userAudits.length,auditWithErr,avgScore,errTypeStr,clientErrCount,clientQuality]);
+    }
+  });
+  var csvContent=csvRows.map(r=>r.map(v=>'"'+String(v||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  var blob=new Blob([csvContent],{type:'text/csv'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url;
+  var period=(f.from||f.to)?(f.from+'_to_'+f.to):'AllTime';
+  a.download='Quality_Summary_Release_'+period+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('✅ CSV exported — '+( csvRows.length-1)+' users');
 }
 
 
