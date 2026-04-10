@@ -18328,39 +18328,6 @@ function renderQualityAnalytics(c){
   else if(tab==='improve')  tabBody=buildImprovTab();
   else if(tab==='summary')  tabBody=buildSummaryTab();
 
-  c.innerHTML=''
-    +'<div class="ph"><div>'
-    +'<div class="pt">🏆 Quality Analytics</div>'
-    +'<div class="ps">Combined Error Report &amp; Audit Analysis · '+periodLabel+'</div>'
-    +'</div></div>'
-
-    // Build month quick-select options
-  var nowYM=new Date(); var monthOpts='<option value="">All Time</option>';
-  for(var mi=0;mi<12;mi++){
-    var md=new Date(nowYM.getFullYear(),nowYM.getMonth()-mi,1);
-    var ym=md.getFullYear()+'-'+String(md.getMonth()+1).padStart(2,'0');
-    var lbl=md.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-    monthOpts+='<option value="'+ym+'" '+(window._qaMonth===ym?'selected':'')+'>'+lbl+'</option>';
-  }
-  +'<div class="fb" style="margin-bottom:16px;flex-wrap:wrap">'
-    +'<span class="flbl">📅 Month</span>'
-    +'<select class="fs2" id="qa_month" onchange="applyQAMonth(this.value)" style="min-width:160px">'+monthOpts+'</select>'
-    +'<span class="flbl" style="margin-left:8px">or Custom</span>'
-    +'<input class="fi2" type="date" id="qa_from" value="'+f.from+'" style="width:150px"/>'
-    +'<span class="flbl">To</span>'
-    +'<input class="fi2" type="date" id="qa_to" value="'+f.to+'" style="width:150px"/>'
-    +'<button class="btn-f" onclick="applyQAFilter()">Apply</button>'
-    +'<button class="btn-cl" onclick="clearQAFilter()">Clear</button>'
-    +((f.from||f.to||window._qaMonth)?'<span style="font-size:12px;color:var(--primary);font-weight:700;margin-left:4px">🔍 '+periodLabel+'</span>':'')
-    +'<button class="btn-cl" onclick="exportQASummaryCSV()" style="margin-left:auto;background:var(--emerald-bg);border-color:rgba(23,160,14,.3);color:var(--emerald)">📥 Export CSV</button>'
-    +'<span style="font-size:12px;color:var(--text3);margin-left:8px">'+errors.length+' errors · '+audits.length+' audits</span>'
-    +'</div>'
-
-    +kpiCards
-    +tabNav
-    +'<div id="qa_tab_body">'+tabBody+'</div>';
-}
-
   // ════ TAB 6 — SUMMARY REPORT ════
   function buildSummaryTab(){
     // Get all Release users from DB
@@ -18544,6 +18511,40 @@ function renderQualityAnalytics(c){
 
     return html;
   }
+
+
+  // Build month quick-select options
+  var nowYM=new Date(); var monthOpts='<option value="">All Time</option>';
+  for(var mi=0;mi<12;mi++){
+    var md=new Date(nowYM.getFullYear(),nowYM.getMonth()-mi,1);
+    var ym=md.getFullYear()+'-'+String(md.getMonth()+1).padStart(2,'0');
+    var lbl=md.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    monthOpts+='<option value="'+ym+'" '+(window._qaMonth===ym?'selected':'')+'>'+lbl+'</option>';
+  }
+
+  c.innerHTML=''
+    +'<div class="ph"><div>'
+    +'<div class="pt">🏆 Quality Analytics</div>'
+    +'<div class="ps">Combined Error Report &amp; Audit Analysis · '+periodLabel+'</div>'
+    +'</div></div>'
+    +'<div class="fb" style="margin-bottom:16px;flex-wrap:wrap">'
+    +'<span class="flbl">📅 Month</span>'
+    +'<select class="fs2" id="qa_month" onchange="applyQAMonth(this.value)" style="min-width:160px">'+monthOpts+'</select>'
+    +'<span class="flbl" style="margin-left:8px">or Custom</span>'
+    +'<input class="fi2" type="date" id="qa_from" value="'+f.from+'" style="width:150px"/>'
+    +'<span class="flbl">To</span>'
+    +'<input class="fi2" type="date" id="qa_to" value="'+f.to+'" style="width:150px"/>'
+    +'<button class="btn-f" onclick="applyQAFilter()">Apply</button>'
+    +'<button class="btn-cl" onclick="clearQAFilter()">Clear</button>'
+    +((f.from||f.to||window._qaMonth)?'<span style="font-size:12px;color:var(--primary);font-weight:700;margin-left:4px">🔍 '+periodLabel+'</span>':'')
+    +'<button class="btn-cl" onclick="exportQASummaryCSV()" style="margin-left:auto;background:var(--emerald-bg);border-color:rgba(23,160,14,.3);color:var(--emerald)">📥 Export CSV</button>'
+    +'<span style="font-size:12px;color:var(--text3);margin-left:8px">'+errors.length+' errors · '+audits.length+' audits</span>'
+    +'</div>'
+
+    +kpiCards
+    +tabNav
+    +'<div id="qa_tab_body">'+tabBody+'</div>';
+}
 
 function switchQATab(t){
   window._qaTab=t;
