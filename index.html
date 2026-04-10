@@ -9926,8 +9926,7 @@ function renderDashboard(c){
         ? (DB[tlKeyMap2[CU.task]]||[]).filter(r=>r.status==='Hold').length
         : allHold;
       return`
-      <div class="dash-ed-kpi">
-        <div class="dash-ed-kpi-bar" style="background:linear-gradient(90deg,#8B0000,#f87171)"></div>
+      <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
         <div class="dash-ed-kpi-ico">⏸️</div>
         <div class="dash-ed-kpi-lbl">On Hold</div>
         <div class="dash-ed-kpi-num">${holdCount}</div>
