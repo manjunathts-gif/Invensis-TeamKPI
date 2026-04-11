@@ -1621,6 +1621,195 @@ body.role-client [data-col="clientname"]{
   opacity: 0.55 !important;
 }
 .fpi:disabled::placeholder { color: #cbd5e1 !important; }
+
+/* ══════════════════════════════════════════════
+   MODERN STYLE THEME — activates via body.style-modern
+   All rules prefixed with body.style-modern so
+   Classic style is completely unaffected
+══════════════════════════════════════════════ */
+
+/* ── Page background ── */
+body.style-modern .pc{background:#eef0f8;}
+
+/* ── TABLE: wrapper ── */
+body.style-modern .tw{
+  border-radius:18px!important;
+  box-shadow:0 4px 24px rgba(0,8,81,.09)!important;
+  border:none!important;
+  overflow:hidden!important;
+}
+
+/* ── TABLE: header bar ── */
+body.style-modern .th2{
+  background:linear-gradient(90deg,#000851 0%,#1CB5E0 100%)!important;
+  padding:16px 22px!important;
+  border-bottom:none!important;
+}
+body.style-modern .tt{
+  font-size:15px!important;font-weight:800!important;color:#fff!important;
+  display:flex;align-items:center;gap:8px;
+}
+body.style-modern .tc{
+  font-size:11px!important;font-weight:700!important;
+  background:rgba(255,255,255,.18)!important;
+  color:#fff!important;border-radius:20px!important;
+  padding:3px 12px!important;border:1px solid rgba(255,255,255,.25)!important;
+}
+
+/* ── TABLE: column headers ── */
+body.style-modern .dt th{
+  background:linear-gradient(90deg,#f0f4ff,#e8f7fd)!important;
+  color:#5a6890!important;font-size:10px!important;
+  font-weight:800!important;letter-spacing:.7px!important;
+  border-bottom:2px solid #dde4f5!important;padding:11px 14px!important;
+}
+
+/* ── TABLE: rows ── */
+body.style-modern .dt td{
+  padding:12px 14px!important;
+  border-bottom:1px solid #f0f3fb!important;
+  font-size:13px!important;color:#374060!important;
+  vertical-align:middle!important;
+}
+body.style-modern .dt tbody tr:hover td{
+  background:#f4f7ff!important;
+}
+body.style-modern .dt tr:last-child td{border-bottom:none!important;}
+
+/* ── TABLE: TXN monospace ── */
+body.style-modern .dt td .mono,
+body.style-modern .dt td[data-col="txn"]{
+  font-family:'Courier New',monospace!important;
+  font-weight:800!important;color:#000851!important;letter-spacing:.3px!important;
+}
+
+/* ── TABLE: pagination ── */
+body.style-modern .pg-bar{
+  background:#f8f9fd!important;border-top:1px solid #eceef5!important;
+  border-radius:0 0 18px 18px!important;
+}
+body.style-modern .pg-btn{border-radius:9px!important;}
+body.style-modern .pg-btn.active,
+body.style-modern .pg-btn:hover:not(:disabled){
+  background:linear-gradient(90deg,#000851,#1CB5E0)!important;
+  border-color:transparent!important;
+  box-shadow:0 4px 14px rgba(0,8,81,.2)!important;
+}
+
+/* ── FORM PANEL: slide panel ── */
+body.style-modern .spanel{
+  border-radius:24px 0 0 24px!important;
+  box-shadow:-12px 0 60px rgba(0,8,81,.18)!important;
+}
+
+/* ── FORM PANEL: header ── */
+body.style-modern .sp-head{
+  background:linear-gradient(90deg,#000851 0%,#1CB5E0 100%)!important;
+  padding:20px 26px!important;
+  border-radius:24px 0 0 0!important;
+}
+body.style-modern .sp-close{
+  border-radius:50%!important;
+  width:32px!important;height:32px!important;
+}
+
+/* ── FORM PANEL: section titles ── */
+body.style-modern .sp-sec-title{
+  color:#000851!important;
+  border-bottom:2px solid #d0e8f5!important;
+  font-size:10px!important;letter-spacing:.9px!important;
+}
+
+/* ── FORM PANEL: inputs ── */
+body.style-modern .fpi,
+body.style-modern .fps,
+body.style-modern .fpta{
+  border-radius:10px!important;
+  border:1.5px solid #dde4f5!important;
+  background:#fff!important;
+  padding:10px 14px!important;
+  font-size:13px!important;
+}
+body.style-modern .fpi:focus,
+body.style-modern .fps:focus,
+body.style-modern .fpta:focus{
+  border-color:#1CB5E0!important;
+  box-shadow:0 0 0 3px rgba(28,181,224,.14)!important;
+  background:#fff!important;
+}
+body.style-modern .fpi.valid{
+  border-color:#16a34a!important;background:#f0fdf4!important;
+}
+body.style-modern .fpi.auto{
+  border-color:#1CB5E0!important;
+  background:rgba(28,181,224,.07)!important;
+  color:#000851!important;font-weight:700!important;
+}
+body.style-modern .fpi.err2{border-color:#e11d48!important;}
+
+/* ── FORM PANEL: labels ── */
+body.style-modern .fpl{
+  font-size:11px!important;font-weight:800!important;
+  color:#5a6890!important;text-transform:uppercase!important;
+  letter-spacing:.5px!important;margin-bottom:5px!important;
+}
+
+/* ── FORM PANEL: save button ── */
+body.style-modern .btn-save{
+  background:linear-gradient(90deg,#000851,#1CB5E0)!important;
+  border-radius:10px!important;
+  box-shadow:0 5px 18px rgba(0,8,81,.22)!important;
+  font-size:14px!important;font-weight:800!important;
+}
+body.style-modern .btn-save:hover{
+  box-shadow:0 8px 24px rgba(28,181,224,.35)!important;
+  transform:translateY(-1px)!important;
+}
+
+/* ── FORM PANEL: TAT result box ── */
+body.style-modern .tat-ok{
+  background:linear-gradient(135deg,#f0fdf4,#dcfce7)!important;
+  border:1.5px solid #86efac!important;border-radius:12px!important;
+}
+body.style-modern .tat-no{
+  background:linear-gradient(135deg,#fff5f5,#fee2e2)!important;
+  border:1.5px solid #fca5a5!important;border-radius:12px!important;
+}
+body.style-modern .tat-ok .tat-ttl{color:#16a34a!important;}
+body.style-modern .tat-no .tat-ttl{color:#dc2626!important;}
+
+/* ── FORM PANEL: footer ── */
+body.style-modern .sp-foot{
+  background:#f8f9fd!important;
+  border-top:1px solid #eceef5!important;
+  border-radius:0 0 0 24px!important;
+}
+
+/* ── FORM PANEL: error div ── */
+body.style-modern .ferr{
+  background:#fff0f0!important;border:1.5px solid #fca5a5!important;
+  border-radius:8px!important;padding:7px 12px!important;
+  color:#e11d48!important;font-size:12px!important;font-weight:700!important;
+  margin-top:4px!important;
+}
+
+/* ── FILTER BAR ── */
+body.style-modern .fb{
+  background:#fff!important;border-radius:14px!important;
+  border:1px solid #e4e8f5!important;
+  box-shadow:0 2px 10px rgba(0,8,81,.05)!important;
+  padding:12px 18px!important;
+}
+body.style-modern .btn-f{
+  background:linear-gradient(90deg,#000851,#1CB5E0)!important;
+  color:#fff!important;border-color:transparent!important;
+  border-radius:9px!important;font-weight:800!important;
+}
+body.style-modern .fi2:focus,
+body.style-modern .fs2:focus{
+  border-color:#1CB5E0!important;
+  box-shadow:0 0 0 3px rgba(28,181,224,.14)!important;
+}
 </style>
 
 <!-- ═══ SUPABASE CLIENT ═══ -->
@@ -1816,6 +2005,11 @@ body.role-client [data-col="clientname"]{
         <button class="theme-btn" onclick="_toggleThemeMode()" id="themeSwitcherBtn" title="Toggle dark/light mode">
           <span id="themeIcon">☀️</span>
           <span id="themeLabel">Light</span>
+        </button>
+        <!-- Style Switcher: Classic / Modern -->
+        <button class="theme-btn" onclick="_toggleStyleMode()" id="styleSwitcherBtn" title="Toggle Classic/Modern style" style="margin-left:6px;background:linear-gradient(90deg,#000851,#1CB5E0);color:#fff;border-color:transparent;">
+          <span id="styleIcon">✨</span>
+          <span id="styleLabel">Classic</span>
         </button>
       </div>
     </div>
@@ -7638,6 +7832,41 @@ function _initTheme(){
 }
 
 _initTheme();
+
+// ══════════════════════════════════════════════════════════
+// STYLE SWITCHER — Classic / Modern toggle
+// ══════════════════════════════════════════════════════════
+function _applyStyle(mode){
+  const body  = document.body;
+  const icon  = document.getElementById('styleIcon');
+  const label = document.getElementById('styleLabel');
+  const btn   = document.getElementById('styleSwitcherBtn');
+  if(mode === 'modern'){
+    body.classList.add('style-modern');
+    body.classList.remove('style-classic');
+    if(icon)  icon.textContent  = '🎨';
+    if(label) label.textContent = 'Modern';
+    if(btn){btn.style.background='linear-gradient(90deg,#000851,#1CB5E0)';btn.style.color='#fff';btn.style.borderColor='transparent';}
+  } else {
+    body.classList.remove('style-modern');
+    body.classList.add('style-classic');
+    if(icon)  icon.textContent  = '✨';
+    if(label) label.textContent = 'Classic';
+    if(btn){btn.style.background='';btn.style.color='';btn.style.borderColor='';}
+  }
+}
+function _toggleStyleMode(){
+  const cur  = localStorage.getItem('kpi_style_mode') || 'classic';
+  const next = cur === 'classic' ? 'modern' : 'classic';
+  localStorage.setItem('kpi_style_mode', next);
+  _applyStyle(next);
+  showToast(next === 'modern' ? '✨ Modern style applied' : '🔄 Classic style restored');
+}
+function _initStyle(){
+  const mode = localStorage.getItem('kpi_style_mode') || 'classic';
+  _applyStyle(mode);
+}
+_initStyle();
 
 function bootApp(){
   // Set mobile task page based on user's role
