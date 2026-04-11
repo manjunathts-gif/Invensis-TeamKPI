@@ -1810,9 +1810,62 @@ body.style-modern .fs2:focus{
   border-color:#1CB5E0!important;
   box-shadow:0 0 0 3px rgba(28,181,224,.14)!important;
 }
+/* ══════════════════════════════════
+   DAILY HUDDLE STYLES
+══════════════════════════════════ */
+.hd-head{background:linear-gradient(90deg,#000851 0%,#1CB5E0 100%);padding:18px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.hd-title-txt{font-size:16px;font-weight:800;color:#fff;}
+.hd-date-txt{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px;}
+.hd-live{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:hdpulse 1.4s infinite;flex-shrink:0;}
+@keyframes hdpulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.hd-meta{padding:11px 22px;background:#f8f9fd;border-bottom:1px solid #eceef5;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;flex-shrink:0;}
+.hd-av{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#3F2B96,#A8C0FF);}
+.hd-body{padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:11px;}
+.hd-msg{border-radius:12px;padding:12px 15px;border-left:4px solid;}
+.hd-msg.info{background:#eff6ff;border-color:#2563eb;}
+.hd-msg.warn{background:#fffbeb;border-color:#f59e0b;}
+.hd-msg.urgent{background:#fff1f2;border-color:#e11d48;}
+.hd-msg.good{background:#f0fdf4;border-color:#16a34a;}
+.hd-msg-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;}
+.hd-msg.info .hd-msg-type{color:#1d4ed8;} .hd-msg.warn .hd-msg-type{color:#d97706;}
+.hd-msg.urgent .hd-msg-type{color:#e11d48;} .hd-msg.good .hd-msg-type{color:#16a34a;}
+.hd-msg-content{font-size:13px;color:#374060;line-height:1.6;}
+.hd-cl{padding:0 22px 14px;flex-shrink:0;}
+.hd-cl-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#8492b4;margin-bottom:8px;}
+.hd-cl-item{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-radius:10px;background:#f8f9fd;margin-bottom:6px;cursor:pointer;transition:background .14s;border:1.5px solid transparent;}
+.hd-cl-item:hover{background:#f0f4ff;}
+.hd-cl-item.hd-checked{background:#f0fdf4;border-color:#86efac;}
+.hd-cl-box{width:18px;height:18px;border-radius:5px;border:2px solid #c8d4e8;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .15s;background:#fff;font-size:11px;font-weight:800;color:#fff;}
+.hd-cl-item.hd-checked .hd-cl-box{background:#16a34a;border-color:#16a34a;}
+.hd-cl-lbl{font-size:12px;color:#374060;font-weight:600;line-height:1.4;}
+.hd-cl-item.hd-checked .hd-cl-lbl{color:#16a34a;}
+.hd-ack{padding:13px 22px;background:#f8f9fd;border-top:1px solid #eceef5;flex-shrink:0;}
+.hd-ack-note{font-size:11px;color:#8492b4;margin-bottom:9px;text-align:center;line-height:1.5;}
+.hd-ack-btn{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(90deg,#000851,#1CB5E0);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s;box-shadow:0 5px 18px rgba(0,8,81,.2);}
+.hd-ack-btn:hover:not(:disabled){box-shadow:0 8px 28px rgba(28,181,224,.35);transform:translateY(-1px);}
+.hd-ack-btn:disabled{background:linear-gradient(90deg,#c8d4e8,#d8e8f0);box-shadow:none;cursor:not-allowed;}
+.hd-done{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;gap:12px;}
+.hd-done-circle{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#000851,#1CB5E0);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 8px 24px rgba(28,181,224,.3);}
+/* huddle admin page */
+.hd-toolbar{display:flex;align-items:center;gap:3px;padding:10px 14px;background:#f8f9fd;border-bottom:1px solid #eceef5;flex-wrap:wrap;}
+.hd-tb-btn{width:30px;height:30px;border-radius:7px;border:1.5px solid #e0e4f0;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#374060;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.hd-tb-btn:hover{background:#f0f4ff;border-color:#1CB5E0;color:#000851;}
+.hd-editor{min-height:130px;border:1.5px solid #dde4f5;border-radius:12px;padding:12px 15px;outline:none;font-size:14px;color:#232d42;line-height:1.65;font-family:var(--font);background:#fff;transition:border .2s;}
+.hd-editor:focus{border-color:#1CB5E0;box-shadow:0 0 0 3px rgba(28,181,224,.12);}
+.hd-editor[placeholder]:empty::before{content:attr(placeholder);color:#b0bbd8;pointer-events:none;}
+.hd-cl-input{flex:1;border:1.5px solid #e0e4f0;border-radius:9px;padding:8px 12px;font-size:12px;color:#232d42;outline:none;font-family:var(--font);background:#f8f9fd;}
+.hd-cl-input:focus{border-color:#1CB5E0;background:#fff;}
+.hd-type-btn{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid;transition:all .14s;}
+.hd-type-btn.info{border-color:#2563eb;color:#2563eb;background:#eff6ff;}
+.hd-type-btn.warn{border-color:#f59e0b;color:#d97706;background:#fffbeb;}
+.hd-type-btn.urgent{border-color:#e11d48;color:#e11d48;background:#fff1f2;}
+.hd-type-btn.good{border-color:#16a34a;color:#16a34a;background:#f0fdf4;}
+.hd-type-btn.hd-sel{color:#fff!important;}
+.hd-type-btn.info.hd-sel{background:#2563eb!important;border-color:#2563eb!important;}
+.hd-type-btn.warn.hd-sel{background:#f59e0b!important;border-color:#f59e0b!important;}
+.hd-type-btn.urgent.hd-sel{background:#e11d48!important;border-color:#e11d48!important;}
+.hd-type-btn.good.hd-sel{background:#16a34a!important;border-color:#16a34a!important;}
 </style>
-
-<!-- ═══ SUPABASE CLIENT ═══ -->
 <!-- Supabase JS removed — using direct REST API -->
 
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,700;1,800;1,900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2043,6 +2096,10 @@ body.style-modern .fs2:focus{
 
 <!-- OVERLAY -->
 <div class="overlay" id="overlay"></div>
+<!-- DAILY HUDDLE POPUP -->
+<div id="huddleOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,8,81,.65);z-index:500;align-items:center;justify-content:center;padding:20px;">
+  <div id="huddleModal" style="background:#fff;border-radius:20px;width:100%;max-width:580px;max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,8,81,.3);display:flex;flex-direction:column;"></div>
+</div>
 <!-- Shared Audit Panel (accessible from Release and Audit pages) -->
 <div id="auditPanelBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:200;backdrop-filter:blur(4px)" onclick="closeAuditPanel()"></div>
 <div id="auditPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:660px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:28px 30px;box-shadow:var(--shadow-lg);z-index:201">
@@ -3506,6 +3563,9 @@ function _makeSupaClient(){
 
     // Update session timestamp (reset the clock)
     sessionStorage.setItem('kpi_session_ts', Date.now());
+
+    // Clear stale data cache on every login — ensures fresh data always
+    _clearDataCache();
 
     // Boot the app
     if(typeof bootApp === 'function') bootApp();
@@ -6079,6 +6139,21 @@ function _buildArchiveHistory(){
 // ── Task Data Cache — survive page refresh without full DB reload ─────────
 // Saves/restores DB arrays to localStorage so returning users see data instantly
 const TASK_CACHE_KEY = 'kpi_task_cache_v2';
+
+// ── Clear stale data cache on login — preserves preferences & security keys ──
+function _clearDataCache(){
+  const DATA_KEYS = [
+    'kpi_task_cache_v2',    // task records (LVS, Release, PARS etc.)
+    'kpi_task_cache_count', // record count companion
+    'kpi_lu_cache',         // login users list
+    'kpi_users_cache',      // employees list
+    'kpi_clients_cache',    // client list (old)
+    'kpi_clients_cache_v2', // client list (current)
+    'kpi_tat_reasons',      // TAT reason options
+  ];
+  DATA_KEYS.forEach(k => localStorage.removeItem(k));
+  console.log('[Cache] Cleared stale data cache on login');
+}
 const TASK_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 function _saveTaskCache(){
@@ -7868,6 +7943,398 @@ function _initStyle(){
 }
 _initStyle();
 
+// ══════════════════════════════════════════════════════════
+// DAILY HUDDLE — Full implementation
+// ══════════════════════════════════════════════════════════
+
+// ── Check & show huddle popup on login ──
+async function _checkDailyHuddle(){
+  if(!_supa||!CU) return;
+  const today = new Date().toISOString().slice(0,10);
+  const userTask = CU.task||'';
+  const userRole = CU.role||'';
+  // Skip for Manager/Admin — they post, not receive (unless they want to)
+  // Actually show to everyone including TL/Supervisor so they see what team sees
+  try {
+    // 1. Get today's active huddle messages for this user's task
+    const {data:msgs} = await _supa
+      .from('huddle_messages')
+      .select('*')
+      .eq('is_active', true)
+      .lte('show_from', today)
+      .gte('show_until', today)
+      .or(`target_task.eq.All,target_task.eq.${userTask}`)
+      .order('created_at', {ascending:false});
+    if(!msgs||!msgs.length) return;
+    // 2. Check if user already acknowledged today
+    const {data:acks} = await _supa
+      .from('huddle_acknowledgments')
+      .select('id')
+      .eq('user_name', CU.name)
+      .eq('ack_date', today)
+      .limit(1);
+    if(acks&&acks.length) return; // already acknowledged today
+    // 3. Show popup
+    _showHuddlePopup(msgs);
+  } catch(e){ console.warn('Huddle check failed:', e); }
+}
+
+function _showHuddlePopup(msgs){
+  const modal = document.getElementById('huddleModal');
+  const overlay = document.getElementById('huddleOverlay');
+  if(!modal||!overlay) return;
+  const today = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
+  const typeLabel = {info:'ℹ️ Info',warn:'⚠️ Alert',urgent:'🔴 Urgent',good:'✅ Good News'};
+  // Collect all checklist items across messages
+  let allChecklist = [];
+  msgs.forEach(m=>{
+    try{ const cl=JSON.parse(m.checklist_items||'[]'); allChecklist=allChecklist.concat(cl.filter(Boolean)); }catch(e){}
+  });
+  const firstMsg = msgs[0];
+  const posterInitials = (firstMsg.posted_by||'').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()||'TL';
+  const taskBadgeHtml = msgs.map(m=>`<span style="background:#eff6ff;color:#1d4ed8;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:800">${m.target_task||'All'}</span>`).join('');
+  const messagesHtml = msgs.map(m=>{
+    const t = m.message_type||'info';
+    return `<div class="hd-msg ${t}"><div class="hd-msg-type">${typeLabel[t]||t}</div><div class="hd-msg-content">${m.message_html||m.message||''}</div></div>`;
+  }).join('');
+  const checklistHtml = allChecklist.length ? `
+    <div class="hd-cl">
+      <div class="hd-cl-title">Before you start — confirm you have read:</div>
+      ${allChecklist.map((item,i)=>`
+        <div class="hd-cl-item" id="hdci_${i}" onclick="_hdToggleCheck(${i},${allChecklist.length})">
+          <div class="hd-cl-box" id="hdcb_${i}"></div>
+          <div class="hd-cl-lbl">${_esc(item)}</div>
+        </div>`).join('')}
+    </div>` : '';
+  const needsChecklist = allChecklist.length > 0;
+  modal.innerHTML = `
+    <div class="hd-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="hd-live"></div>
+        <div>
+          <div class="hd-title-txt">Daily Huddle</div>
+          <div class="hd-date-txt">${today}</div>
+        </div>
+      </div>
+      <span style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;color:#fff">${msgs.length} message${msgs.length>1?'s':''}</span>
+    </div>
+    <div class="hd-meta">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="hd-av">${posterInitials}</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#374060">${firstMsg.posted_by||'Admin'}</div>
+          <div style="font-size:10px;color:#8492b4">${msgs.length} update${msgs.length>1?'s':''} for today</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${taskBadgeHtml}</div>
+    </div>
+    <div class="hd-body">${messagesHtml}</div>
+    ${checklistHtml}
+    <div class="hd-ack" id="hdAckSection">
+      <div class="hd-ack-note" id="hdAckNote">${needsChecklist?'Please check all boxes above to confirm':'Click below to acknowledge and start working'}</div>
+      <button class="hd-ack-btn" id="hdAckBtn" ${needsChecklist?'disabled':''} onclick="_huddleAcknowledge(${JSON.stringify(msgs.map(m=>m.id))})">
+        ✋ Acknowledge &amp; Start Working
+      </button>
+    </div>`;
+  overlay.style.display='flex';
+  document.body.style.overflow='hidden';
+}
+
+let _hdChecked = {};
+function _hdToggleCheck(idx, total){
+  _hdChecked[idx] = !_hdChecked[idx];
+  const item = document.getElementById('hdci_'+idx);
+  const box  = document.getElementById('hdcb_'+idx);
+  if(item) item.classList.toggle('hd-checked', _hdChecked[idx]);
+  if(box)  box.textContent = _hdChecked[idx] ? '✓' : '';
+  const allDone = Object.values(_hdChecked).filter(Boolean).length >= total;
+  const btn  = document.getElementById('hdAckBtn');
+  const note = document.getElementById('hdAckNote');
+  if(btn)  btn.disabled = !allDone;
+  if(note){ note.textContent=allDone?'All confirmed — you can now acknowledge':'Please check all boxes above'; note.style.color=allDone?'#16a34a':''; }
+}
+
+async function _huddleAcknowledge(msgIds){
+  const btn = document.getElementById('hdAckBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+  const today = new Date().toISOString().slice(0,10);
+  try{
+    if(_supa){
+      await _supa.from('huddle_acknowledgments').insert({
+        user_name: CU.name,
+        task: CU.task||'',
+        ack_date: today,
+        acknowledged_at: new Date().toISOString(),
+        huddle_ids: JSON.stringify(msgIds)
+      });
+    }
+  }catch(e){ console.warn('Huddle ack save failed:', e); }
+  // Show done screen
+  const modal = document.getElementById('huddleModal');
+  const ackTime = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  modal.innerHTML = `
+    <div class="hd-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="hd-live"></div>
+        <div><div class="hd-title-txt">Daily Huddle</div><div class="hd-date-txt">Acknowledged</div></div>
+      </div>
+    </div>
+    <div class="hd-done">
+      <div class="hd-done-circle">✓</div>
+      <div style="font-size:18px;font-weight:800;color:#232d42">You're all set!</div>
+      <div style="font-size:13px;color:#8492b4;line-height:1.5">Acknowledged at ${ackTime} — have a productive shift!</div>
+      <button onclick="_closeHuddle()" style="margin-top:12px;padding:11px 28px;border-radius:12px;border:none;background:linear-gradient(90deg,#000851,#1CB5E0);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);box-shadow:0 5px 18px rgba(0,8,81,.2)">
+        Start Working →
+      </button>
+    </div>`;
+  _hdChecked = {};
+}
+
+function _closeHuddle(){
+  const ov = document.getElementById('huddleOverlay');
+  if(ov) ov.style.display='none';
+  document.body.style.overflow='hidden';
+}
+function huddleOverlayClick(e){ /* prevent close on overlay click — must acknowledge */ }
+
+// ── Huddle Admin/Composer Page ──
+function renderHuddlePage(c){
+  const canPost = CU && (isAdmin()||CU.role==='Manager'||CU.role==='Supervisor'||CU.role==='Team Lead');
+  const today = new Date().toISOString().slice(0,10);
+  if(canPost){
+    c.innerHTML = `
+    <div class="ph"><div class="pt">👥 Daily Huddle</div><div class="ps">Post updates · Track acknowledgments</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px" id="huddleStatCards">
+      <div class="sc c-em"><div class="si">✅</div><div class="sl">Acknowledged Today</div><div class="sv" id="hdAckedCount">—</div></div>
+      <div class="sc c-ro"><div class="si">⏳</div><div class="sl">Pending Today</div><div class="sv" id="hdPendCount">—</div></div>
+    </div>
+    <div class="tw" style="margin-bottom:20px">
+      <div class="th2" style="background:linear-gradient(90deg,#3F2B96,#A8C0FF)">
+        <div class="tt">✍️ Compose Today's Huddle</div>
+        <div class="tc" id="hdPostedBy">Posting as ${CU.name}</div>
+      </div>
+      <div class="hd-toolbar" id="hdToolbar">
+        <span style="font-size:10px;font-weight:700;color:#8492b4;text-transform:uppercase;letter-spacing:.5px">Size</span>
+        <select style="border:1.5px solid #e0e4f0;border-radius:7px;padding:4px 8px;font-size:12px;color:#374060;background:#fff;outline:none;cursor:pointer;" onchange="document.execCommand('fontSize',false,this.value);document.getElementById('hdEditor').focus()">
+          <option value="3">Normal</option><option value="4">Large</option><option value="5">X-Large</option><option value="6">XX-Large</option>
+        </select>
+        <div style="width:1px;height:22px;background:#e0e4f0;margin:0 4px"></div>
+        <button class="hd-tb-btn" title="Bold" onclick="hdFmt('bold')"><b>B</b></button>
+        <button class="hd-tb-btn" title="Italic" onclick="hdFmt('italic')"><i>I</i></button>
+        <button class="hd-tb-btn" title="Underline" onclick="hdFmt('underline')"><u>U</u></button>
+        <div style="width:1px;height:22px;background:#e0e4f0;margin:0 4px"></div>
+        <span style="font-size:10px;font-weight:700;color:#8492b4;text-transform:uppercase;letter-spacing:.5px">Colour</span>
+        ${['#e11d48','#f59e0b','#16a34a','#2563eb','#7c3aed','#000851','#1CB5E0','#232d42'].map(c=>`<div onclick="hdSetColor('${c}')" title="${c}" style="width:20px;height:20px;border-radius:5px;background:${c};cursor:pointer;border:2px solid transparent;transition:all .12s;flex-shrink:0" onmouseover="this.style.borderColor='#000'" onmouseout="this.style.borderColor='transparent'"></div>`).join('')}
+        <div style="width:1px;height:22px;background:#e0e4f0;margin:0 4px"></div>
+        <span style="font-size:10px;font-weight:700;color:#8492b4;text-transform:uppercase;letter-spacing:.5px">Highlight</span>
+        ${['#fef08a','#bbf7d0','#bfdbfe','#fecaca','#e9d5ff','#fed7aa'].map(c=>`<div onclick="hdSetHL('${c}')" title="${c}" style="width:20px;height:20px;border-radius:5px;background:${c};cursor:pointer;border:2px solid transparent;transition:all .12s;flex-shrink:0" onmouseover="this.style.borderColor='#000'" onmouseout="this.style.borderColor='transparent'"></div>`).join('')}
+        <div style="width:1px;height:22px;background:#e0e4f0;margin:0 4px"></div>
+        <button class="hd-tb-btn" title="Bullet list" onclick="hdFmt('insertUnorderedList')">≡</button>
+        <button class="hd-tb-btn" title="Numbered" onclick="hdFmt('insertOrderedList')">1.</button>
+        <button class="hd-tb-btn" title="Clear format" onclick="hdFmt('removeFormat')" style="font-size:10px;width:auto;padding:0 6px">✕fmt</button>
+      </div>
+      <div style="padding:14px 16px">
+        <div class="hd-editor" id="hdEditor" contenteditable="true" placeholder="Type today's huddle message — use the toolbar above to format..."></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <div style="font-size:11px;color:#8492b4">Select text → apply formatting</div>
+          <div style="font-size:11px;color:#8492b4" id="hdCharCount">0 chars</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 16px 14px">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#8492b4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Target Task</div>
+          <select class="fps" id="hdTargetTask">
+            <option value="All">All Tasks</option>
+            ${['LVS','Classifier','Compliance','PARS Docs Clerk','Ocean Docs Clerk','Part Lot','Release','Ocean T&T','B2 Entries'].map(t=>`<option value="${t}">${t}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#8492b4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Message Type</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap" id="hdTypeRow">
+            <button class="hd-type-btn info hd-sel" onclick="hdSelType(this,'info')">ℹ️ Info</button>
+            <button class="hd-type-btn warn" onclick="hdSelType(this,'warn')">⚠️ Alert</button>
+            <button class="hd-type-btn urgent" onclick="hdSelType(this,'urgent')">🔴 Urgent</button>
+            <button class="hd-type-btn good" onclick="hdSelType(this,'good')">✅ Good</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:800;color:#8492b4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Show Until</div>
+          <select class="fps" id="hdShowUntil">
+            <option value="0">Today only</option>
+            <option value="1">Tomorrow too</option>
+            <option value="2">3 days</option>
+            <option value="6">This week</option>
+          </select>
+        </div>
+      </div>
+      <div style="padding:0 16px 14px">
+        <div style="font-size:10px;font-weight:800;color:#8492b4;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Acknowledgment Checklist Items</div>
+        <div id="hdClList"></div>
+        <button onclick="hdAddCI()" style="padding:7px 14px;border-radius:9px;border:1.5px solid #1CB5E0;background:#f0faff;color:#0284c7;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font)">+ Add checklist item</button>
+      </div>
+      <div style="padding:12px 16px;background:#f8f9fd;border-top:1px solid #eceef5;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="font-size:11px;color:#8492b4">Formatted message shows exactly as typed in the team popup</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="hdPreview()" style="padding:10px 18px;border-radius:10px;border:1.5px solid #e0e4f0;background:#fff;color:#374060;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)">👁 Preview</button>
+          <button onclick="hdPublish()" style="padding:10px 24px;border-radius:10px;border:none;background:linear-gradient(90deg,#000851,#1CB5E0);color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:var(--font);box-shadow:0 4px 14px rgba(0,8,81,.2)">📢 Publish Huddle</button>
+        </div>
+      </div>
+    </div>
+    <div class="tw" id="hdAckTable">
+      <div class="th2"><div class="tt">👥 Today's Acknowledgment Status</div><div class="tc" id="hdAckTableBadge">Loading...</div></div>
+      <div style="padding:20px;text-align:center;color:var(--text3)">Loading...</div>
+    </div>`;
+    // Wire up editor char count
+    setTimeout(()=>{
+      const ed = document.getElementById('hdEditor');
+      if(ed) ed.addEventListener('input',()=>{ document.getElementById('hdCharCount').textContent=(ed.innerText||'').length+' chars'; });
+      hdLoadStats();
+    },100);
+  } else {
+    // Regular user — show today's huddle history
+    c.innerHTML=`<div class="ph"><div class="pt">👥 Daily Huddle</div><div class="ps">Today's updates from your team lead</div></div>
+    <div class="tw"><div class="th2"><div class="tt">Today's Huddle Messages</div></div><div style="padding:24px;text-align:center;color:var(--text3)">Loading...</div></div>`;
+    hdLoadUserView(c);
+  }
+}
+
+function hdFmt(cmd){ document.execCommand(cmd,false,null); document.getElementById('hdEditor')?.focus(); }
+function hdSetColor(c){ document.execCommand('foreColor',false,c); document.getElementById('hdEditor')?.focus(); }
+function hdSetHL(c){ document.execCommand('hiliteColor',false,c); document.getElementById('hdEditor')?.focus(); }
+function hdSelType(el,t){
+  document.querySelectorAll('#hdTypeRow .hd-type-btn').forEach(b=>{b.classList.remove('hd-sel');});
+  el.classList.add('hd-sel');
+}
+function hdAddCI(){
+  const list = document.getElementById('hdClList');
+  if(!list) return;
+  const div = document.createElement('div');
+  div.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:7px';
+  div.innerHTML=`<input class="hd-cl-input" placeholder="e.g. I understand today's TAT requirement" style="flex:1"/><button onclick="this.parentElement.remove()" style="width:26px;height:26px;border-radius:7px;border:1.5px solid #fca5a5;background:#fff1f2;color:#e11d48;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>`;
+  list.appendChild(div);
+  div.querySelector('input').focus();
+}
+function hdGetType(){ return document.querySelector('#hdTypeRow .hd-sel')?.className.match(/\b(info|warn|urgent|good)\b/)?.[1]||'info'; }
+
+async function hdPublish(){
+  const editor = document.getElementById('hdEditor');
+  const html = editor?.innerHTML||'';
+  const txt = editor?.innerText?.trim()||'';
+  if(!txt){ showToast('⚠️ Please write a message',true); return; }
+  const task   = document.getElementById('hdTargetTask')?.value||'All';
+  const type   = hdGetType();
+  const days   = parseInt(document.getElementById('hdShowUntil')?.value||0);
+  const today  = new Date().toISOString().slice(0,10);
+  const until  = new Date(Date.now()+days*86400000).toISOString().slice(0,10);
+  const items  = Array.from(document.querySelectorAll('#hdClList input')).map(i=>i.value.trim()).filter(Boolean);
+  const row = {
+    message_html: html, message: txt,
+    message_type: type, target_task: task,
+    posted_by: CU.name, posted_role: CU.role||'',
+    show_from: today, show_until: until,
+    is_active: true, checklist_items: JSON.stringify(items),
+    created_at: new Date().toISOString()
+  };
+  const btn = event.target;
+  btn.disabled=true; btn.textContent='Publishing...';
+  try{
+    if(_supa){ await _supa.from('huddle_messages').insert(row); }
+    showToast('📢 Huddle published! Team will see it on next login.');
+    // Reset editor
+    if(editor) editor.innerHTML='';
+    document.querySelectorAll('#hdClList div').forEach(d=>d.remove());
+    hdLoadStats();
+  }catch(e){ showToast('⚠️ Failed to publish: '+e.message,true); }
+  btn.disabled=false; btn.textContent='📢 Publish Huddle';
+}
+
+function hdPreview(){
+  const editor = document.getElementById('hdEditor');
+  const html = editor?.innerHTML||'';
+  if(!editor?.innerText?.trim()){ showToast('Write a message first',true); return; }
+  const type = hdGetType();
+  const typeLabel={info:'ℹ️ Info',warn:'⚠️ Alert',urgent:'🔴 Urgent',good:'✅ Good News'};
+  const typeCols={info:'#1d4ed8',warn:'#d97706',urgent:'#e11d48',good:'#16a34a'};
+  const items = Array.from(document.querySelectorAll('#hdClList input')).map(i=>i.value.trim()).filter(Boolean);
+  const checklistHtml = items.length?`<div class="hd-cl"><div class="hd-cl-title">Checklist preview:</div>${items.map(it=>`<div class="hd-cl-item"><div class="hd-cl-box"></div><div class="hd-cl-lbl">${_esc(it)}</div></div>`).join('')}</div>`:'';
+  const modal = document.getElementById('huddleModal');
+  const ov    = document.getElementById('huddleOverlay');
+  modal.innerHTML=`
+    <div class="hd-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="hd-live"></div>
+        <div><div class="hd-title-txt">Preview — Team View</div><div class="hd-date-txt">How your team will see this</div></div>
+      </div>
+      <button onclick="document.getElementById('huddleOverlay').style.display='none'" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:15px;font-family:var(--font)">✕</button>
+    </div>
+    <div class="hd-body">
+      <div class="hd-msg ${type}">
+        <div class="hd-msg-type" style="color:${typeCols[type]}">${typeLabel[type]}</div>
+        <div class="hd-msg-content">${html}</div>
+      </div>
+    </div>
+    ${checklistHtml}
+    <div class="hd-ack">
+      <div class="hd-ack-note">This is a preview — team must acknowledge before working</div>
+      <button disabled class="hd-ack-btn" style="opacity:.6">✋ Acknowledge &amp; Start Working</button>
+    </div>`;
+  ov.style.display='flex';
+}
+
+async function hdLoadStats(){
+  if(!_supa) return;
+  const today = new Date().toISOString().slice(0,10);
+  try{
+    const [{data:msgs},{data:acks}] = await Promise.all([
+      _supa.from('huddle_messages').select('id,target_task,message_type,posted_by,created_at').eq('show_from',today).order('created_at',{ascending:false}),
+      _supa.from('huddle_acknowledgments').select('user_name,task,acknowledged_at').eq('ack_date',today)
+    ]);
+    const ackedNames = new Set((acks||[]).map(a=>a.user_name));
+    // Count active users for each task that got a huddle
+    const targetTasks = [...new Set((msgs||[]).map(m=>m.target_task))];
+    const allUsers = (DB.loginUsers||[]).filter(u=>u.active!==false&&u.role!=='Manager'&&u.role!=='Client');
+    const relevantUsers = targetTasks.includes('All') ? allUsers : allUsers.filter(u=>targetTasks.includes(u.task));
+    const ackedCount = relevantUsers.filter(u=>ackedNames.has(u.name)).length;
+    const pendCount  = relevantUsers.length - ackedCount;
+    const ac = document.getElementById('hdAckedCount');
+    const pc = document.getElementById('hdPendCount');
+    if(ac) ac.textContent = ackedCount;
+    if(pc) pc.textContent = pendCount;
+    // Build ack table
+    const tbl = document.getElementById('hdAckTable');
+    const badge = document.getElementById('hdAckTableBadge');
+    if(badge) badge.textContent = `${ackedCount}/${relevantUsers.length} acknowledged`;
+    if(tbl){
+      const rows = relevantUsers.map(u=>{
+        const isAcked = ackedNames.has(u.name);
+        const ackRec  = (acks||[]).find(a=>a.user_name===u.name);
+        const ackTime = ackRec ? new Date(ackRec.acknowledged_at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
+        return `<tr>
+          <td style="font-weight:700">${_esc(u.name)}</td>
+          <td style="color:var(--text3)">${u.task||'—'}</td>
+          <td style="text-align:center">${isAcked
+            ?'<span style="background:#dcfce7;color:#16a34a;border-radius:20px;padding:2px 12px;font-size:11px;font-weight:800">✓ Acknowledged</span>'
+            :'<span style="background:#fee2e2;color:#e11d48;border-radius:20px;padding:2px 12px;font-size:11px;font-weight:800">⏳ Pending</span>'}</td>
+          <td style="text-align:center;color:var(--text3);font-size:12px">${ackTime}</td>
+        </tr>`;
+      }).join('');
+      tbl.innerHTML=`<div class="th2"><div class="tt">👥 Today's Acknowledgment Status</div><div class="tc">${ackedCount}/${relevantUsers.length} acknowledged</div></div>
+        <div style="overflow-x:auto"><table class="dt"><thead><tr><th>User</th><th>Task</th><th style="text-align:center">Status</th><th style="text-align:center">Time</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+  }catch(e){ console.warn('Huddle stats failed',e); }
+}
+
+async function hdLoadUserView(c){
+  if(!_supa) return;
+  const today = new Date().toISOString().slice(0,10);
+  try{
+    const {data:msgs} = await _supa.from('huddle_messages').select('*').eq('is_active',true).lte('show_from',today).gte('show_until',today).or(`target_task.eq.All,target_task.eq.${CU.task}`).order('created_at',{ascending:false});
+    const typeLabel={info:'ℹ️ Info',warn:'⚠️ Alert',urgent:'🔴 Urgent',good:'✅ Good News'};
+    if(!msgs||!msgs.length){ c.querySelector('.tw div:last-child').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No huddle messages today.</div>'; return; }
+    c.querySelector('.tw div:last-child').innerHTML=msgs.map(m=>`<div class="hd-msg ${m.message_type||'info'}" style="margin:12px 16px;"><div class="hd-msg-type">${typeLabel[m.message_type]||m.message_type}</div><div class="hd-msg-content">${m.message_html||m.message||''}</div><div style="font-size:10px;color:#8492b4;margin-top:6px">Posted by ${_esc(m.posted_by||'Admin')}</div></div>`).join('');
+  }catch(e){}
+}
+
 function bootApp(){
   // Set mobile task page based on user's role
   const _taskPageMap2 = {
@@ -7952,6 +8419,8 @@ function bootApp(){
   } else {
     showPage(_landPage);
   }
+  // Check for today's Daily Huddle after 800ms (non-blocking)
+  setTimeout(_checkDailyHuddle, 800);
 }
 
 // ── Offline Login — uses localStorage cache only ──
@@ -8406,6 +8875,7 @@ function buildNav(){
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
       {id:'tatreasons',l:'💬 TAT Reasons',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
       {id:'archive',l:'🗄️ Archive & Cleanup',g:'admin'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
     ];
@@ -8433,7 +8903,9 @@ function buildNav(){
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'admin'},
     ];
   } else if(isReleaseTL){
     items=[
@@ -8449,6 +8921,7 @@ function buildNav(){
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(isTeamLead){
     // TL nav: dashboard + their task + status + reports
@@ -8480,6 +8953,7 @@ function buildNav(){
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
@@ -8729,6 +9203,7 @@ function showPage(id){
   else if(id==='tatreasons') renderTATReasons(c);
   else if(id==='tatissue') renderTATIssue(c);
   else if(id==='instructions') renderInstructions(c);
+  else if(id==='huddle') renderHuddlePage(c);
   else if(id==='qualityanalytics') renderQualityAnalytics(c);
   else if(id==='idlelog') renderIdleLogPage(c);
   else if(id==='archive') renderArchivePage(c);
