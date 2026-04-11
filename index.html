@@ -3564,13 +3564,10 @@ function _makeSupaClient(){
     // Update session timestamp (reset the clock)
     sessionStorage.setItem('kpi_session_ts', Date.now());
 
-    // Clear stale data cache on every login — ensures fresh data always
-    _clearDataCache();
-
-    // Boot the app
+    // Boot the app (session restore — keep cache intact for instant display)
     if(typeof bootApp === 'function') bootApp();
 
-    // Try to restore cached task data instantly (before DB load)
+    // Restore cached task data instantly for immediate display
     _restoreTaskCache();
     // Reload all data fresh from DB in background
     if(typeof loadAllFromSupabase === 'function'){
@@ -7950,14 +7947,13 @@ _initStyle();
 // ── Check & show huddle popup on login ──
 async function _checkDailyHuddle(){
   if(!_supa||!CU) return;
+  // Skip for Client role
+  if(CU.role==='Client'||CU.task==='Client') return;
   const today = new Date().toISOString().slice(0,10);
   const userTask = CU.task||'';
-  const userRole = CU.role||'';
-  // Skip for Manager/Admin — they post, not receive (unless they want to)
-  // Actually show to everyone including TL/Supervisor so they see what team sees
   try {
     // 1. Get today's active huddle messages for this user's task
-    const {data:msgs} = await _supa
+    const {data:msgs, error:msgErr} = await _supa
       .from('huddle_messages')
       .select('*')
       .eq('is_active', true)
@@ -7965,18 +7961,34 @@ async function _checkDailyHuddle(){
       .gte('show_until', today)
       .or(`target_task.eq.All,target_task.eq.${userTask}`)
       .order('created_at', {ascending:false});
+
+    // If table doesn't exist yet, fail silently
+    if(msgErr){
+      if(msgErr.code==='42P01'||msgErr.message?.includes('does not exist')){
+        console.log('[Huddle] Tables not yet created — skipping');
+      } else {
+        console.warn('[Huddle] Query error:', msgErr.message);
+      }
+      return;
+    }
     if(!msgs||!msgs.length) return;
+
     // 2. Check if user already acknowledged today
-    const {data:acks} = await _supa
+    const {data:acks, error:ackErr} = await _supa
       .from('huddle_acknowledgments')
       .select('id')
       .eq('user_name', CU.name)
       .eq('ack_date', today)
       .limit(1);
+
+    if(ackErr && ackErr.code!=='42P01') return; // table missing = show popup
     if(acks&&acks.length) return; // already acknowledged today
+
     // 3. Show popup
     _showHuddlePopup(msgs);
-  } catch(e){ console.warn('Huddle check failed:', e); }
+  } catch(e){
+    console.warn('[Huddle] Check failed silently:', e.message);
+  }
 }
 
 function _showHuddlePopup(msgs){
@@ -8037,7 +8049,6 @@ function _showHuddlePopup(msgs){
       </button>
     </div>`;
   overlay.style.display='flex';
-  document.body.style.overflow='hidden';
 }
 
 let _hdChecked = {};
@@ -8714,6 +8725,9 @@ async function _proceedWithLogin(lu, u){
   try{sessionStorage.setItem('kpi_session',JSON.stringify(CU));
       sessionStorage.setItem('kpi_session_ts', Date.now());}catch(e){}
 
+  // Clear stale cache on FRESH login only (not session restore)
+  _clearDataCache();
+
   if(_supa){
     const overlay=document.getElementById('loadingOverlay');
     const msg=document.getElementById('loadingMsg');
@@ -8738,7 +8752,7 @@ async function _proceedWithLogin(lu, u){
     try{
       await Promise.race([
         loadAllFromSupabase(),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),12000)) // 12s for users
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),30000)) // 30s — allow for Supabase cold start
       ]);
     } catch(e){
       console.warn('User data load failed — booting offline:',e.message);
