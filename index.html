@@ -7947,33 +7947,44 @@ _initStyle();
 // ── Check & show huddle popup on login ──
 async function _checkDailyHuddle(){
   if(!_supa||!CU) return;
-  // Skip for Client role
   if(CU.role==='Client'||CU.task==='Client') return;
   const today = new Date().toISOString().slice(0,10);
   const userTask = CU.task||'';
   try {
-    // 1. Get today's active huddle messages for this user's task
-    const {data:msgs, error:msgErr} = await _supa
-      .from('huddle_messages')
-      .select('*')
-      .eq('is_active', true)
-      .lte('show_from', today)
-      .gte('show_until', today)
-      .or(`target_task.eq.All,target_task.eq.${userTask}`)
-      .order('created_at', {ascending:false});
+    // Custom REST client .or() doesn't work as true OR — run two queries and merge
+    const [q1, q2] = await Promise.all([
+      // Query 1: messages targeting "All" tasks
+      _supa.from('huddle_messages').select('*')
+        .eq('is_active', true).eq('target_task','All')
+        .lte('show_from', today).gte('show_until', today)
+        .order('created_at', {ascending:false}),
+      // Query 2: messages targeting this user's specific task
+      userTask ? _supa.from('huddle_messages').select('*')
+        .eq('is_active', true).eq('target_task', userTask)
+        .lte('show_from', today).gte('show_until', today)
+        .order('created_at', {ascending:false})
+        : Promise.resolve({data:[], error:null})
+    ]);
 
-    // If table doesn't exist yet, fail silently
-    if(msgErr){
-      if(msgErr.code==='42P01'||msgErr.message?.includes('does not exist')){
+    if(q1.error){
+      if(q1.error.code==='42P01'||q1.error.message?.includes('does not exist')){
         console.log('[Huddle] Tables not yet created — skipping');
       } else {
-        console.warn('[Huddle] Query error:', msgErr.message);
+        console.warn('[Huddle] Query error:', q1.error.message);
       }
       return;
     }
-    if(!msgs||!msgs.length) return;
 
-    // 2. Check if user already acknowledged today
+    // Merge and deduplicate by id
+    const seen = new Set();
+    const msgs = [...(q1.data||[]), ...(q2.data||[])].filter(m=>{
+      if(seen.has(m.id)) return false;
+      seen.add(m.id); return true;
+    }).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+
+    if(!msgs.length) return;
+
+    // Check if user already acknowledged today
     const {data:acks, error:ackErr} = await _supa
       .from('huddle_acknowledgments')
       .select('id')
@@ -7981,10 +7992,9 @@ async function _checkDailyHuddle(){
       .eq('ack_date', today)
       .limit(1);
 
-    if(ackErr && ackErr.code!=='42P01') return; // table missing = show popup
+    if(ackErr && ackErr.code!=='42P01') return;
     if(acks&&acks.length) return; // already acknowledged today
 
-    // 3. Show popup
     _showHuddlePopup(msgs);
   } catch(e){
     console.warn('[Huddle] Check failed silently:', e.message);
@@ -8339,11 +8349,17 @@ async function hdLoadUserView(c){
   if(!_supa) return;
   const today = new Date().toISOString().slice(0,10);
   try{
-    const {data:msgs} = await _supa.from('huddle_messages').select('*').eq('is_active',true).lte('show_from',today).gte('show_until',today).or(`target_task.eq.All,target_task.eq.${CU.task}`).order('created_at',{ascending:false});
+    // Two queries instead of broken .or()
+    const [r1,r2] = await Promise.all([
+      _supa.from('huddle_messages').select('*').eq('is_active',true).eq('target_task','All').lte('show_from',today).gte('show_until',today).order('created_at',{ascending:false}),
+      CU.task ? _supa.from('huddle_messages').select('*').eq('is_active',true).eq('target_task',CU.task).lte('show_from',today).gte('show_until',today).order('created_at',{ascending:false}) : Promise.resolve({data:[]})
+    ]);
+    const seen=new Set();
+    const msgs=[...(r1.data||[]),...(r2.data||[])].filter(m=>{ if(seen.has(m.id)) return false; seen.add(m.id); return true; }).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     const typeLabel={info:'ℹ️ Info',warn:'⚠️ Alert',urgent:'🔴 Urgent',good:'✅ Good News'};
-    if(!msgs||!msgs.length){ c.querySelector('.tw div:last-child').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No huddle messages today.</div>'; return; }
+    if(!msgs.length){ c.querySelector('.tw div:last-child').innerHTML='<div style="padding:30px;text-align:center;color:var(--text3)">No huddle messages today.</div>'; return; }
     c.querySelector('.tw div:last-child').innerHTML=msgs.map(m=>`<div class="hd-msg ${m.message_type||'info'}" style="margin:12px 16px;"><div class="hd-msg-type">${typeLabel[m.message_type]||m.message_type}</div><div class="hd-msg-content">${m.message_html||m.message||''}</div><div style="font-size:10px;color:#8492b4;margin-top:6px">Posted by ${_esc(m.posted_by||'Admin')}</div></div>`).join('');
-  }catch(e){}
+  }catch(e){ console.warn('[Huddle] user view failed',e); }
 }
 
 function bootApp(){
