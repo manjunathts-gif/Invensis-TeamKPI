@@ -4686,7 +4686,7 @@ function startBgPoll(){
         if(ap && !isPanelOpen()){
           // SPEED FIX: only refresh if user is on a relevant page
           const taskPages = ['lvs','classifier','compliance','parsdocs','oceandocs',
-            'partlot','release2','oceantt','b2entries','dashboard','status','reports','tatissue'];
+            'partlot','release2','oceantt','b2entries','dashboard','status','reports','tatissue','dcissue'];
           if(taskPages.includes(ap)) _silentRefreshPage(ap);
         }
       }
@@ -8919,6 +8919,7 @@ function buildNav(){
       {id:'gdrive',l:'📤 Google Drive',g:'admin'},
       {id:'clients',l:'🏢 Clients',g:'admin'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
+      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
       {id:'tatreasons',l:'💬 TAT Reasons',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'huddle',l:'👥 Daily Huddle',g:'main'},
@@ -8945,6 +8946,7 @@ function buildNav(){
       {id:'tatanalyzer',l:'🎯 TAT Analyzer',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
+      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
@@ -8963,6 +8965,7 @@ function buildNav(){
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
+      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
@@ -8995,6 +8998,7 @@ function buildNav(){
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
+      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
       errItem,
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
@@ -9248,6 +9252,7 @@ function showPage(id){
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
   else if(id==='tatissue') renderTATIssue(c);
+  else if(id==='dcissue') renderDCIssue(c);
   else if(id==='instructions') renderInstructions(c);
   else if(id==='huddle') renderHuddlePage(c);
   else if(id==='qualityanalytics') renderQualityAnalytics(c);
@@ -17567,6 +17572,345 @@ function clearTIFilter(){
   pgSetData('ti', data);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
+}
+
+// ══════════════════════════════════════════════════════════
+// DC PARS TAT ISSUE — PARS Docs TAT Not Reached Analysis
+// TAT Rule: Transaction Created within 1 hour of Mail Received
+// ══════════════════════════════════════════════════════════
+function renderDCIssue(c){
+  if(!c) return;
+  const canEdit = isAdmin()||CU?.role==='Supervisor';
+
+  // Helper — parse display date string to Date object
+  function _pd(s){
+    if(!s||s==='—') return null;
+    // Try ISO first
+    let d=new Date(s); if(!isNaN(d)) return d;
+    // Try DD-MM-YYYY HH:MM:SS
+    const m=s.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if(m) return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]),parseInt(m[4]),parseInt(m[5]),parseInt(m[6]||0));
+    return null;
+  }
+
+  // Calc delay in minutes between mailrcvd and created
+  function _calcDelay(r){
+    const mail=_pd(r.mailrcvd);
+    const created=_pd(r.created)||_pd(r._created);
+    if(!mail||!created) return null;
+    return Math.round((created-mail)/60000);
+  }
+
+  // Filter TAT Not Reached from parsDocs
+  const all=(DB.parsDocs||[]).filter(r=>{
+    const tv=(r.tat||'').toLowerCase();
+    if(!tv.includes('not')) return false;
+    return true;
+  }).map(r=>({...r, _delayMins:_calcDelay(r)}));
+
+  // Stat cards
+  const totalIssues = all.length;
+  const todayStr = new Date().toDateString();
+  const todayCount = all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+  const withDelay = all.filter(r=>r._delayMins!==null);
+  const avgDelay = withDelay.length ? Math.round(withDelay.reduce((s,r)=>s+r._delayMins,0)/withDelay.length) : 0;
+  const over2h = all.filter(r=>r._delayMins!==null&&r._delayMins>120).length;
+
+  // Hourly heatmap — count TAT Not Reached by hour of mailrcvd
+  const hourMap = {};
+  for(let h=0;h<24;h++) hourMap[h]=[];
+  all.forEach(r=>{
+    const mail=_pd(r.mailrcvd);
+    if(mail) hourMap[mail.getHours()].push(r);
+  });
+  const maxHour = Math.max(1, ...Object.values(hourMap).map(a=>a.length));
+
+  // Hourly heatmap HTML
+  function _heatColor(n,max){
+    if(!n) return '#f0f2f8';
+    const pct=n/max;
+    if(pct>=0.75) return '#dc2626';
+    if(pct>=0.5)  return '#f59e0b';
+    if(pct>=0.25) return '#fbbf24';
+    return '#fde68a';
+  }
+  function _heatText(n,max){
+    if(!n) return '#b0bbd8';
+    const pct=n/max;
+    return pct>=0.25?'#232d42':'#8492b4';
+  }
+
+  const heatCells = Array.from({length:24},(_,h)=>{
+    const n=hourMap[h].length;
+    const bg=_heatColor(n,maxHour);
+    const tc=_heatText(n,maxHour);
+    const lbl=h===0?'12a':h<12?h+'a':h===12?'12p':(h-12)+'p';
+    return `<div onclick="_dcHourFilter(${h})" title="${n} TAT issues at ${lbl}" style="cursor:pointer;border-radius:8px;padding:8px 4px;background:${bg};text-align:center;transition:transform .15s;flex:1;min-width:28px;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+      <div style="font-size:10px;font-weight:700;color:${tc}">${n||''}</div>
+      <div style="font-size:9px;color:${n?'#6b7280':'#c8d4e8'};margin-top:2px">${lbl}</div>
+    </div>`;
+  }).join('');
+
+  // User breakdown for heatmap tooltip
+  const userIssues={};
+  all.forEach(r=>{ const u=r.user||'Unknown'; userIssues[u]=(userIssues[u]||0)+1; });
+  const topUsers=Object.entries(userIssues).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Delay bucket breakdown
+  const buckets=[
+    {lbl:'0–30 min',  min:0,   max:30,  col:'#16a34a', bg:'#dcfce7'},
+    {lbl:'31–60 min', min:30,  max:60,  col:'#ca8a04', bg:'#fef9c3'},
+    {lbl:'1–2 hours', min:60,  max:120, col:'#ea580c', bg:'#ffedd5'},
+    {lbl:'2–4 hours', min:120, max:240, col:'#dc2626', bg:'#fee2e2'},
+    {lbl:'4+ hours',  min:240, max:99999,col:'#7c3aed',bg:'#f3e8ff'},
+  ];
+  const maxBucket=Math.max(1,...buckets.map(b=>all.filter(r=>r._delayMins!==null&&r._delayMins>b.min&&r._delayMins<=b.max).length));
+
+  c.innerHTML=`
+  <div class="ph">
+    <div>
+      <div class="pt">📬 DC PARS TAT Issue <span class="pbadge">TAT Not Reached</span></div>
+      <div class="ps">PARS Docs — Mail Received to Transaction Created must be within 1 hour</div>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="sg">
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="dcTotalCard">${totalIssues}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Issues</div><div class="sv">${todayCount}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">⏱️</div><div class="sl">Avg Delay (mins)</div><div class="sv">${avgDelay}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔴</div><div class="sl">Over 2 Hours</div><div class="sv">${over2h}</div></div>
+  </div>
+
+  <!-- HEATMAP + DELAY BREAKDOWN SIDE BY SIDE -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+
+    <!-- HOURLY HEATMAP -->
+    <div class="tw">
+      <div class="th2"><div class="tt">🕐 Hourly TAT Issue Heatmap</div><div class="tc">By Mail Received Hour</div></div>
+      <div style="padding:14px 16px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Click any hour to filter table below. Red = most TAT issues that hour.</div>
+        <div style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px">${heatCells}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;color:var(--text3)">SCALE:</span>
+          ${[['#fde68a','Low'],['#fbbf24','Medium'],['#f59e0b','High'],['#dc2626','Critical']].map(([c,l])=>`<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700"><span style="width:12px;height:12px;border-radius:3px;background:${c};display:inline-block"></span>${l}</span>`).join('')}
+          <button onclick="_dcHourFilter(null)" style="margin-left:auto;padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);font-size:11px;font-weight:700;cursor:pointer;color:var(--text2)">Clear Hour Filter</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DELAY DISTRIBUTION -->
+    <div class="tw">
+      <div class="th2"><div class="tt">📊 Delay Distribution</div><div class="tc">Mail Rcvd → Txn Created</div></div>
+      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+        ${buckets.map(b=>{
+          const cnt=all.filter(r=>r._delayMins!==null&&r._delayMins>b.min&&r._delayMins<=b.max).length;
+          const pct=Math.max(2,Math.round(cnt/maxBucket*100));
+          return `<div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:12px;font-weight:700;color:var(--text2)">${b.lbl}</span>
+              <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:${b.col}">${cnt}</span>
+            </div>
+            <div style="height:10px;background:var(--border);border-radius:5px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${b.col};border-radius:5px;transition:width .5s"></div>
+            </div>
+          </div>`;
+        }).join('')}
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Top users with TAT issues</div>
+          ${topUsers.map(([u,n])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;font-weight:600">${_esc(u)}</span><span style="font-family:var(--mono);font-size:12px;font-weight:800;color:var(--rose)">${n}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILTER BAR -->
+  <div class="fb">
+    <span class="flbl">🔍 Filter</span>
+    <input class="fi2" id="dc_fd1" type="date" placeholder="From"/>
+    <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
+    <input class="fi2" id="dc_fd2" type="date" placeholder="To"/>
+    <select class="fs2" id="dc_fu">
+      <option value="">All Users</option>
+      ${[...new Set((DB.parsDocs||[]).map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${_esc(u)}</option>`).join('')}
+    </select>
+    <select class="fs2" id="dc_fteam">
+      <option value="">All Teams</option>
+      ${[...new Set((DB.parsDocs||[]).map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${_esc(t)}</option>`).join('')}
+    </select>
+    <select class="fs2" id="dc_fdelay">
+      <option value="">All Delays</option>
+      <option value="30">0–30 min</option>
+      <option value="60">31–60 min</option>
+      <option value="120">1–2 hours</option>
+      <option value="240">2–4 hours</option>
+      <option value="9999">4+ hours</option>
+    </select>
+    <input class="fi2" id="dc_search" placeholder="🔍 Search Subject / TXN / Client" style="min-width:180px" oninput="_debounce('dc',applyDCFilter)"/>
+    <button class="btn-f" onclick="applyDCFilter()">Apply</button>
+    <button class="btn-cl" onclick="clearDCFilter()">Clear</button>
+    <span style="margin-left:auto;font-size:12px;color:var(--text3)" id="dcHourLabel"></span>
+  </div>
+
+  <!-- TABLE -->
+  <div class="tw">
+    <div class="th2">
+      <div class="tt">📬 PARS Docs — TAT Not Reached Records</div>
+      <div class="tc" id="dcCount">${totalIssues} records</div>
+    </div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr>
+        <th>#</th>
+        <th>Subject</th>
+        <th>TXN</th>
+        <th>PARS No</th>
+        <th>Mail Rcvd</th>
+        <th>Txn Created</th>
+        <th>Delay</th>
+        <th>Client</th>
+        <th>Team</th>
+        <th>Mode</th>
+        <th>User</th>
+        <th>TAT</th>
+        <th>Comments</th>
+        ${canEdit?'<th>✏️ Edit</th>':''}
+      </tr></thead>
+      <tbody id="dcTbody"></tbody>
+    </table></div>
+  </div>
+  <div id="pg_dc"></div>`;
+
+  // Init pagination and render
+  pgSetData('dc', all);
+  _renderDCRows(pgSlice('dc'));
+  pgRender('dc','pg_dc','pgGoDC');
+}
+
+function _renderDCRows(data){
+  const tbody=document.getElementById('dcTbody');
+  if(!tbody) return;
+  const canEdit=isAdmin()||CU?.role==='Supervisor';
+  const cols=canEdit?14:13;
+  if(!data||!data.length){
+    tbody.innerHTML=`<tr><td colspan="${cols}"><div class="empty"><div class="empty-ico">✅</div><div class="empty-t">No TAT Not Reached records — All good!</div></div></td></tr>`;
+    return;
+  }
+  function _delayBadge(mins){
+    if(mins===null) return '<span style="color:var(--text3)">—</span>';
+    const h=Math.floor(mins/60), m=mins%60;
+    const txt=h>0?`${h}h ${m}m`:`${m}m`;
+    const col=mins<=30?'#16a34a':mins<=60?'#ca8a04':mins<=120?'#ea580c':'#dc2626';
+    const bg=mins<=30?'#dcfce7':mins<=60?'#fef9c3':mins<=120?'#ffedd5':'#fee2e2';
+    return `<span style="background:${bg};color:${col};border-radius:8px;padding:2px 9px;font-size:11px;font-weight:800;font-family:var(--mono)">${txt}</span>`;
+  }
+  tbody.innerHTML=data.map((r,i)=>`<tr>
+    <td class="mono" style="color:var(--text3)">${i+1}</td>
+    <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.subject||'')}">${_esc(r.subject||'—')}</td>
+    <td class="mono" style="color:var(--sky);font-weight:700">${r.txn||'—'}</td>
+    <td class="mono" style="color:var(--teal);font-size:11px">${r.parsno||'—'}</td>
+    <td class="mono" style="font-size:11px;color:var(--amber);font-weight:600">${r.mailrcvd||'—'}</td>
+    <td class="mono" style="font-size:11px;color:var(--primary)">${r.created||'—'}</td>
+    <td>${_delayBadge(r._delayMins)}</td>
+    <td class="mono">${_clientCode(r.client)}</td>
+    <td><span class="badge b-te">${r.team||'—'}</span></td>
+    <td><span class="badge b-sk">${r.mode||'—'}</span></td>
+    <td style="font-weight:600">${_esc(r.user||'—')}</td>
+    <td>${tatBadge(r.tat)}</td>
+    <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.comments||'')}">${r.comments||'—'}</td>
+    ${canEdit?`<td>
+      <button onclick="_dcEditRow('${r._dbid||r.id}')" style="padding:3px 10px;border-radius:6px;border:1px solid rgba(99,102,241,.3);background:var(--indigo-bg);color:var(--indigo);font-size:11px;font-weight:700;cursor:pointer">✏️ Edit</button>
+    </td>`:''}
+  </tr>`).join('');
+  const cnt=document.getElementById('dcCount');
+  if(cnt) cnt.textContent=(_pgState['dc']?.filtered?.length||data.length)+' records';
+  const tot=document.getElementById('dcTotalCard');
+  if(tot) tot.textContent=_pgState['dc']?.filtered?.length??data.length;
+}
+
+function _dcHourFilter(hour){
+  window._dcHourFilter=hour;
+  const lbl=document.getElementById('dcHourLabel');
+  if(lbl) lbl.textContent=hour!==null?`⏰ Filtered: ${hour<12?hour+'am':hour===12?'12pm':(hour-12)+'pm'} hour`:'';
+  applyDCFilter();
+}
+
+function applyDCFilter(){
+  const d1=document.getElementById('dc_fd1')?.value;
+  const d2=document.getElementById('dc_fd2')?.value;
+  const u=document.getElementById('dc_fu')?.value;
+  const tm=document.getElementById('dc_fteam')?.value;
+  const dly=document.getElementById('dc_fdelay')?.value;
+  const q=(document.getElementById('dc_search')?.value||'').toLowerCase().trim();
+  const hourF=window._dcHourFilter;
+
+  function _pd(s){
+    if(!s||s==='—') return null;
+    let d=new Date(s); if(!isNaN(d)) return d;
+    const m=s.match(/(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if(m) return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]),parseInt(m[4]),parseInt(m[5]),parseInt(m[6]||0));
+    return null;
+  }
+  function _calcDelay(r){
+    const mail=_pd(r.mailrcvd);
+    const created=_pd(r.created)||_pd(r._created);
+    if(!mail||!created) return null;
+    return Math.round((created-mail)/60000);
+  }
+
+  let data=(DB.parsDocs||[]).filter(r=>{
+    const tv=(r.tat||'').toLowerCase();
+    return tv.includes('not');
+  }).map(r=>({...r,_delayMins:_calcDelay(r)}));
+
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(q) data=data.filter(r=>
+    String(r.txn||'').toLowerCase().includes(q)||
+    String(r.subject||'').toLowerCase().includes(q)||
+    String(r.client||'').toLowerCase().includes(q)||
+    String(r.clientname||'').toLowerCase().includes(q)||
+    String(r.user||'').toLowerCase().includes(q)
+  );
+  // Delay bucket filter
+  if(dly){
+    const dlyN=parseInt(dly);
+    if(dlyN===30)   data=data.filter(r=>r._delayMins!==null&&r._delayMins<=30);
+    else if(dlyN===60)  data=data.filter(r=>r._delayMins!==null&&r._delayMins>30&&r._delayMins<=60);
+    else if(dlyN===120) data=data.filter(r=>r._delayMins!==null&&r._delayMins>60&&r._delayMins<=120);
+    else if(dlyN===240) data=data.filter(r=>r._delayMins!==null&&r._delayMins>120&&r._delayMins<=240);
+    else if(dlyN===9999)data=data.filter(r=>r._delayMins!==null&&r._delayMins>240);
+  }
+  // Hour filter (by mailrcvd hour)
+  if(hourF!==null&&hourF!==undefined){
+    data=data.filter(r=>{
+      const mail=_pd(r.mailrcvd);
+      return mail&&mail.getHours()===hourF;
+    });
+  }
+  pgSetData('dc', data);
+  _renderDCRows(pgSlice('dc'));
+  pgRender('dc','pg_dc','pgGoDC');
+}
+
+function pgGoDC(p){ pgGo('dc', p, _renderDCRows, 'pg_dc', 'pgGoDC'); }
+
+function clearDCFilter(){
+  ['dc_fd1','dc_fd2','dc_fu','dc_fteam','dc_fdelay','dc_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  window._dcHourFilter=null;
+  const lbl=document.getElementById('dcHourLabel');
+  if(lbl) lbl.textContent='';
+  applyDCFilter();
+}
+
+// ── Inline Edit Panel for DC PARS record ──
+function _dcEditRow(dbId){
+  const r=(DB.parsDocs||[]).find(x=>String(x._dbid||x.id)===String(dbId));
+  if(!r){ showToast('⚠️ Record not found',true); return; }
+  const idx=DB.parsDocs.indexOf(r);
+  if(idx>=0) editPARSRecord(idx);
+  else showToast('⚠️ Record not found in local cache',true);
 }
 
 function openRelease2(){
