@@ -7948,8 +7948,13 @@ _initStyle();
 async function _checkDailyHuddle(){
   if(!_supa||!CU) return;
   if(CU.role==='Client'||CU.task==='Client') return;
-  const today = new Date().toISOString().slice(0,10);
+  // Use local date (not UTC) to avoid IST/UTC midnight mismatch
+  const now = new Date();
+  const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const userTask = CU.task||'';
+  // Fast localStorage check first — if already acknowledged today, skip DB query entirely
+  const lsKey = 'kpi_huddle_ack_'+CU.name+'_'+today;
+  if(localStorage.getItem(lsKey)) return;
   try {
     // Custom REST client .or() doesn't work as true OR — run two queries and merge
     const [q1, q2] = await Promise.all([
@@ -7984,7 +7989,7 @@ async function _checkDailyHuddle(){
 
     if(!msgs.length) return;
 
-    // Check if user already acknowledged today
+    // Check if user already acknowledged today (DB check)
     const {data:acks, error:ackErr} = await _supa
       .from('huddle_acknowledgments')
       .select('id')
@@ -7992,8 +7997,13 @@ async function _checkDailyHuddle(){
       .eq('ack_date', today)
       .limit(1);
 
-    if(ackErr && ackErr.code!=='42P01') return;
-    if(acks&&acks.length) return; // already acknowledged today
+    if(ackErr && ackErr.code!=='42P01'){
+      console.warn('[Huddle] Ack check error:', ackErr.message);
+      return;
+    }
+    // acks could be array or single object depending on .limit(1) behavior
+    const acksArr = Array.isArray(acks) ? acks : (acks ? [acks] : []);
+    if(acksArr.length && acksArr[0]?.id) return; // already acknowledged today
 
     _showHuddlePopup(msgs);
   } catch(e){
@@ -8078,18 +8088,24 @@ function _hdToggleCheck(idx, total){
 async function _huddleAcknowledge(msgIds){
   const btn = document.getElementById('hdAckBtn');
   if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
-  const today = new Date().toISOString().slice(0,10);
+  const now = new Date();
+  const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  // Save to localStorage immediately — even if DB fails, popup won't repeat today
+  const lsKey = 'kpi_huddle_ack_'+CU.name+'_'+today;
+  try{ localStorage.setItem(lsKey, now.toISOString()); }catch(e){}
   try{
     if(_supa){
-      await _supa.from('huddle_acknowledgments').insert({
+      const {error} = await _supa.from('huddle_acknowledgments').insert({
         user_name: CU.name,
         task: CU.task||'',
         ack_date: today,
-        acknowledged_at: new Date().toISOString(),
+        acknowledged_at: now.toISOString(),
         huddle_ids: JSON.stringify(msgIds)
       });
+      if(error) console.warn('[Huddle] Ack DB save failed:', error.message);
+      else console.log('[Huddle] Acknowledged saved to DB ✅');
     }
-  }catch(e){ console.warn('Huddle ack save failed:', e); }
+  }catch(e){ console.warn('[Huddle] Ack save failed:', e.message); }
   // Show done screen
   const modal = document.getElementById('huddleModal');
   const ackTime = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
