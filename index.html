@@ -17608,7 +17608,17 @@ function renderDCIssue(c){
     return true;
   }).map(r=>({...r, _delayMins:_calcDelay(r)}));
 
-  // Stat cards
+  // Count records that need TAT recalc
+  const needsRecalc=(DB.parsDocs||[]).filter(r=>{
+    const mail=_pd(r.mailrcvd);
+    const created=_pd(r.created)||_pd(r._created);
+    if(!mail||!created) return false;
+    const diffMins=(created-mail)/60000;
+    const correct=diffMins<=60?'TAT Reached':'TAT Not Reached';
+    const current=(r.tat||'').toLowerCase();
+    const currentNorm=current.includes('not')?'TAT Not Reached':current.includes('reached')?'TAT Reached':null;
+    return currentNorm&&currentNorm!==correct;
+  }).length;
   const totalIssues = all.length;
   const todayStr = new Date().toDateString();
   const todayCount = all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
@@ -17680,6 +17690,7 @@ function renderDCIssue(c){
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Issues</div><div class="sv">${todayCount}</div></div>
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">⏱️</div><div class="sl">Avg Delay (mins)</div><div class="sv">${avgDelay}</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔴</div><div class="sl">Over 2 Hours</div><div class="sv">${over2h}</div></div>
+    ${needsRecalc>0&&(isAdmin()||CU?.role==='Supervisor')?`<div class="sc c-am" style="cursor:pointer" onclick="bulkFixPARSTAT()"><div class="sc-top"></div><div class="si">⚡</div><div class="sl">TAT Needs Recalc</div><div class="sv">${needsRecalc}</div><div class="sf">Click to fix</div></div>`:''}
   </div>
 
   <!-- HEATMAP + DELAY BREAKDOWN SIDE BY SIDE -->
@@ -17749,6 +17760,7 @@ function renderDCIssue(c){
     <input class="fi2" id="dc_search" placeholder="🔍 Search Subject / TXN / Client" style="min-width:180px" oninput="_debounce('dc',applyDCFilter)"/>
     <button class="btn-f" onclick="applyDCFilter()">Apply</button>
     <button class="btn-cl" onclick="clearDCFilter()">Clear</button>
+    ${(isAdmin()||CU?.role==='Supervisor')?`<button onclick="bulkFixPARSTAT()" style="padding:8px 14px;background:#fff7ed;border:1.5px solid rgba(245,158,11,.4);color:#b45309;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;gap:5px;" title="Recalculate TAT for ALL PARS Docs records — Mail Rcvd to Txn Created ≤ 60 min = Reached">⚡ Recalculate All TAT</button>`:''}
     <span style="margin-left:auto;font-size:12px;color:var(--text3)" id="dcHourLabel"></span>
   </div>
 
@@ -20433,6 +20445,102 @@ async function bulkFixReleaseTAT(){
 
   // Refresh Release page
   showPage('release2');
+}
+
+// ══════════════════════════════════════════════════════════
+// BULK PARS DOCS TAT RECALC
+// Rule: Mail Received → Transaction Created ≤ 60 minutes = TAT Reached
+// ══════════════════════════════════════════════════════════
+async function bulkFixPARSTAT(){
+  if(!isAdmin()&&CU?.role!=='Supervisor'){showToast('⚠️ Admin / Supervisor only',true);return;}
+  const records=DB.parsDocs||[];
+  if(!records.length){showToast('No PARS Docs records found',true);return;}
+
+  // Parse display date string → Date
+  function _pd(s){
+    if(!s||s==='—') return null;
+    const m=String(s).match(/(\d{1,2})-(\d{1,2})-(\d{4})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+    if(m) return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0));
+    const d=new Date(s); return isNaN(d)?null:d;
+  }
+
+  // Recalculate correct TAT for a PARS record
+  function _calcPARSTAT(r){
+    const mail=_pd(r.mailrcvd);
+    const created=_pd(r.created)||_pd(r._created);
+    if(!mail||!created) return null;
+    const diffMins=(created-mail)/60000;
+    return diffMins<=60?'TAT Reached':'TAT Not Reached';
+  }
+
+  // Normalise existing TAT string for comparison
+  function _normTAT(t){
+    const s=(t||'').toLowerCase();
+    if(s.includes('not')) return 'TAT Not Reached';
+    if(s.includes('reached')) return 'TAT Reached';
+    return null;
+  }
+
+  // Find records where stored TAT ≠ calculated TAT
+  const toFix=records.filter(r=>{
+    const correct=_calcPARSTAT(r);
+    if(!correct) return false; // can't calc — skip
+    return _normTAT(r.tat)!==correct;
+  });
+
+  if(!toFix.length){
+    showToast('✅ All PARS Docs TAT values are already correct!');
+    return;
+  }
+
+  // Preview breakdown
+  const nowReached=toFix.filter(r=>_calcPARSTAT(r)==='TAT Reached').length;
+  const nowMissed =toFix.filter(r=>_calcPARSTAT(r)==='TAT Not Reached').length;
+
+  if(!confirm(
+    '⚡ Bulk PARS TAT Recalculate\n\n'+
+    toFix.length+' records have incorrect TAT:\n'+
+    '  • '+nowReached+' will change → TAT Reached ✅\n'+
+    '  • '+nowMissed+' will change → TAT Not Reached ❌\n\n'+
+    'Rule: Mail Received → Txn Created ≤ 60 minutes = TAT Reached\n\n'+
+    'This will update Supabase. Continue?'
+  )) return;
+
+  showToast('⏳ Recalculating '+toFix.length+' PARS records...');
+
+  let fixed=0, failed=0;
+  const BATCH=10;
+
+  for(let i=0;i<toFix.length;i+=BATCH){
+    const batch=toFix.slice(i,i+BATCH);
+    await Promise.all(batch.map(async r=>{
+      const newTat=_calcPARSTAT(r);
+      if(!newTat) return;
+      // Update local array
+      r.tat=newTat;
+      // Push to Supabase
+      if(_supa&&r._dbid){
+        try{
+          const {error}=await _supa.from('pars_docs').update({tat:newTat}).eq('id',r._dbid);
+          if(error){ console.error('[PARS TAT Fix] failed for',r.txn,error.message); failed++; }
+          else fixed++;
+        }catch(e){ console.error('[PARS TAT Fix] error',r.txn,e.message); failed++; }
+      } else {
+        fixed++; // local-only record
+      }
+    }));
+    if(i+BATCH<toFix.length) await new Promise(res=>setTimeout(res,200));
+  }
+
+  showToast(
+    failed===0
+      ? '✅ Fixed '+fixed+' PARS records — TAT recalculated!'
+      : '⚠️ Fixed '+fixed+', failed '+failed+' (check console)',
+    failed>0
+  );
+
+  // Refresh DC Issue page
+  showPage('dcissue');
 }
 
 function adminActionBtns(taskKey, dbId, txn){
