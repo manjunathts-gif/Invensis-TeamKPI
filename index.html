@@ -6688,11 +6688,22 @@ async function renderAttendancePage(c){
   let todayDirectRows = [];
   if(isCurrentMonthNow && _supa){
     try{
-      const {data:td} = await _supa.from('attendance_log')
-        .select('*')
-        .eq('date', todayET)
-        .order('session_no', {ascending:true});
-      todayDirectRows = (td||[]).map(r=>({...r, date: String(r.date||'').slice(0,10)}));
+      // Query both local date AND ET date (yesterday ET) to catch records stored either way
+      const etYesterday = todayStrET(); // ET date — may differ from local IST date
+      const queries = [
+        _supa.from('attendance_log').select('*').eq('date', todayET).order('session_no',{ascending:true})
+      ];
+      // If ET date differs from local date, also query ET date to catch old-format records
+      if(etYesterday !== todayET){
+        queries.push(_supa.from('attendance_log').select('*').eq('date', etYesterday).order('session_no',{ascending:true}));
+      }
+      const results = await Promise.all(queries);
+      const seen = new Set();
+      results.forEach(({data:td})=>{
+        (td||[]).forEach(r=>{
+          if(!seen.has(r.id)){ seen.add(r.id); todayDirectRows.push({...r, date: String(r.date||'').slice(0,10)}); }
+        });
+      });
     } catch(e){ console.warn('[Attendance] Today direct query failed:', e.message); }
   }
 
@@ -6770,7 +6781,12 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
 
   // ── Summary cards data ──
   // Normalize date comparison — handle any leftover timestamp format from DB
-  const todayRows   = rows.filter(r => String(r.date||'').slice(0,10)===today);
+  // Match both local date AND ET date — catches records stored before timezone fix
+  const todayET2 = todayStrET();
+  const todayRows   = rows.filter(r => {
+    const rd = String(r.date||'').slice(0,10);
+    return rd===today || rd===todayET2;
+  });
   // For "present today": user present if they have at least 1 session today
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
   const presentToday = presentUnameSet.size;
@@ -6795,8 +6811,9 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
         if(!assigned) return;
         if(assigned!==(name||'').toLowerCase().trim()&&assigned!==(uname||'').toLowerCase().trim()) return;
         try{
-          const d=new Date(r._created||'');
-          if(!isNaN(d)&&d.toISOString().slice(0,10)===today) total++;
+          // Use local date slice for comparison — not UTC toISOString
+          const recDate=(r._created||'').slice(0,10);
+          if(recDate===today||recDate===todayET2) total++;
         }catch(e){}
       });
     });
@@ -6808,8 +6825,32 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // For past months, show everyone who has any attendance record that month.
   let userList;
   if(isCurrentMonth){
-    // Show ONLY users who have a session today — logged-in users only
-    userList = [...presentUnameSet].sort();
+    // Primary: users with attendance_log record today
+    const attendedSet = new Set([...presentUnameSet]);
+
+    // Fallback: also include users who submitted tasks today but have no attendance record
+    // This catches users whose attendance_log date was stored incorrectly (ET vs IST)
+    const allTaskArrays=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
+    const localToday = _todayLocal();
+    allTaskArrays.forEach(arr=>{
+      (arr||[]).forEach(r=>{
+        const recDate = (r._created||'').slice(0,10);
+        if(recDate !== localToday && recDate !== todayET2) return;
+        const uname = r.user||r.assignedTo||r.user_name||'';
+        if(!uname) return;
+        // Find login username from allUsers by matching emp name
+        const lu = allUsers.find(u=>
+          (u.empName||u.name||'').toLowerCase()===uname.toLowerCase()||
+          (u.loginName||u.username||'').toLowerCase()===uname.toLowerCase()
+        );
+        const loginUname = lu ? (lu.loginName||lu.username||uname) : uname;
+        if(loginUname && !attendedSet.has(loginUname)){
+          attendedSet.add(loginUname);
+          console.log('[Attendance] Fallback: added '+loginUname+' from task submission');
+        }
+      });
+    });
+    userList = [...attendedSet].sort();
   } else {
     // Past month: show all users who have any record in that month
     userList = [...new Set(Object.keys(byUser))].sort();
