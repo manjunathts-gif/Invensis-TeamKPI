@@ -4932,6 +4932,12 @@ function todayStrET(){
   parts.forEach(({type,value})=>{ p[type]=value; });
   return p.year+'-'+p.month+'-'+p.day;
 }
+function _todayLocal(){
+  // Returns yyyy-MM-dd in the BROWSER's local timezone (e.g. IST for India)
+  // Used for attendance date storage — ensures Indian users see correct date
+  const now = new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+}
 
 function todayDateStringET(){
   // Returns today's date as toDateString() equivalent but in ET timezone
@@ -6474,7 +6480,7 @@ async function _attendanceLogIn(username){
   if(CU && (CU.role==='Client' || CU.task==='Client')) return;
   try{
     const now     = new Date();
-    const dateET  = nowISOET().slice(0,10);
+    const dateET  = _todayLocal(); // use local browser date (IST for India, not ET)
     const timeET  = nowStr();
     const _cu     = CU || {};
     const task    = _cu.task || '';
@@ -6550,7 +6556,7 @@ async function _attendanceLogOut(username){
     const cached = window._attendanceCache[username];
     const now    = new Date();
     const timeET = nowStr();
-    const dateET = nowISOET().slice(0,10);
+    const dateET = _todayLocal(); // local date matches login date storage
 
     let dbId = cached?.dbId;
 
@@ -6676,7 +6682,7 @@ async function renderAttendancePage(c){
   // Load month rows + a direct today-only query in parallel
   // The today query is a safety net: even if month date normalization fails,
   // we always know exactly who logged in today
-  const todayET = todayStrET();
+  const todayET = _todayLocal(); // local browser date (IST) matches how dates are stored
   const isCurrentMonthNow = (selYear===new Date().getFullYear() && selMonth===new Date().getMonth()+1);
 
   let todayDirectRows = [];
@@ -6753,9 +6759,8 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     });
   }
   const workDays = allDays.filter(d => d.dow!==0 && d.dow!==6);
-  // Use ET date — attendance_log stores dates in ET via nowISOET().slice(0,10)
-  // new Date().toISOString() gives UTC which can be wrong date for ET users
-  const today    = todayStrET();
+  // Use local browser date — attendance_log stores dates in local time (IST for India)
+  const today    = _todayLocal();
   const isCurrentMonth = (year===new Date().getFullYear() && month===new Date().getMonth()+1);
 
   // ── Avatar color ──
