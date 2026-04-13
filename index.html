@@ -7121,94 +7121,149 @@ async function exportAttendanceExcel(){
   const month = window._attMonth || (new Date().getMonth()+1);
   const monthName = new Date(year,month-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   const rows  = await _loadAttendanceMonth(year, month);
-  const allUsers = DB.loginUsers.filter(u=>u.active!==false);
-
+  const allUsers = (DB.loginUsers||[]).filter(u=>u.active!==false);
+  if(!rows.length){ showToast('No attendance data found for '+monthName,true); return; }
   showToast('⏳ Building attendance Excel...');
+
+  // ── Date helpers ──
+  const today     = _todayLocal();
+  const etToday   = todayStrET();
+  const etYest    = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  const validDates = new Set([today, etToday, etYest]);
+  const isCurMon  = (year===new Date().getFullYear()&&month===new Date().getMonth()+1);
+  function fmtMins(m){ if(!m) return ''; const h=Math.floor(m/60),mm=m%60; return h>0?h+'h '+String(mm).padStart(2,'0')+'m':mm+'m'; }
+
+  // ── Build byUser: {username: {date: [sessions]}} ──
+  const byUser={};
+  rows.forEach(r=>{
+    const d=String(r.date||'').slice(0,10);
+    if(!byUser[r.username]) byUser[r.username]={};
+    if(!byUser[r.username][d]) byUser[r.username][d]=[];
+    byUser[r.username][d].push(r);
+  });
+  // Sort sessions by session_no
+  Object.values(byUser).forEach(dates=>Object.values(dates).forEach(arr=>arr.sort((a,b)=>(a.session_no||0)-(b.session_no||0))));
+
+  const userSet=new Set([...allUsers.map(u=>u.loginName||u.username),...Object.keys(byUser)]);
   const wb = XLSX.utils.book_new();
 
-  // ── Sheet 1: Daily detail ─────────────────────────────────────
-  const detailHeaders = ['Date','Username','Name','Task','Role','Team','Login Time','Logout Time','Total Hours','Total Minutes','Status','Late'];
-  const detailData = rows.map(r=>([
-    r.date||'', r.username||'', r.emp_name||'', r.task||'',
-    r.role||'', r.team||'',
-    r.login_time||'', r.logout_time||'',
-    r.total_hours||'', r.total_minutes||0,
-    r.status||'',
-    _attendanceCheckLate(r.login_time)?'Yes':'No'
-  ]));
-  const wsDetail = XLSX.utils.aoa_to_sheet([detailHeaders,...detailData]);
-  wsDetail['!cols'] = detailHeaders.map(h=>({wch:Math.max(h.length+2,14)}));
-  XLSX.utils.book_append_sheet(wb, wsDetail, 'Daily Detail');
+  // ═══════════════════════════════════════════════════════
+  // SHEET 1 — TODAY'S ATTENDANCE (main view matching screen)
+  // Columns: User Name | Task | Status | 1st Login | 2nd Login | 3rd Login | Idle Hrs | Transaction Count | Break Warning | Session
+  // ═══════════════════════════════════════════════════════
+  const todayHeaders = ['User Name','Task','Status','1st Login','2nd Login','3rd Login','Active Hrs','Idle Hrs','Transaction Count','Break Warning','Total Sessions','Date'];
+  const todayData = [...userSet].sort().map(uname=>{
+    const lu   = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
+    const name = lu.empName||lu.name||uname;
+    const task = lu.task||byUser[uname]?.[Object.keys(byUser[uname]||{})[0]]?.[0]?.task||'';
 
-  // ── Sheet 2: Monthly summary per user ─────────────────────────
+    // Get sessions for today (check all valid date keys)
+    const todaySessions = [...validDates].flatMap(dk=>byUser[uname]?.[dk]||[])
+      .filter((s,i,arr)=>arr.findIndex(x=>x.id===s.id)===i) // deduplicate
+      .sort((a,b)=>(a.session_no||0)-(b.session_no||0));
+
+    if(!todaySessions.length) return null; // skip users not present today
+
+    const s1=todaySessions[0]||null, s2=todaySessions[1]||null, s3=todaySessions[2]||null;
+    const lastSess=todaySessions[todaySessions.length-1];
+    const isActive=lastSess&&!lastSess.logout_time;
+    const login1=s1?.login_time||'';
+    const login2=s2?.login_time||'';
+    const login3=s3?.login_time||'';
+    const isLate=_attendanceCheckLate(login1);
+    const status=isActive?'Active':isLate?'Late':'Present';
+
+    // Active hours
+    let totalMins=0;
+    todaySessions.forEach(s=>{
+      if(s.total_minutes>0) totalMins+=s.total_minutes;
+      else if(s.login_time&&!s.logout_time){
+        // estimate active session
+        const m=String(s.login_time).match(/(\d{2}):(\d{2})/);
+        if(m){ const now=new Date(); totalMins+=Math.max(0,now.getHours()*60+now.getMinutes()-(+m[1]*60+ +m[2])); }
+      }
+    });
+
+    // Idle = sum of gap_before from session 2 onwards
+    const idleMins=todaySessions.slice(1).reduce((s,r)=>s+(r.gap_before||0),0);
+
+    // Transaction count today
+    let txnCount=0;
+    const allTaskArrs=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
+    allTaskArrs.forEach(arr=>(arr||[]).forEach(r=>{
+      const recDate=(r._created||'').slice(0,10);
+      if(!validDates.has(recDate)) return;
+      const rUser=String(r.user||r.assignedTo||r.user_name||'').toLowerCase().trim();
+      if(rUser===name.toLowerCase().trim()||rUser===uname.toLowerCase().trim()) txnCount++;
+    }));
+
+    // Break warning
+    const breakWarn=todaySessions.length>1&&idleMins>45?'Yes':'No';
+
+    return [name, task, status, login1, login2, login3,
+      fmtMins(totalMins)||'Active', fmtMins(idleMins)||'—',
+      txnCount||'—', breakWarn, todaySessions.length,
+      today];
+  }).filter(Boolean);
+
+  const wsToday = XLSX.utils.aoa_to_sheet([todayHeaders,...todayData]);
+  wsToday['!cols'] = [20,18,10,12,12,12,10,10,16,14,10,12].map(w=>({wch:w}));
+  // Style header row
+  XLSX.utils.book_append_sheet(wb, wsToday, "Today's Attendance");
+
+  // ═══════════════════════════════════════════════════════
+  // SHEET 2 — MONTHLY SUMMARY
+  // ═══════════════════════════════════════════════════════
   const daysInMonth = new Date(year,month,0).getDate();
   const allDays = Array.from({length:daysInMonth},(_,i)=>{
     const d=i+1, dt=new Date(year,month-1,d);
-    return {d,dateStr:year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0'),dow:dt.getDay()};
+    return {d, dateStr:year+'-'+String(month).padStart(2,'0')+'-'+String(d).padStart(2,'0'), dow:dt.getDay()};
   });
   const workDays = allDays.filter(d=>d.dow!==0&&d.dow!==6);
-  const today    = todayStrET(); // ET date — matches attendance_log stored dates
-  const isCurMon = (year===new Date().getFullYear()&&month===new Date().getMonth()+1);
 
-  // Build per-user data
-  const byUser={};
-  rows.forEach(r=>{if(!byUser[r.username])byUser[r.username]={};byUser[r.username][r.date]=r;});
-  const userSet=new Set([...allUsers.map(u=>u.loginName||u.username),...Object.keys(byUser)]);
-
-  const summaryHeaders = ['Name','Username','Task','Present Days','Late Days','Half Days',
-    'Absent Days','Total Work Days','Total Hours (month)','Avg Hours/Day',
-    ...allDays.map(d=>String(d.d).padStart(2,'0'))
-  ];
-
+  const summaryHeaders = ['Name','Task','Team','Present Days','Late Days','Absent Days',
+    'Total Work Days','Total Hours','Avg Hrs/Day','1st Login (avg)'];
   const summaryData = [...userSet].sort().map(uname=>{
-    const lu     = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
-    const name   = lu.empName||lu.name||uname;
-    const task   = lu.task||byUser[uname]?.[Object.keys(byUser[uname]||{})[0]]?.task||'';
-    const uRows  = byUser[uname]||{};
-    const present= Object.values(uRows).filter(r=>r.status==='Present').length;
-    const late   = Object.values(uRows).filter(r=>_attendanceCheckLate(r.login_time)).length;
-    const half   = Object.values(uRows).filter(r=>r.status==='Half Day').length;
-    const absent = workDays.filter(d=>{if(isCurMon&&d.dateStr>today)return false;return!uRows[d.dateStr];}).length;
+    const lu   = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
+    const name = lu.empName||lu.name||uname;
+    const task = lu.task||byUser[uname]?.[Object.keys(byUser[uname]||{})[0]]?.[0]?.task||'';
+    const team = lu.team||byUser[uname]?.[Object.keys(byUser[uname]||{})[0]]?.[0]?.team||'';
+    const uDays = byUser[uname]||{};
+    const allSess = Object.values(uDays).flat();
+    const presentDays = new Set(allSess.map(r=>r.date)).size;
+    const lateDays = [...new Set(allSess.map(r=>r.date))].filter(d=>{
+      const first=(uDays[d]||[]).sort((a,b)=>(a.session_no||0)-(b.session_no||0))[0];
+      return first&&_attendanceCheckLate(first.login_time);
+    }).length;
+    const absentDays = workDays.filter(d=>{
+      if(isCurMon&&d.dateStr>today) return false;
+      return !(uDays[d.dateStr]?.length);
+    }).length;
     const wdPast = workDays.filter(d=>!isCurMon||d.dateStr<=today).length;
-    const totalMins = Object.values(uRows).reduce((s,r)=>s+(r.total_minutes||0),0);
-    const totalHrs  = Math.floor(totalMins/60)+'h '+totalMins%60+'m';
-    const avgMins   = present?Math.round(totalMins/present):0;
-    const avgHrs    = Math.floor(avgMins/60)+'h '+avgMins%60+'m';
-
-    // Day columns
-    const dayCols = allDays.map(day=>{
-      if(day.dow===0||day.dow===6) return 'Weekend';
-      if(isCurMon&&day.dateStr>today) return 'Future';
-      const dr=uRows[day.dateStr];
-      if(!dr) return 'Absent';
-      return _attendanceCheckLate(dr.login_time)?'Late':'Present';
-    });
-
-    return [name,uname,task,present,late,half,absent,wdPast,totalHrs,avgHrs,...dayCols];
+    const totalMins = allSess.reduce((s,r)=>s+(r.total_minutes||0),0);
+    const avgMins = presentDays?Math.round(totalMins/presentDays):0;
+    return [name,task,team,presentDays,lateDays,absentDays,wdPast,fmtMins(totalMins),fmtMins(avgMins),''];
   });
-
   const wsSummary = XLSX.utils.aoa_to_sheet([summaryHeaders,...summaryData]);
-  wsSummary['!cols'] = summaryHeaders.map((h,i)=>({wch:i<10?Math.max(h.length+2,14):5}));
+  wsSummary['!cols'] = [20,18,10,12,10,12,12,12,12,12].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Monthly Summary');
 
-  // ── Sheet 3: Absent list ──────────────────────────────────────
-  const absentHeaders = ['Date','Username','Name','Task','Day of Week'];
-  const absentData    = [];
-  workDays.filter(d=>!isCurMon||d.dateStr<=today).forEach(day=>{
-    const dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day.dow];
-    [...userSet].sort().forEach(uname=>{
-      if(!byUser[uname]?.[day.dateStr]){
-        const lu=allUsers.find(u=>(u.loginName||u.username)===uname)||{};
-        absentData.push([day.dateStr,uname,lu.empName||lu.name||uname,lu.task||'',dow]);
-      }
-    });
+  // ═══════════════════════════════════════════════════════
+  // SHEET 3 — ALL SESSIONS RAW
+  // ═══════════════════════════════════════════════════════
+  const rawHeaders=['Date','Name','Username','Task','Team','Session#','Login Time','Logout Time','Active Hrs','Idle Before (min)','Status','Late'];
+  const rawData=rows.map(r=>{
+    const lu=allUsers.find(u=>(u.loginName||u.username)===r.username)||{};
+    return [r.date||'',r.emp_name||lu.empName||lu.name||r.username,r.username,r.task||lu.task||'',r.team||lu.team||'',
+      r.session_no||1,r.login_time||'',r.logout_time||'',r.total_hours||'',r.gap_before||0,
+      r.status||'',_attendanceCheckLate(r.login_time)?'Yes':'No'];
   });
-  const wsAbsent = XLSX.utils.aoa_to_sheet([absentHeaders,...absentData]);
-  wsAbsent['!cols'] = absentHeaders.map(h=>({wch:Math.max(h.length+2,14)}));
-  XLSX.utils.book_append_sheet(wb, wsAbsent, 'Absent List');
+  const wsRaw = XLSX.utils.aoa_to_sheet([rawHeaders,...rawData]);
+  wsRaw['!cols'] = [12,20,16,18,10,8,14,14,10,14,10,6].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, wsRaw, 'All Sessions');
 
-  XLSX.writeFile(wb, `Attendance_${monthName.replace(' ','_')}.xlsx`);
-  showToast('✅ Attendance Excel downloaded — '+rows.length+' records, 3 sheets');
+  XLSX.writeFile(wb, 'Attendance_'+monthName.replace(' ','_')+'.xlsx');
+  showToast('✅ Attendance Excel — '+todayData.length+' users today, '+rows.length+' total sessions');
 }
 
 // ── Export Attendance CSV ─────────────────────────────────────────
@@ -7217,20 +7272,59 @@ async function exportAttendanceCSV(){
   const month = window._attMonth || (new Date().getMonth()+1);
   const rows  = await _loadAttendanceMonth(year, month);
   if(!rows.length){ showToast('No attendance data for this month',true); return; }
-  const headers = ['Date','Username','Name','Task','Login Time','Logout Time','Total Hours','Status','Late'];
-  const csvRows = rows.map(r=>[
-    r.date,r.username,r.emp_name,r.task,
-    r.login_time,r.logout_time,r.total_hours,r.status,
-    _attendanceCheckLate(r.login_time)?'Yes':'No'
-  ].map(v=>csvCell(String(v||''))).join(','));
-  const csv = [headers.join(','),...csvRows].join('\n');
-  const blob = new Blob([csv],{type:'text/csv'});
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  const mn   = new Date(year,month-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-  a.download = `Attendance_${mn.replace(' ','_')}.csv`;
+
+  const today   = _todayLocal();
+  const etToday = todayStrET();
+  const etYest  = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  const validDates = new Set([today, etToday, etYest]);
+  const allUsers = (DB.loginUsers||[]).filter(u=>u.active!==false);
+
+  // Build byUser sessions
+  const byUser={};
+  rows.forEach(r=>{
+    const d=String(r.date||'').slice(0,10);
+    if(!byUser[r.username]) byUser[r.username]={};
+    if(!byUser[r.username][d]) byUser[r.username][d]=[];
+    byUser[r.username][d].push(r);
+  });
+  Object.values(byUser).forEach(dates=>Object.values(dates).forEach(arr=>arr.sort((a,b)=>(a.session_no||0)-(b.session_no||0))));
+  function fmtM(m){ if(!m) return ''; const h=Math.floor(m/60),mm=m%60; return h>0?h+'h '+String(mm).padStart(2,'0')+'m':mm+'m'; }
+
+  const headers=['User Name','Task','Status','1st Login','2nd Login','3rd Login','Active Hrs','Idle Hrs','Transaction Count','Break Warning','Sessions','Date'];
+  const csvRows = [...new Set([...allUsers.map(u=>u.loginName||u.username),...Object.keys(byUser)])].sort().map(uname=>{
+    const lu   = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
+    const name = lu.empName||lu.name||uname;
+    const task = lu.task||'';
+    const todaySessions = [...validDates].flatMap(dk=>byUser[uname]?.[dk]||[])
+      .filter((s,i,arr)=>arr.findIndex(x=>x.id===s.id)===i)
+      .sort((a,b)=>(a.session_no||0)-(b.session_no||0));
+    if(!todaySessions.length) return null;
+    const s1=todaySessions[0], s2=todaySessions[1], s3=todaySessions[2];
+    const isLate=_attendanceCheckLate(s1?.login_time||'');
+    const isActive=todaySessions[todaySessions.length-1]&&!todaySessions[todaySessions.length-1].logout_time;
+    const status=isActive?'Active':isLate?'Late':'Present';
+    let totalMins=0;
+    todaySessions.forEach(s=>{
+      if(s.total_minutes>0) totalMins+=s.total_minutes;
+      else if(s.login_time&&!s.logout_time){ const m=String(s.login_time).match(/(\d+):(\d+)/); if(m){ const now=new Date(); totalMins+=Math.max(0,now.getHours()*60+now.getMinutes()-(+m[1]*60+ +m[2])); } }
+    });
+    const idleMins=todaySessions.slice(1).reduce((s,r)=>s+(r.gap_before||0),0);
+    let txnCount=0;
+    [DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries].forEach(arr=>(arr||[]).forEach(r=>{
+      if(validDates.has((r._created||'').slice(0,10))){const u2=String(r.user||r.assignedTo||r.user_name||'').toLowerCase();if(u2===name.toLowerCase()||u2===uname.toLowerCase())txnCount++;}
+    }));
+    const breakWarn=idleMins>45?'Yes':'No';
+    return [name,task,status,s1?.login_time||'',s2?.login_time||'',s3?.login_time||'',fmtM(totalMins),fmtM(idleMins),txnCount,breakWarn,todaySessions.length,today]
+      .map(v=>csvCell(String(v||''))).join(',');
+  }).filter(Boolean);
+
+  const csv=[headers.join(','),...csvRows].join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  const mn=new Date(year,month-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  a.download='Attendance_'+mn.replace(' ','_')+'.csv';
   a.click();
-  showToast('✅ Attendance CSV downloaded');
+  showToast('✅ Attendance CSV downloaded — '+csvRows.length+' users');
 }
 
 
