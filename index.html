@@ -6787,7 +6787,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const rd = String(r.date||'').slice(0,10);
     return rd===today || rd===todayET2;
   });
-  // For "present today": user present if they have at least 1 session today
+  // For "present today": user present if they have at least 1 session today (either date)
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
   const presentToday = presentUnameSet.size;
   const lateToday    = [...presentUnameSet].filter(u => {
@@ -6860,7 +6860,9 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // BUILD TABLE ROWS
   // ══════════════════════════════════════════════════════════════
   const tableRows = userList.map((uname,i) => {
-    const luObj = allUsers.find(u=>(u.loginName||u.username)===uname)||{};
+    const luObj = allUsers.find(u=>(u.loginName||u.username)===uname)
+      || allUsers.find(u=>(u.empName||u.name||'').toLowerCase()===uname.toLowerCase())
+      || {};
     const name  = luObj.empName||luObj.name||uname;
     const task  = luObj.task||Object.values(byUser[uname]||{})[0]?.[0]?.task||'—';
     const uDays = byUser[uname]||{}; // {date: [session,...]}
@@ -6884,7 +6886,14 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const avgHrsU   = Math.floor(avgMinsU/60), avgMinU2 = avgMinsU%60;
 
     // ── Today's sessions ──
-    const todaySessions = (uDays[today]||[]).sort((a,b)=>(a.session_no||0)-(b.session_no||0));
+    // Check both local date (IST) and ET date — old records stored under ET date
+    const todaySessionsLocal = (uDays[today]||[]);
+    const todaySessionsET    = todayET2 && todayET2!==today ? (uDays[todayET2]||[]) : [];
+    // Merge, deduplicate by id, sort by session_no
+    const _seenIds = new Set();
+    const todaySessions = [...todaySessionsLocal, ...todaySessionsET]
+      .filter(s=>{ if(_seenIds.has(s.id)) return false; _seenIds.add(s.id); return true; })
+      .sort((a,b)=>(a.session_no||0)-(b.session_no||0));
     const session1 = todaySessions[0]||null;
     const session2 = todaySessions[1]||null;
     const lastSess = todaySessions[todaySessions.length-1]||null;
@@ -6924,13 +6933,12 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const idleMinsToday = todaySessions.slice(1).reduce((s,r)=>s+(r.gap_before||0),0);
     const idleStr = idleMinsToday>0 ? _fmtMins(idleMinsToday) : (todaySessions.length>1 ? '—' : '—');
 
-    // Transactions today
+    // Status — check attendance session first, fall back to task submissions
     const txnCount = isCurrentMonth ? _countTxnToday(uname, name) : 0;
-
-    // Status
     const todayStatus = !isCurrentMonth ? '—'
-      : !session1 ? 'Absent'
-      : login1Late ? 'Late' : 'Present';
+      : session1 ? (login1Late ? 'Late' : 'Present')
+      : txnCount > 0 ? 'Present' // has task submissions — clearly logged in
+      : 'Absent';
 
     const statusBadge = todayStatus==='Present'
       ? `<span style="background:#ecfdf5;color:#065f46;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #6ee7b780">✅ Present</span>`
