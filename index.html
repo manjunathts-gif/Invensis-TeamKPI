@@ -6688,16 +6688,14 @@ async function renderAttendancePage(c){
   let todayDirectRows = [];
   if(isCurrentMonthNow && _supa){
     try{
-      // Query both local date AND ET date (yesterday ET) to catch records stored either way
-      const etYesterday = todayStrET(); // ET date — may differ from local IST date
-      const queries = [
-        _supa.from('attendance_log').select('*').eq('date', todayET).order('session_no',{ascending:true})
-      ];
-      // If ET date differs from local date, also query ET date to catch old-format records
-      if(etYesterday !== todayET){
-        queries.push(_supa.from('attendance_log').select('*').eq('date', etYesterday).order('session_no',{ascending:true}));
-      }
-      const results = await Promise.all(queries);
+      // Query IST today, ET today, AND ET yesterday
+      // Indian morning login (e.g. 9am IST) = previous day ET (11:30pm)
+      const etToday = todayStrET();
+      const etYest  = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+      const datesToQuery = [...new Set([todayET, etToday, etYest])];
+      const results = await Promise.all(
+        datesToQuery.map(dt => _supa.from('attendance_log').select('*').eq('date',dt).order('session_no',{ascending:true}))
+      );
       const seen = new Set();
       results.forEach(({data:td})=>{
         (td||[]).forEach(r=>{
@@ -6781,12 +6779,11 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
 
   // ── Summary cards data ──
   // Normalize date comparison — handle any leftover timestamp format from DB
-  // Match both local date AND ET date — catches records stored before timezone fix
+  // Match local IST date, ET today, AND ET yesterday — Indian morning = prev ET date
   const todayET2 = todayStrET();
-  const todayRows   = rows.filter(r => {
-    const rd = String(r.date||'').slice(0,10);
-    return rd===today || rd===todayET2;
-  });
+  const _etYestGlobal = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  const _validTodayDates = new Set([today, todayET2, _etYestGlobal]);
+  const todayRows   = rows.filter(r => _validTodayDates.has(String(r.date||'').slice(0,10)));
   // For "present today": user present if they have at least 1 session today (either date)
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
   const presentToday = presentUnameSet.size;
@@ -6813,7 +6810,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
         try{
           // Use local date slice for comparison — not UTC toISOString
           const recDate=(r._created||'').slice(0,10);
-          if(recDate===today||recDate===todayET2) total++;
+          if(_validTodayDates.has(recDate)) total++;
         }catch(e){}
       });
     });
@@ -6835,7 +6832,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     allTaskArrays.forEach(arr=>{
       (arr||[]).forEach(r=>{
         const recDate = (r._created||'').slice(0,10);
-        if(recDate !== localToday && recDate !== todayET2) return;
+        if(!_validTodayDates.has(recDate)) return;
         const uname = r.user||r.assignedTo||r.user_name||'';
         if(!uname) return;
         // Find login username from allUsers by matching emp name
@@ -6886,12 +6883,14 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const avgHrsU   = Math.floor(avgMinsU/60), avgMinU2 = avgMinsU%60;
 
     // ── Today's sessions ──
-    // Check both local date (IST) and ET date — old records stored under ET date
-    const todaySessionsLocal = (uDays[today]||[]);
-    const todaySessionsET    = todayET2 && todayET2!==today ? (uDays[todayET2]||[]) : [];
-    // Merge, deduplicate by id, sort by session_no
+    // Check ALL possible date keys: IST today, ET today, ET yesterday
+    // Indian morning logins store as "yesterday" ET date (IST 9am = ET 11:30pm prev day)
+    const _checkDates = new Set([today, todayET2]);
+    // Also add yesterday ET (for users whose IST morning login stored as prev ET date)
+    const _etYest = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    _checkDates.add(_etYest);
     const _seenIds = new Set();
-    const todaySessions = [...todaySessionsLocal, ...todaySessionsET]
+    const todaySessions = [..._checkDates].flatMap(dk=>(uDays[dk]||[]))
       .filter(s=>{ if(_seenIds.has(s.id)) return false; _seenIds.add(s.id); return true; })
       .sort((a,b)=>(a.session_no||0)-(b.session_no||0));
     const session1 = todaySessions[0]||null;
