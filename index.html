@@ -2096,6 +2096,103 @@ body.style-modern .fs2:focus{
 
 <!-- OVERLAY -->
 <div class="overlay" id="overlay"></div>
+
+<!-- ═══ RELEASE CLIENT ERROR HISTORY POPUP ═══ -->
+<div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
+<div id="rlErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
+  background:#fff;flex-direction:column;overflow:hidden;
+  border-left:4px solid #dc2626;
+  box-shadow:-8px 0 60px rgba(0,0,0,.22);
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
+          <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
+        </div>
+      </div>
+      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
+        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
+    </div>
+    <div id="rlErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
+  </div>
+
+  <!-- Body -->
+  <div id="rlErrPopupBody" style="flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#fafafa;"></div>
+
+  <!-- Acknowledgment footer -->
+  <div style="flex-shrink:0;padding:16px 20px 20px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="rlErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:14px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);border-radius:12px;transition:all .15s;margin-bottom:12px;"
+      onmouseover="this.style.background='#fff0f0';this.style.borderColor='rgba(220,38,38,.4)'"
+      onmouseout="this.style.background='#fff8f8';this.style.borderColor='rgba(220,38,38,.2)'">
+      <input type="checkbox" id="rlErrAckBox" onchange="_rlErrAckChanged()" style="width:20px;height:20px;accent-color:#dc2626;flex-shrink:0;margin-top:2px;cursor:pointer"/>
+      <span style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.6;">I have reviewed all error records &amp; instructions above and acknowledge them before processing this shipment</span>
+    </label>
+    <button id="rlErrAckBtn" onclick="_rlErrConfirm()" disabled
+      style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
+      &#10003; Acknowledged — Continue to Form
+    </button>
+  </div>
+</div>
+<!-- ═══ LVS CLIENT ERROR HISTORY POPUP ═══ -->
+<div id="lvsErrPopupOverlay" onclick="_closeLvsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
+<div id="lvsErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
+  background:#fff;flex-direction:column;overflow:hidden;
+  border-left:4px solid #dc2626;
+  box-shadow:-8px 0 60px rgba(0,0,0,.22);
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+
+  <!-- ── TOP HEADER ── -->
+  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
+    <!-- decorative circle -->
+    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);
+          display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
+          <div id="lvsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
+        </div>
+      </div>
+      <button onclick="_closeLvsErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);
+        color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;
+        display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
+        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
+    </div>
+    <!-- Error type badges -->
+    <div id="lvsErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
+  </div>
+
+  <!-- ── BODY ── -->
+  <div id="lvsErrPopupBody" style="flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#fafafa;"></div>
+
+  <!-- ── ACKNOWLEDGMENT FOOTER ── -->
+  <div style="flex-shrink:0;padding:16px 20px 20px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="lvsErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;
+      padding:14px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);
+      border-radius:12px;transition:all .15s;margin-bottom:12px;"
+      onmouseover="this.style.background='#fff0f0';this.style.borderColor='rgba(220,38,38,.4)'"
+      onmouseout="this.style.background='#fff8f8';this.style.borderColor='rgba(220,38,38,.2)'">
+      <input type="checkbox" id="lvsErrAckBox" onchange="_lvsErrAckChanged()"
+        style="width:20px;height:20px;accent-color:#dc2626;flex-shrink:0;margin-top:2px;cursor:pointer"/>
+      <span style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.6;">
+        I have reviewed all error records &amp; instructions above and acknowledge them before processing this entry
+      </span>
+    </label>
+    <button id="lvsErrAckBtn" onclick="_lvsErrConfirm()" disabled
+      style="width:100%;padding:14px;border-radius:12px;border:none;
+      background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;
+      cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
+      &#10003; Acknowledged — Continue to Form
+    </button>
+  </div>
+</div>
 <!-- DAILY HUDDLE POPUP -->
 <div id="huddleOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,8,81,.65);z-index:500;align-items:center;justify-content:center;padding:20px;">
   <div id="huddleModal" style="background:#fff;border-radius:20px;width:100%;max-width:580px;max-height:90vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,8,81,.3);display:flex;flex-direction:column;"></div>
@@ -2166,15 +2263,23 @@ body.style-modern .fs2:focus{
         <label class="fpl" for="lf_team">Team #</label>
         <input class="fpi auto" id="lf_team" readonly placeholder="Auto-filled"/>
       </div>
-      <!-- ── Client Error & Instruction Alert ── -->
-      <div id="lvs_client_alert" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(225,29,72,.07);border:1.5px solid rgba(225,29,72,.3);border-radius:10px">
-        <div style="font-weight:800;font-size:13px;color:var(--rose);margin-bottom:8px">⚠️ Error History for this Client</div>
-        <div id="lvs_client_error_list" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:6px">📌 Review error patterns above before processing this entry.</div>
-        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text)">
-          <input type="checkbox" id="lvs_acknowledge" style="margin-top:2px;width:15px;height:15px;accent-color:var(--rose)"/>
-          I have reviewed the error history and acknowledge before processing
-        </label>
+      <!-- ── Client Error Alert — handled by lvsErrPopup floating panel ── -->
+      <div id="lvs_client_alert" style="display:none" data-client-no="">
+        <div id="lvs_client_error_list"></div>
+        <input type="checkbox" id="lvs_acknowledge" style="display:none"/>
+      </div>
+      <!-- Inline trigger badge — shown when errors found -->
+      <div id="lvs_err_trigger_badge" style="display:none;margin-top:12px;padding:11px 14px;
+        background:rgba(220,38,38,.07);border:2px solid rgba(220,38,38,.3);border-radius:12px;
+        align-items:center;gap:10px;cursor:pointer;transition:background .15s"
+        onclick="_openLvsErrPopup()">
+        <span style="font-size:20px;flex-shrink:0">&#9888;&#65039;</span>
+        <div style="flex:1;min-width:0">
+          <div id="lvs_err_badge_title" style="font-size:13px;font-weight:800;color:#dc2626;line-height:1.3">Error History Found</div>
+          <div id="lvs_err_badge_sub" style="font-size:11px;color:#b91c1c;margin-top:2px">Click to review &amp; acknowledge before processing</div>
+        </div>
+        <span style="font-size:11px;font-weight:700;color:#dc2626;background:rgba(220,38,38,.12);
+          padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">View &#8594;</span>
       </div>
     </div>
 
@@ -2901,15 +3006,22 @@ body.style-modern .fs2:focus{
         <input class="fpi" id="rl_client" type="number" placeholder="Enter client number" oninput="lookupClientRL(this);rlCheckClientErrors()" autocomplete="off"/>
         <div class="ferr" id="rle_client" style="display:none">Client number must be 4-6 digits</div>
       </div>
-      <!-- Client Error Alert -->
-      <div id="rl_client_alert" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(225,29,72,.07);border:1.5px solid rgba(225,29,72,.3);border-radius:10px">
-        <div style="font-weight:800;font-size:13px;color:var(--rose);margin-bottom:8px">⚠️ Error History for this Client</div>
-        <div id="rl_client_error_list" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:6px">📌 Review error patterns above before processing this shipment.</div>
-        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text)">
-          <input type="checkbox" id="rl_acknowledge" style="margin-top:2px;width:15px;height:15px;accent-color:var(--rose)"/>
-          I have reviewed the error history and acknowledge before processing
-        </label>
+      <!-- Client Error Alert — handled by rlErrPopup floating panel -->
+      <div id="rl_client_alert" style="display:none" data-client-no="">
+        <div id="rl_client_error_list"></div>
+        <input type="checkbox" id="rl_acknowledge" style="display:none"/>
+      </div>
+      <!-- Inline trigger badge — shown when errors found -->
+      <div id="rl_err_trigger_badge" style="display:none;margin-top:12px;padding:11px 14px;
+        background:rgba(220,38,38,.07);border:2px solid rgba(220,38,38,.3);border-radius:12px;
+        align-items:center;gap:10px;cursor:pointer;transition:background .15s"
+        onclick="_openRlErrPopup()">
+        <span style="font-size:20px;flex-shrink:0">&#9888;&#65039;</span>
+        <div style="flex:1;min-width:0">
+          <div id="rl_err_badge_title" style="font-size:13px;font-weight:800;color:#dc2626;line-height:1.3">Error History Found</div>
+          <div id="rl_err_badge_sub" style="font-size:11px;color:#b91c1c;margin-top:2px">Click to review &amp; acknowledge before processing</div>
+        </div>
+        <span style="font-size:11px;font-weight:700;color:#dc2626;background:rgba(220,38,38,.12);padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">View &#8594;</span>
       </div>
     </div>
 
@@ -18085,6 +18197,9 @@ function openRelease2(){
   });
   const rla=document.getElementById('rl_client_alert');if(rla)rla.style.display='none';
   const ack=document.getElementById('rl_acknowledge');if(ack)ack.checked=false;
+  const rlBadge=document.getElementById('rl_err_trigger_badge');if(rlBadge)rlBadge.style.display='none';
+  _closeRlErrPopup();
+  _closeRlErrPopup(); window._rlErrClientNo=null;
   document.getElementById('rl_mode').value='';
   document.getElementById('rl_status').value='';
   document.getElementById('rl_user').value='';
@@ -18259,44 +18374,190 @@ function epSelectUser(name){
 }
 
 function rlCheckClientErrors(){
-  const clientNo=parseInt(document.getElementById('rl_client').value);
+  const clientNo=parseInt(document.getElementById('rl_client')?.value);
+  // Hide old inline alert
   const alertDiv=document.getElementById('rl_client_alert');
-  const listDiv=document.getElementById('rl_client_error_list');
-  const ackBox=document.getElementById('rl_acknowledge');
-  if(!alertDiv||!listDiv)return;
-  if(!clientNo||isNaN(clientNo)){alertDiv.style.display='none';return;}
-  const clientErrors=DB.errors.filter(e=>e.client==clientNo);
+  if(alertDiv) alertDiv.style.display='none';
+  if(!clientNo||isNaN(clientNo)){ _closeRlErrPopup(); return; }
+
+  const clientErrors=(DB.errors||[]).filter(e=>e.client==clientNo);
   const clientInstructions=(DB.instructions||[]).filter(r=>String(r.clientNo)==String(clientNo));
-  if(clientErrors.length===0&&clientInstructions.length===0){alertDiv.style.display='none';if(ackBox)ackBox.checked=false;return;}
-  const clientName=(clientErrors[0]?.clientName||clientInstructions[0]?.clientName||document.getElementById('rl_clientname').value||'this client');
-  let html='';
-  // ── Instruction Followup block ──
+  if(clientErrors.length===0&&clientInstructions.length===0){
+    _closeRlErrPopup();
+    const badge=document.getElementById('rl_err_trigger_badge');
+    if(badge) badge.style.display='none';
+    return;
+  }
+
+  const clientName=clientErrors[0]?.clientName||clientInstructions[0]?.clientName||
+    document.getElementById('rl_clientname')?.value||'Client #'+clientNo;
+
+  // Build popup content
+  const sub = document.getElementById('rlErrPopupSub');
+  const badges = document.getElementById('rlErrPopupBadges');
+  const body = document.getElementById('rlErrPopupBody');
+  if(!sub||!badges||!body) return;
+
+  sub.textContent = clientName+' · Client #'+clientNo;
+
+  // Error type badges in header
+  let badgeHtml='';
+  if(clientErrors.length>0){
+    const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+    badgeHtml+=`<span style="background:rgba(255,255,255,.25);color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800">${clientErrors.length} Error Record${clientErrors.length>1?'s':''}</span>`;
+    for(const [type,count] of Object.entries(byType)){
+      badgeHtml+=`<span style="background:rgba(0,0,0,.2);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">${type}: ${count}</span>`;
+    }
+  }
   if(clientInstructions.length>0){
-    html+=`<div style="margin-bottom:10px;padding:10px 12px;background:rgba(14,165,233,.07);border:1.5px solid rgba(14,165,233,.3);border-radius:8px;">`;
-    html+=`<div style="font-weight:800;font-size:12px;color:var(--sky);margin-bottom:6px;">📋 INSTRUCTION FOLLOWUP — ${clientName}</div>`;
+    badgeHtml+=`<span style="background:rgba(14,165,233,.35);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">📋 ${clientInstructions.length} Instruction${clientInstructions.length>1?'s':''}</span>`;
+  }
+  badges.innerHTML=badgeHtml;
+
+  // Body content
+  let html='';
+
+  // Instructions block
+  if(clientInstructions.length>0){
+    html+=`<div style="border-radius:12px;border:2px solid rgba(14,165,233,.4);overflow:hidden">
+      <div style="background:rgba(14,165,233,.1);padding:10px 14px;font-size:12px;font-weight:800;color:#0369a1;display:flex;align-items:center;gap:6px">
+        📋 INSTRUCTION FOLLOWUP
+      </div>`;
     clientInstructions.forEach(r=>{
-      html+=`<div style="font-size:12px;color:var(--text);line-height:1.6;padding:4px 0;border-bottom:1px solid rgba(14,165,233,.1);white-space:pre-wrap">${r.instruction}</div>`;
+      html+=`<div style="padding:10px 14px;font-size:13px;color:#1e3a5f;line-height:1.6;border-top:1px solid rgba(14,165,233,.15);white-space:pre-wrap">${r.instruction||''}</div>`;
     });
     html+=`</div>`;
   }
-  // ── Error Records block ──
+
+  // Error records
   if(clientErrors.length>0){
+    // Summary card
     const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-    html+=`<b style="color:var(--text)">${clientName}</b> has <b style="color:var(--rose)">${clientErrors.length} error record${clientErrors.length>1?'s':''}</b> on file:<br/><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">`;
+    html+=`<div style="border-radius:12px;border:2px solid rgba(220,38,38,.3);overflow:hidden">
+      <div style="background:rgba(220,38,38,.08);padding:10px 14px;font-size:12px;font-weight:800;color:#dc2626;display:flex;align-items:center;justify-content:space-between">
+        <span>⚠️ CLIENT ERROR RECORDS</span>
+        <span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px">${clientErrors.length} total</span>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px">`;
     for(const [type,count] of Object.entries(byType)){
-      html+=`<span style="background:rgba(225,29,72,.12);color:var(--rose);border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">${type}: ${count}</span>`;
+      const pct=Math.round(count/clientErrors.length*100);
+      html+=`<div style="flex:1;min-width:140px;background:#fff;border:1.5px solid rgba(220,38,38,.2);border-radius:8px;padding:10px 12px">
+        <div style="font-size:13px;font-weight:800;color:#dc2626">${type}</div>
+        <div style="font-size:22px;font-weight:900;color:#1e293b;letter-spacing:-1px;margin:4px 0">${count}</div>
+        <div style="height:5px;background:#fee2e2;border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:#dc2626;border-radius:3px"></div>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px">${pct}% of errors</div>
+      </div>`;
     }
-    html+='</div>';
-    const recent=clientErrors.sort((a,b)=>new Date(b._created)-parseAppDate(a._created)).slice(0,3);
-    if(recent.length){
-      html+='<div style="margin-top:8px;font-size:11px;color:var(--text3)">Recent: ';
-      html+=recent.map(e=>`${e.date||e._created?.slice(0,10)} — ${e.errorType} (${e.mode||'—'})`).join(' · ');
-      html+='</div>';
-    }
+    html+=`</div>`;
+
+    // Recent errors table
+    const recent=[...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0)).slice(0,5);
+    html+=`<div style="border-top:1px solid rgba(220,38,38,.15);padding:10px 14px">
+      <div style="font-size:11px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Recent 5 Errors</div>`;
+    recent.forEach(e=>{
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5">
+        <span style="font-size:10px;color:#9ca3af;min-width:80px">${e.date||String(e._created||'').slice(0,10)}</span>
+        <span style="background:rgba(220,38,38,.1);color:#dc2626;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;flex:1">${e.errorType||'—'}</span>
+        <span style="font-size:11px;color:#6b7280">${e.mode||'—'}</span>
+      </div>`;
+    });
+    html+=`</div></div>`;
   }
-  listDiv.innerHTML=html;
-  alertDiv.style.display='block';
-  if(ackBox)ackBox.checked=false;
+
+  // Warning message
+  html+=`<div style="padding:12px 14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:flex-start;gap:8px">
+    <span style="font-size:16px;flex-shrink:0">⚡</span>
+    <span>Review all error patterns above carefully before processing this shipment. Acknowledge to proceed.</span>
+  </div>`;
+
+  body.innerHTML=html;
+
+  // Reset acknowledgment
+  const ackBox=document.getElementById('rlErrAckBox');
+  const ackBtn=document.getElementById('rlErrAckBtn');
+  if(ackBox){ ackBox.checked=false; }
+  if(ackBtn){ ackBtn.disabled=true; ackBtn.style.background='#e5e7eb'; ackBtn.style.color='#9ca3af'; ackBtn.style.cursor='not-allowed'; }
+  // Also reset old inline checkbox
+  const oldAck=document.getElementById('rl_acknowledge');
+  if(oldAck) oldAck.checked=false;
+
+  // Show trigger badge
+  const badge=document.getElementById('rl_err_trigger_badge');
+  if(badge){
+    badge.style.display='flex';
+    badge.style.background='rgba(220,38,38,.07)';
+    badge.style.borderColor='rgba(220,38,38,.3)';
+    badge.onclick=_openRlErrPopup;
+    const bt=document.getElementById('rl_err_badge_title');
+    const bs=document.getElementById('rl_err_badge_sub');
+    const ba=badge.querySelector('span:last-child');
+    if(bt){bt.textContent='Error History Found';bt.style.color='#dc2626';}
+    if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#b91c1c';}
+    if(ba){ba.textContent='View →';ba.style.color='#dc2626';ba.style.background='rgba(220,38,38,.12)';}
+  }
+  // Reset ack state
+  const rlAckBox=document.getElementById('rlErrAckBox');
+  const rlOldAck=document.getElementById('rl_acknowledge');
+  if(rlAckBox){rlAckBox.checked=false;_rlErrAckChanged();}
+  if(rlOldAck) rlOldAck.checked=false;
+  // Auto-open popup
+  setTimeout(_openRlErrPopup, 150);
+  window._rlErrClientNo=clientNo;
+}
+
+function _rlErrAckChanged(){
+  const ackBox=document.getElementById('rlErrAckBox');
+  const ackBtn=document.getElementById('rlErrAckBtn');
+  const label=document.getElementById('rlErrAckLabel');
+  if(!ackBox||!ackBtn) return;
+  const checked=ackBox.checked;
+  ackBtn.disabled=!checked;
+  ackBtn.style.background=checked?'linear-gradient(90deg,#dc2626,#f87185)':'#e5e7eb';
+  ackBtn.style.color=checked?'#fff':'#9ca3af';
+  ackBtn.style.cursor=checked?'pointer':'not-allowed';
+  ackBtn.style.boxShadow=checked?'0 4px 14px rgba(220,38,38,.3)':'none';
+  if(label) label.style.borderColor=checked?'#dc2626':'rgba(220,38,38,.25)';
+}
+
+function _rlErrConfirm(){
+  const ackBox=document.getElementById('rlErrAckBox');
+  if(!ackBox||!ackBox.checked) return;
+  const oldAck=document.getElementById('rl_acknowledge');
+  if(oldAck) oldAck.checked=true;
+  // Update trigger badge to green acknowledged state
+  const badge=document.getElementById('rl_err_trigger_badge');
+  if(badge){
+    badge.style.background='rgba(16,185,129,.07)';
+    badge.style.borderColor='rgba(16,185,129,.35)';
+    const bt=document.getElementById('rl_err_badge_title');
+    const bs=document.getElementById('rl_err_badge_sub');
+    const ba=badge.querySelector('span:last-child');
+    if(bt){bt.textContent='✅ Error History Acknowledged';bt.style.color='#059669';}
+    if(bs){bs.textContent='You may now proceed to save';bs.style.color='#047857';}
+    if(ba){ba.textContent='Done ✓';ba.style.color='#059669';ba.style.background='rgba(16,185,129,.12)';}
+    badge.onclick=_openRlErrPopup;
+  }
+  _closeRlErrPopup();
+  showToast('✅ Error history acknowledged — proceed with entry');
+}
+
+function _openRlErrPopup(){
+  const popup=document.getElementById('rlErrPopup');
+  const overlay=document.getElementById('rlErrPopupOverlay');
+  if(!popup) return;
+  popup.style.display='flex';
+  if(overlay) overlay.style.display='block';
+  requestAnimationFrame(()=>{ popup.style.transform='translateX(0)'; });
+}
+function _closeRlErrPopup(){
+  const popup=document.getElementById('rlErrPopup');
+  const overlay=document.getElementById('rlErrPopupOverlay');
+  if(!popup) return;
+  popup.style.transform='translateX(100%)';
+  if(overlay) overlay.style.display='none';
+  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
 }
 
 // ── CLS: same client error + instruction check as Release ──
@@ -18712,10 +18973,23 @@ function rlShowTATResult(tatResult){
 }
 
 function submitRelease2(){
-  const alertDiv=document.getElementById('rl_client_alert');
+  // Check new popup acknowledgment — if popup was shown, rl_acknowledge must be checked
+  const popupVisible = document.getElementById('rlErrPopup')?.style.display==='flex';
   const ackBox=document.getElementById('rl_acknowledge');
-  if(alertDiv&&alertDiv.style.display!=='none'&&ackBox&&!ackBox.checked){
-    showToast('⚠️ Please acknowledge the client error history before submitting',true);return;
+  const newAckBox=document.getElementById('rlErrAckBox');
+  // If error popup is currently open — must acknowledge first
+  if(popupVisible){
+    showToast('⚠️ Please review and acknowledge the error history popup first',true);
+    return;
+  }
+  // If errors exist for this client but neither checkbox is checked
+  const alertDiv=document.getElementById('rl_client_alert');
+  const hasErrors=(alertDiv&&alertDiv.style.display!=='none')||(newAckBox&&!newAckBox.checked&&window._rlErrClientNo);
+  if(hasErrors&&ackBox&&!ackBox.checked&&newAckBox&&!newAckBox.checked){
+    showToast('⚠️ Please review and acknowledge the client error history before submitting',true);
+    // Re-trigger popup
+    rlCheckClientErrors();
+    return;
   }
   const txn=document.getElementById('rl_txn').value.trim();
   const user=document.getElementById('rl_user').value;
@@ -22334,6 +22608,238 @@ async function triggerPWAInstall(){
   const btn = document.getElementById('pwaInstallBtn');
   if(btn) btn.style.display = 'none';
 }
+
+
+// ═══════════════════════════════════════════════════════════
+//  LVS ERROR HISTORY POPUP — Big sliding panel from right
+// ═══════════════════════════════════════════════════════════
+
+function _openLvsErrPopup(){
+  const popup   = document.getElementById('lvsErrPopup');
+  const overlay = document.getElementById('lvsErrPopupOverlay');
+  if(!popup) return;
+  popup.style.display   = 'flex';
+  overlay.style.display = 'block';
+  // Trigger CSS slide-in
+  requestAnimationFrame(()=>{ popup.style.transform = 'translateX(0)'; });
+}
+
+function _closeLvsErrPopup(){
+  const popup   = document.getElementById('lvsErrPopup');
+  const overlay = document.getElementById('lvsErrPopupOverlay');
+  if(!popup) return;
+  popup.style.transform = 'translateX(100%)';
+  overlay.style.display = 'none';
+  // After transition ends, hide display
+  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; }, 320);
+}
+
+function _lvsErrAckChanged(){
+  const box = document.getElementById('lvsErrAckBox');
+  const btn = document.getElementById('lvsErrAckBtn');
+  const lbl = document.getElementById('lvsErrAckLabel');
+  if(!box||!btn) return;
+  if(box.checked){
+    btn.disabled = false;
+    btn.style.background = 'linear-gradient(135deg,#b91c1c,#dc2626)';
+    btn.style.color      = '#fff';
+    btn.style.cursor     = 'pointer';
+    btn.style.boxShadow  = '0 4px 16px rgba(220,38,38,.35)';
+    if(lbl){ lbl.style.background='#fff0f0'; lbl.style.borderColor='rgba(220,38,38,.5)'; }
+  } else {
+    btn.disabled = true;
+    btn.style.background = '#e5e7eb';
+    btn.style.color      = '#9ca3af';
+    btn.style.cursor     = 'not-allowed';
+    btn.style.boxShadow  = 'none';
+    if(lbl){ lbl.style.background='#fff8f8'; lbl.style.borderColor='rgba(220,38,38,.2)'; }
+  }
+}
+
+function _lvsErrConfirm(){
+  const box = document.getElementById('lvsErrAckBox');
+  if(!box||!box.checked) return;
+  // Sync the hidden checkbox that saveLvs() checks
+  const hidden = document.getElementById('lvs_acknowledge');
+  if(hidden) hidden.checked = true;
+  // Update the trigger badge to show acknowledged
+  const badge = document.getElementById('lvs_err_trigger_badge');
+  if(badge){
+    badge.style.background   = 'rgba(16,185,129,.07)';
+    badge.style.borderColor  = 'rgba(16,185,129,.35)';
+    const t = document.getElementById('lvs_err_badge_title');
+    const s = document.getElementById('lvs_err_badge_sub');
+    if(t){ t.textContent='✅ Error History Acknowledged'; t.style.color='#059669'; }
+    if(s){ s.textContent='You may now proceed to save'; s.style.color='#047857'; }
+    const arrow = badge.querySelector('span:last-child');
+    if(arrow){ arrow.textContent='Done ✓'; arrow.style.color='#059669'; arrow.style.background='rgba(16,185,129,.12)'; }
+    badge.onclick = _openLvsErrPopup; // still tappable to re-review
+  }
+  _closeLvsErrPopup();
+  showToast('✅ Error history acknowledged — you can now save the entry.');
+}
+
+// ── Override _runClientCheck to also drive the new LVS popup ──
+(function(){
+  const _orig = window._runClientCheck;
+  window._runClientCheck = function(prefix, clientNo, nameId, attempt){
+    // Call original first so lvs_client_error_list gets populated
+    if(typeof _orig==='function') _orig.call(this, prefix, clientNo, nameId, attempt);
+
+    // Only intercept LVS panel
+    if(prefix !== 'lvs') return;
+
+    // Give the original a tick to set display
+    setTimeout(()=>{
+      const alertDiv = document.getElementById('lvs_client_alert');
+      const badge    = document.getElementById('lvs_err_trigger_badge');
+      if(!alertDiv || !badge) return;
+
+      const hasData = alertDiv.dataset.clientNo && alertDiv.dataset.clientNo !== '';
+      if(!hasData){
+        badge.style.display = 'none';
+        _closeLvsErrPopup();
+        return;
+      }
+
+      // Build the rich popup content
+      _buildLvsErrPopup(clientNo);
+
+      // Show trigger badge
+      badge.style.display = 'flex';
+      // Reset acknowledged state
+      badge.style.background  = 'rgba(220,38,38,.07)';
+      badge.style.borderColor = 'rgba(220,38,38,.3)';
+      badge.onclick = _openLvsErrPopup;
+      const t = document.getElementById('lvs_err_badge_title');
+      const s = document.getElementById('lvs_err_badge_sub');
+      if(t){ t.textContent='Error History Found'; t.style.color='#dc2626'; }
+      if(s){ s.textContent='Click to review & acknowledge before processing'; s.style.color='#b91c1c'; }
+      const arrow = badge.querySelector('span:last-child');
+      if(arrow){ arrow.textContent='View →'; arrow.style.color='#dc2626'; arrow.style.background='rgba(220,38,38,.12)'; }
+
+      // Reset ack checkbox and button
+      const ackBox = document.getElementById('lvsErrAckBox');
+      const hidden = document.getElementById('lvs_acknowledge');
+      if(ackBox){ ackBox.checked=false; _lvsErrAckChanged(); }
+      if(hidden) hidden.checked=false;
+
+      // Auto-open the popup with a slight delay
+      setTimeout(_openLvsErrPopup, 150);
+    }, 50);
+  };
+})();
+
+function _buildLvsErrPopup(clientNo){
+  const sub      = document.getElementById('lvsErrPopupSub');
+  const badges   = document.getElementById('lvsErrPopupBadges');
+  const body     = document.getElementById('lvsErrPopupBody');
+  if(!body) return;
+
+  const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
+  const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
+  const nameEl             = document.getElementById('lf_clientName');
+  const clientName         = clientErrors[0]?.clientName || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
+
+  // Sub-header
+  if(sub) sub.textContent = clientName + ' · ' + (clientErrors.length+clientInstructions.length) + ' record(s) on file';
+
+  // Badges
+  if(badges){
+    badges.innerHTML = '';
+    if(clientInstructions.length){
+      badges.innerHTML += '<span style="background:rgba(14,165,233,.25);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">📋 '+clientInstructions.length+' Instruction'+(clientInstructions.length>1?'s':'')+'</span>';
+    }
+    if(clientErrors.length){
+      const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+      for(const [type,count] of Object.entries(byType)){
+        badges.innerHTML += '<span style="background:rgba(255,255,255,.2);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.3);">'+type+': '+count+'</span>';
+      }
+    }
+  }
+
+  // Body
+  let html = '';
+
+  // Instructions card
+  if(clientInstructions.length){
+    html += '<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">';
+    html += '<div style="background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(14,165,233,.04));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">';
+    html += '<span style="font-size:16px;">📋</span><span style="font-size:13px;font-weight:800;color:#0369a1;">INSTRUCTION FOLLOWUP — '+clientName+'</span></div>';
+    html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">';
+    clientInstructions.forEach(r=>{
+      html += '<div style="font-size:13px;color:#1e293b;line-height:1.7;padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;white-space:pre-wrap;">'+r.instruction+'</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Error history card
+  if(clientErrors.length){
+    const recent = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0)).slice(0,8);
+    html += '<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">';
+    html += '<div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">';
+    html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">'+clientErrors.length+' Error Record'+(clientErrors.length>1?'s':'')+' on File</span></div>';
+    html += '<span style="font-size:11px;font-weight:700;color:#b91c1c;background:rgba(220,38,38,.1);padding:3px 10px;border-radius:20px;">'+clientName+'</span>';
+    html += '</div>';
+    html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">';
+    recent.forEach(e=>{
+      const dateStr = e.date || String(e._created||'').slice(0,10) || '—';
+      const errType = e.errorType || '—';
+      const mode    = e.mode || '—';
+      const desc    = e.errorDescription || e.description || '';
+      html += '<div style="padding:10px 14px;background:#fff8f8;border:1px solid rgba(220,38,38,.15);border-radius:10px;border-left:4px solid #dc2626;">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
+      html += '<span style="font-size:12px;font-weight:700;color:#dc2626;">'+errType+'</span>';
+      html += '<span style="font-size:11px;color:#6b7280;font-family:var(--mono);">'+dateStr+' · '+mode+'</span>';
+      html += '</div>';
+      if(desc) html += '<div style="font-size:12px;color:#374151;line-height:1.6;margin-top:2px;">'+desc+'</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  if(!html){
+    html = '<div style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">No records found.</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+// Reset LVS popup when LVS panel is closed/cleared
+(function(){
+  const _origClearLvs = window.clearLvsForm || null;
+  function _patchClearLvs(){
+    const badge  = document.getElementById('lvs_err_trigger_badge');
+    const hidden = document.getElementById('lvs_acknowledge');
+    const ackBox = document.getElementById('lvsErrAckBox');
+    if(badge)  badge.style.display = 'none';
+    if(hidden) hidden.checked = false;
+    if(ackBox){ ackBox.checked=false; _lvsErrAckChanged(); }
+    _closeLvsErrPopup();
+  }
+  // Patch clearLvsForm if it exists
+  if(typeof window.clearLvsForm === 'function'){
+    const orig = window.clearLvsForm;
+    window.clearLvsForm = function(){ orig.apply(this,arguments); _patchClearLvs(); };
+  }
+  // Also patch the client field oninput to hide badge when cleared
+  document.addEventListener('DOMContentLoaded', function(){
+    const el = document.getElementById('lf_client');
+    if(el){
+      el.addEventListener('input', function(){
+        if(!this.value || this.value.length < 3){
+          const badge = document.getElementById('lvs_err_trigger_badge');
+          if(badge) badge.style.display='none';
+          _closeLvsErrPopup();
+          const ackBox=document.getElementById('lvsErrAckBox');
+          const hidden=document.getElementById('lvs_acknowledge');
+          if(ackBox){ackBox.checked=false;_lvsErrAckChanged();}
+          if(hidden) hidden.checked=false;
+        }
+      });
+    }
+  });
+})();
 
 </script>
 
