@@ -4254,7 +4254,7 @@ async function loadAllFromSupabase(){
       if(bar) bar.style.width='100%';
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
-      showToast('✅ App ready — loading full history in background. Counts update shortly...');
+      showToast('✅ App ready — loading 30-day history in background...');
 
       // ── PHASE 2: Load full 30-day history silently in background ──────────
       setTimeout(async()=>{
@@ -4278,12 +4278,11 @@ async function loadAllFromSupabase(){
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
           DB.audit     = auditF.map(mapAudit);
           _saveTaskCache();
-          // Always refresh so all pages show full 30-day counts
-          if(CU) refreshPage();
-          showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
+          if(CU && !isPanelOpen()) refreshPage();
+          showToast('✅ 30-day history loaded — '+DB.release2.length+' Release records');
           console.log('✅ Manager background history load complete');
         }catch(bg){ console.warn('Background history load error:', bg.message); }
-      }, 500); // start immediately after initial render
+      }, 1500); // start after user is already in the app
 
 
     } else if(isRlTL){
@@ -6270,17 +6269,17 @@ function _clearDataCache(){
   DATA_KEYS.forEach(k => localStorage.removeItem(k));
   console.log('[Cache] Cleared stale data cache on login');
 }
-const TASK_CACHE_TTL = 8 * 60 * 60 * 1000; // 8 hours — covers a full shift
+const TASK_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
 function _saveTaskCache(){
   try{
     // Only cache if we have meaningful data
     const totalRecs = DB.lvs.length + DB.cls.length + DB.release2.length;
     if(totalRecs < 5) return;
-    // Only skip write if count unchanged AND dataset is large (avoids phase2 getting skipped)
+    // SPEED FIX: skip save if data hasn't grown (avoid unnecessary localStorage writes)
     const _prevCount = parseInt(localStorage.getItem('kpi_task_cache_count')||'0');
+    if(totalRecs === _prevCount) return; // no change — skip write
     localStorage.setItem('kpi_task_cache_count', String(totalRecs));
-    if(totalRecs === _prevCount && totalRecs > 100) return; // no change in large dataset — skip write
     const cache = {
       ts: Date.now(),
       role: CU?.role||'',
@@ -9041,12 +9040,10 @@ async function _proceedWithLogin(lu, u){
         : 'Connected in '+_pingMs+'ms — loading data...';
     }catch(e){}
     if(msg) msg.textContent='Loading your data...';
-    // Show cached data instantly while fresh data loads
-    if(!window._dbLoaded) _restoreTaskCache();
     try{
       await Promise.race([
         loadAllFromSupabase(),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),45000)) // 45s — Supabase cold start
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),30000)) // 30s — allow for Supabase cold start
       ]);
     } catch(e){
       console.warn('User data load failed — booting offline:',e.message);
@@ -18201,7 +18198,7 @@ function openRelease2(){
   const rla=document.getElementById('rl_client_alert');if(rla)rla.style.display='none';
   const ack=document.getElementById('rl_acknowledge');if(ack)ack.checked=false;
   const rlBadge=document.getElementById('rl_err_trigger_badge');if(rlBadge)rlBadge.style.display='none';
-  const rlAckBox=document.getElementById('rlErrAckBox');if(rlAckBox){rlAckBox.checked=false;_rlErrAckChanged();}
+  _closeRlErrPopup();
   _closeRlErrPopup(); window._rlErrClientNo=null;
   document.getElementById('rl_mode').value='';
   document.getElementById('rl_status').value='';
@@ -18376,247 +18373,174 @@ function epSelectUser(name){
   if(drop) drop.style.display='none';
 }
 
-// ── Build rich RL popup body (shared by rlCheckClientErrors + retry) ──
-function _buildRlErrPopup(clientNo){
-  const sub    = document.getElementById('rlErrPopupSub');
-  const badges = document.getElementById('rlErrPopupBadges');
-  const body   = document.getElementById('rlErrPopupBody');
-  if(!body) return;
-
-  const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
-  const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
-  const nameEl  = document.getElementById('rl_clientname');
-  const clientName = clientErrors[0]?.clientName || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
-
-  if(sub) sub.textContent = clientName + ' · ' + (clientErrors.length + clientInstructions.length) + ' record(s) on file';
-
-  // Header badges
-  if(badges){
-    let bh = '';
-    if(clientInstructions.length){
-      bh += `<span style="background:rgba(14,165,233,.28);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">📋 ${clientInstructions.length} Instruction${clientInstructions.length>1?'s':''}</span>`;
-    }
-    if(clientErrors.length){
-      const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-      bh += `<span style="background:rgba(255,255,255,.22);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.3);">${clientErrors.length} Error${clientErrors.length>1?'s':''} Total</span>`;
-      for(const [type,count] of Object.entries(byType)){
-        bh += `<span style="background:rgba(0,0,0,.2);color:#fecaca;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;">${type}: ${count}</span>`;
-      }
-    }
-    badges.innerHTML = bh;
-  }
-
-  let html = '';
-
-  // ── Instructions card ──
-  if(clientInstructions.length){
-    html += `<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">
-      <div style="background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(14,165,233,.04));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">
-        <span style="font-size:16px;">📋</span>
-        <span style="font-size:13px;font-weight:800;color:#0369a1;">INSTRUCTION FOLLOWUP — ${clientName}</span>
-      </div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">`;
-    clientInstructions.forEach(r=>{
-      html += `<div style="font-size:13px;color:#1e293b;line-height:1.7;padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;white-space:pre-wrap;">${r.instruction||''}</div>`;
-    });
-    html += `</div></div>`;
-  }
-
-  // ── Error summary + individual cards ──
-  if(clientErrors.length){
-    const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-    // Summary mini-grid
-    html += `<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">
-      <div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">${clientErrors.length} Error Record${clientErrors.length>1?'s':''} on File</span></div>
-        <span style="font-size:11px;font-weight:700;color:#b91c1c;background:rgba(220,38,38,.1);padding:3px 10px;border-radius:20px;">${clientName}</span>
-      </div>
-      <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;">`;
-    for(const [type,count] of Object.entries(byType)){
-      const pct = Math.round(count/clientErrors.length*100);
-      html += `<div style="flex:1;min-width:130px;background:#fff8f8;border:1.5px solid rgba(220,38,38,.18);border-radius:10px;padding:10px 12px;">
-        <div style="font-size:12px;font-weight:800;color:#dc2626;">${type}</div>
-        <div style="font-size:24px;font-weight:900;color:#1e293b;letter-spacing:-1px;margin:4px 0;">${count}</div>
-        <div style="height:5px;background:#fee2e2;border-radius:3px;overflow:hidden;margin-bottom:4px;">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#dc2626,#f87171);border-radius:3px;"></div>
-        </div>
-        <div style="font-size:10px;color:#9ca3af;">${pct}% of errors</div>
-      </div>`;
-    }
-    html += `</div>`;
-
-    // Individual error cards — full detail
-    const sorted2 = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
-    html += `<div style="border-top:1.5px solid rgba(220,38,38,.1);padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
-      <div style="font-size:10px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px;">All ${sorted2.length} Error Record${sorted2.length>1?'s':''} — Full Detail</div>`;
-    sorted2.forEach(e=>{
-      const dateStr   = e.date || String(e._created||'').slice(0,10) || '—';
-      const errType   = e.errorType    || '—';
-      const mode      = e.mode         || '—';
-      const txn       = e.txn          || '—';
-      const task      = e.task         || '—';
-      const pct       = e.percentage   || '';
-      const createdBy = e.createdBy    || '—';
-      const srcErr    = e.sourceOfError|| '';
-      const clientCmt = e.clientComments || '';
-      const userCmt   = e.userComments   || '';
-      const tlCmt     = e.tlComments     || '';
-      const ackBy     = e.acknowledgedBy || '';
-      const ackAt     = e.acknowledgedAt || '';
-
-      html += `<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid #dc2626;overflow:hidden;">`;
-
-      // Card header
-      html += `<div style="padding:9px 13px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;border-bottom:1px solid rgba(220,38,38,.1);">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;">${errType}</span>
-          <span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${mode}</span>
-          ${task&&task!=='—'?`<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${task}</span>`:''}
-          ${pct?`<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${pct}%</span>`:''}
-        </div>
-        <span style="font-size:10px;color:#9ca3af;font-family:var(--mono);">${dateStr}</span>
-      </div>`;
-
-      // Meta grid
-      html += `<div style="padding:8px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;border-bottom:1px solid rgba(220,38,38,.07);">
-        <div>
-          <div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div>
-          <div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.07);padding:3px 8px;border-radius:5px;display:inline-block;">${txn}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Created By</div>
-          <div style="font-size:12px;font-weight:600;color:#374151;">${createdBy}</div>
-        </div>
-        ${srcErr?`<div style="grid-column:span 2;"><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Source of Error Reported</div><div style="font-size:12px;font-weight:600;color:#374151;">${srcErr}</div></div>`:''}
-      </div>`;
-
-      // Comment blocks
-      const hasComments = clientCmt || userCmt || tlCmt;
-      if(hasComments){
-        html += `<div style="padding:8px 13px 10px;display:flex;flex-direction:column;gap:7px;">`;
-        if(clientCmt) html += `<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🔴 Client Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${clientCmt}</div></div>`;
-        if(userCmt)   html += `<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">👤 User Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${userCmt}</div></div>`;
-        if(tlCmt)     html += `<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">👔 Team Lead Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${tlCmt}</div></div>`;
-        html += `</div>`;
-      }
-
-      // Acknowledged badge
-      if(ackBy){
-        html += `<div style="padding:0 13px 10px;"><div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;"><span style="font-size:12px;">✅</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by ${ackBy}${ackAt?' · '+String(ackAt).slice(0,10):''}</span></div></div>`;
-      }
-      html += `</div>`;
-    });
-    html += `</div></div>`;
-  }
-
-  // ── Warning banner ──
-  html += `<div style="padding:12px 14px;background:#fffbeb;border:2px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:flex-start;gap:8px;">
-    <span style="font-size:18px;flex-shrink:0;">⚡</span>
-    <span>Review all error patterns &amp; instructions above carefully before processing this shipment. Tick the acknowledgment below to proceed.</span>
-  </div>`;
-
-  body.innerHTML = html;
-}
-
 function rlCheckClientErrors(){
-  const clientNo = parseInt(document.getElementById('rl_client')?.value);
-  const alertDiv = document.getElementById('rl_client_alert');
+  const clientNo=parseInt(document.getElementById('rl_client')?.value);
+  // Hide old inline alert
+  const alertDiv=document.getElementById('rl_client_alert');
   if(alertDiv) alertDiv.style.display='none';
+  if(!clientNo||isNaN(clientNo)){ _closeRlErrPopup(); return; }
 
-  if(!clientNo||isNaN(clientNo)){
+  const clientErrors=(DB.errors||[]).filter(e=>e.client==clientNo);
+  const clientInstructions=(DB.instructions||[]).filter(r=>String(r.clientNo)==String(clientNo));
+  if(clientErrors.length===0&&clientInstructions.length===0){
     _closeRlErrPopup();
-    const b=document.getElementById('rl_err_trigger_badge');
-    if(b) b.style.display='none';
+    const badge=document.getElementById('rl_err_trigger_badge');
+    if(badge) badge.style.display='none';
     return;
   }
 
-  // Debounce — avoid firing on every keystroke
-  clearTimeout(window._rlClientCheckTimer);
-  window._rlClientCheckTimer = setTimeout(function(){
-    const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
-    const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
+  const clientName=clientErrors[0]?.clientName||clientInstructions[0]?.clientName||
+    document.getElementById('rl_clientname')?.value||'Client #'+clientNo;
 
-    if(clientErrors.length===0 && clientInstructions.length===0){
-      // Retry if DB not loaded yet
-      if(!DB.clients||DB.clients.length===0){
-        setTimeout(()=>rlCheckClientErrors(), 800);
-      } else {
-        _closeRlErrPopup();
-        const b=document.getElementById('rl_err_trigger_badge');
-        if(b) b.style.display='none';
-        const o=document.getElementById('rl_acknowledge'); if(o) o.checked=false;
-      }
-      return;
+  // Build popup content
+  const sub = document.getElementById('rlErrPopupSub');
+  const badges = document.getElementById('rlErrPopupBadges');
+  const body = document.getElementById('rlErrPopupBody');
+  if(!sub||!badges||!body) return;
+
+  sub.textContent = clientName+' · Client #'+clientNo;
+
+  // Error type badges in header
+  let badgeHtml='';
+  if(clientErrors.length>0){
+    const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+    badgeHtml+=`<span style="background:rgba(255,255,255,.25);color:#fff;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800">${clientErrors.length} Error Record${clientErrors.length>1?'s':''}</span>`;
+    for(const [type,count] of Object.entries(byType)){
+      badgeHtml+=`<span style="background:rgba(0,0,0,.2);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">${type}: ${count}</span>`;
     }
+  }
+  if(clientInstructions.length>0){
+    badgeHtml+=`<span style="background:rgba(14,165,233,.35);color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">📋 ${clientInstructions.length} Instruction${clientInstructions.length>1?'s':''}</span>`;
+  }
+  badges.innerHTML=badgeHtml;
 
-    // Build popup content
-    _buildRlErrPopup(clientNo);
+  // Body content
+  let html='';
 
-    // Reset ack state
-    const ackBox = document.getElementById('rlErrAckBox');
-    const oldAck = document.getElementById('rl_acknowledge');
-    if(ackBox){ ackBox.checked=false; _rlErrAckChanged(); }
-    if(oldAck) oldAck.checked=false;
+  // Instructions block
+  if(clientInstructions.length>0){
+    html+=`<div style="border-radius:12px;border:2px solid rgba(14,165,233,.4);overflow:hidden">
+      <div style="background:rgba(14,165,233,.1);padding:10px 14px;font-size:12px;font-weight:800;color:#0369a1;display:flex;align-items:center;gap:6px">
+        📋 INSTRUCTION FOLLOWUP
+      </div>`;
+    clientInstructions.forEach(r=>{
+      html+=`<div style="padding:10px 14px;font-size:13px;color:#1e3a5f;line-height:1.6;border-top:1px solid rgba(14,165,233,.15);white-space:pre-wrap">${r.instruction||''}</div>`;
+    });
+    html+=`</div>`;
+  }
 
-    // Show + update trigger badge
-    const badge = document.getElementById('rl_err_trigger_badge');
-    if(badge){
-      badge.style.display     = 'flex';
-      badge.style.background  = 'rgba(220,38,38,.07)';
-      badge.style.borderColor = 'rgba(220,38,38,.3)';
-      badge.onclick = _openRlErrPopup;
-      const bt=document.getElementById('rl_err_badge_title');
-      const bs=document.getElementById('rl_err_badge_sub');
-      const ba=badge.querySelector('span:last-child');
-      if(bt){bt.textContent='Error History Found';bt.style.color='#dc2626';}
-      if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#b91c1c';}
-      if(ba){ba.textContent='View →';ba.style.color='#dc2626';ba.style.background='rgba(220,38,38,.12)';}
+  // Error records
+  if(clientErrors.length>0){
+    // Summary card
+    const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+    html+=`<div style="border-radius:12px;border:2px solid rgba(220,38,38,.3);overflow:hidden">
+      <div style="background:rgba(220,38,38,.08);padding:10px 14px;font-size:12px;font-weight:800;color:#dc2626;display:flex;align-items:center;justify-content:space-between">
+        <span>⚠️ CLIENT ERROR RECORDS</span>
+        <span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px">${clientErrors.length} total</span>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px">`;
+    for(const [type,count] of Object.entries(byType)){
+      const pct=Math.round(count/clientErrors.length*100);
+      html+=`<div style="flex:1;min-width:140px;background:#fff;border:1.5px solid rgba(220,38,38,.2);border-radius:8px;padding:10px 12px">
+        <div style="font-size:13px;font-weight:800;color:#dc2626">${type}</div>
+        <div style="font-size:22px;font-weight:900;color:#1e293b;letter-spacing:-1px;margin:4px 0">${count}</div>
+        <div style="height:5px;background:#fee2e2;border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:#dc2626;border-radius:3px"></div>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px">${pct}% of errors</div>
+      </div>`;
     }
+    html+=`</div>`;
 
-    // Auto-open with a short delay
-    setTimeout(_openRlErrPopup, 150);
-    window._rlErrClientNo = clientNo;
-  }, 400);
+    // Recent errors table
+    const recent=[...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0)).slice(0,5);
+    html+=`<div style="border-top:1px solid rgba(220,38,38,.15);padding:10px 14px">
+      <div style="font-size:11px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Recent 5 Errors</div>`;
+    recent.forEach(e=>{
+      html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5">
+        <span style="font-size:10px;color:#9ca3af;min-width:80px">${e.date||String(e._created||'').slice(0,10)}</span>
+        <span style="background:rgba(220,38,38,.1);color:#dc2626;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;flex:1">${e.errorType||'—'}</span>
+        <span style="font-size:11px;color:#6b7280">${e.mode||'—'}</span>
+      </div>`;
+    });
+    html+=`</div></div>`;
+  }
+
+  // Warning message
+  html+=`<div style="padding:12px 14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:flex-start;gap:8px">
+    <span style="font-size:16px;flex-shrink:0">⚡</span>
+    <span>Review all error patterns above carefully before processing this shipment. Acknowledge to proceed.</span>
+  </div>`;
+
+  body.innerHTML=html;
+
+  // Reset acknowledgment
+  const ackBox=document.getElementById('rlErrAckBox');
+  const ackBtn=document.getElementById('rlErrAckBtn');
+  if(ackBox){ ackBox.checked=false; }
+  if(ackBtn){ ackBtn.disabled=true; ackBtn.style.background='#e5e7eb'; ackBtn.style.color='#9ca3af'; ackBtn.style.cursor='not-allowed'; }
+  // Also reset old inline checkbox
+  const oldAck=document.getElementById('rl_acknowledge');
+  if(oldAck) oldAck.checked=false;
+
+  // Show trigger badge
+  const badge=document.getElementById('rl_err_trigger_badge');
+  if(badge){
+    badge.style.display='flex';
+    badge.style.background='rgba(220,38,38,.07)';
+    badge.style.borderColor='rgba(220,38,38,.3)';
+    badge.onclick=_openRlErrPopup;
+    const bt=document.getElementById('rl_err_badge_title');
+    const bs=document.getElementById('rl_err_badge_sub');
+    const ba=badge.querySelector('span:last-child');
+    if(bt){bt.textContent='Error History Found';bt.style.color='#dc2626';}
+    if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#b91c1c';}
+    if(ba){ba.textContent='View →';ba.style.color='#dc2626';ba.style.background='rgba(220,38,38,.12)';}
+  }
+  // Reset ack state
+  const rlAckBox=document.getElementById('rlErrAckBox');
+  const rlOldAck=document.getElementById('rl_acknowledge');
+  if(rlAckBox){rlAckBox.checked=false;_rlErrAckChanged();}
+  if(rlOldAck) rlOldAck.checked=false;
+  // Auto-open popup
+  setTimeout(_openRlErrPopup, 150);
+  window._rlErrClientNo=clientNo;
 }
 
 function _rlErrAckChanged(){
-  const ackBox = document.getElementById('rlErrAckBox');
-  const ackBtn = document.getElementById('rlErrAckBtn');
-  const label  = document.getElementById('rlErrAckLabel');
+  const ackBox=document.getElementById('rlErrAckBox');
+  const ackBtn=document.getElementById('rlErrAckBtn');
+  const label=document.getElementById('rlErrAckLabel');
   if(!ackBox||!ackBtn) return;
-  const checked = ackBox.checked;
-  ackBtn.disabled   = !checked;
-  ackBtn.style.background  = checked ? 'linear-gradient(135deg,#b91c1c,#dc2626)' : '#e5e7eb';
-  ackBtn.style.color       = checked ? '#fff' : '#9ca3af';
-  ackBtn.style.cursor      = checked ? 'pointer' : 'not-allowed';
-  ackBtn.style.boxShadow   = checked ? '0 4px 16px rgba(220,38,38,.35)' : 'none';
-  if(label){
-    label.style.background   = checked ? '#fff0f0' : '#fff8f8';
-    label.style.borderColor  = checked ? 'rgba(220,38,38,.5)' : 'rgba(220,38,38,.2)';
-  }
+  const checked=ackBox.checked;
+  ackBtn.disabled=!checked;
+  ackBtn.style.background=checked?'linear-gradient(90deg,#dc2626,#f87185)':'#e5e7eb';
+  ackBtn.style.color=checked?'#fff':'#9ca3af';
+  ackBtn.style.cursor=checked?'pointer':'not-allowed';
+  ackBtn.style.boxShadow=checked?'0 4px 14px rgba(220,38,38,.3)':'none';
+  if(label) label.style.borderColor=checked?'#dc2626':'rgba(220,38,38,.25)';
 }
 
 function _rlErrConfirm(){
-  const ackBox = document.getElementById('rlErrAckBox');
+  const ackBox=document.getElementById('rlErrAckBox');
   if(!ackBox||!ackBox.checked) return;
-  // Sync the hidden checkbox that submitRelease2() checks
-  const oldAck = document.getElementById('rl_acknowledge');
-  if(oldAck) oldAck.checked = true;
-  // Turn badge green
-  const badge = document.getElementById('rl_err_trigger_badge');
+  const oldAck=document.getElementById('rl_acknowledge');
+  if(oldAck) oldAck.checked=true;
+  // Update trigger badge to green acknowledged state
+  const badge=document.getElementById('rl_err_trigger_badge');
   if(badge){
-    badge.style.background  = 'rgba(16,185,129,.07)';
-    badge.style.borderColor = 'rgba(16,185,129,.35)';
-    const bt = document.getElementById('rl_err_badge_title');
-    const bs = document.getElementById('rl_err_badge_sub');
-    const ba = badge.querySelector('span:last-child');
-    if(bt){ bt.textContent='✅ Error History Acknowledged'; bt.style.color='#059669'; }
-    if(bs){ bs.textContent='You may now proceed to save'; bs.style.color='#047857'; }
-    if(ba){ ba.textContent='Done ✓'; ba.style.color='#059669'; ba.style.background='rgba(16,185,129,.12)'; }
-    badge.onclick = _openRlErrPopup;
+    badge.style.background='rgba(16,185,129,.07)';
+    badge.style.borderColor='rgba(16,185,129,.35)';
+    const bt=document.getElementById('rl_err_badge_title');
+    const bs=document.getElementById('rl_err_badge_sub');
+    const ba=badge.querySelector('span:last-child');
+    if(bt){bt.textContent='✅ Error History Acknowledged';bt.style.color='#059669';}
+    if(bs){bs.textContent='You may now proceed to save';bs.style.color='#047857';}
+    if(ba){ba.textContent='Done ✓';ba.style.color='#059669';ba.style.background='rgba(16,185,129,.12)';}
+    badge.onclick=_openRlErrPopup;
   }
   _closeRlErrPopup();
-  showToast('✅ Error history acknowledged — proceed with Release entry.');
+  showToast('✅ Error history acknowledged — proceed with entry');
 }
 
 function _openRlErrPopup(){
@@ -18635,25 +18559,6 @@ function _closeRlErrPopup(){
   if(overlay) overlay.style.display='none';
   setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
 }
-
-// ── Wire up rl_client field: hide badge + reset when number cleared ──
-document.addEventListener('DOMContentLoaded', function(){
-  const rlInput = document.getElementById('rl_client');
-  if(rlInput){
-    rlInput.addEventListener('input', function(){
-      if(!this.value || this.value.length < 3){
-        const badge  = document.getElementById('rl_err_trigger_badge');
-        const ackBox = document.getElementById('rlErrAckBox');
-        const oldAck = document.getElementById('rl_acknowledge');
-        if(badge){ badge.style.display='none'; }
-        if(ackBox){ ackBox.checked=false; _rlErrAckChanged(); }
-        if(oldAck) oldAck.checked=false;
-        _closeRlErrPopup();
-        window._rlErrClientNo = null;
-      }
-    });
-  }
-});
 
 // ── CLS: same client error + instruction check as Release ──
 // Called on oninput — also retries after fillClient resolves the name
@@ -19068,24 +18973,22 @@ function rlShowTATResult(tatResult){
 }
 
 function submitRelease2(){
-  // ── Error history acknowledgment guard ──
-  const popupOpen   = document.getElementById('rlErrPopup')?.style.display === 'flex';
-  const oldAckBox   = document.getElementById('rl_acknowledge');
-  const newAckBox   = document.getElementById('rlErrAckBox');
-  const trigBadge   = document.getElementById('rl_err_trigger_badge');
-  const badgeActive = trigBadge && trigBadge.style.display === 'flex';
-  const acknowledged= (oldAckBox && oldAckBox.checked) || (newAckBox && newAckBox.checked);
-
-  // Block if popup is open — must close + acknowledge first
-  if(popupOpen){
-    showToast('⚠️ Please acknowledge the Error History popup before saving', true);
+  // Check new popup acknowledgment — if popup was shown, rl_acknowledge must be checked
+  const popupVisible = document.getElementById('rlErrPopup')?.style.display==='flex';
+  const ackBox=document.getElementById('rl_acknowledge');
+  const newAckBox=document.getElementById('rlErrAckBox');
+  // If error popup is currently open — must acknowledge first
+  if(popupVisible){
+    showToast('⚠️ Please review and acknowledge the error history popup first',true);
     return;
   }
-  // Block if badge is showing (errors found) but not yet acknowledged
-  if(badgeActive && !acknowledged){
-    showToast('⚠️ Please review & acknowledge the client error history before saving', true);
-    // Re-open popup so they can acknowledge
-    setTimeout(_openRlErrPopup, 100);
+  // If errors exist for this client but neither checkbox is checked
+  const alertDiv=document.getElementById('rl_client_alert');
+  const hasErrors=(alertDiv&&alertDiv.style.display!=='none')||(newAckBox&&!newAckBox.checked&&window._rlErrClientNo);
+  if(hasErrors&&ackBox&&!ackBox.checked&&newAckBox&&!newAckBox.checked){
+    showToast('⚠️ Please review and acknowledge the client error history before submitting',true);
+    // Re-trigger popup
+    rlCheckClientErrors();
     return;
   }
   const txn=document.getElementById('rl_txn').value.trim();
@@ -22870,90 +22773,29 @@ function _buildLvsErrPopup(clientNo){
     html += '</div></div>';
   }
 
-  // Error history cards — full detail per record
+  // Error history card
   if(clientErrors.length){
-    // Section header
+    const recent = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0)).slice(0,8);
     html += '<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">';
     html += '<div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">';
     html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">'+clientErrors.length+' Error Record'+(clientErrors.length>1?'s':'')+' on File</span></div>';
-    // Summary badges
-    const byType2 = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-    let sumBadges = Object.entries(byType2).map(([t,c])=>'<span style="background:rgba(220,38,38,.12);color:#dc2626;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:800;border:1px solid rgba(220,38,38,.2);">'+t+': '+c+'</span>').join('');
-    html += '<div style="display:flex;gap:5px;flex-wrap:wrap;">'+sumBadges+'</div></div>';
-    html += '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;">';
-    const sorted = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
-    sorted.forEach((e,idx)=>{
-      const dateStr    = e.date || String(e._created||'').slice(0,10) || '—';
-      const errType    = e.errorType    || '—';
-      const mode       = e.mode         || '—';
-      const txn        = e.txn          || '—';
-      const task       = e.task         || '—';
-      const pct        = e.percentage   || '';
-      const createdBy  = e.createdBy    || '—';
-      const srcErr     = e.sourceOfError|| '';
-      const clientCmt  = e.clientComments || '';
-      const userCmt    = e.userComments   || '';
-      const tlCmt      = e.tlComments     || '';
-      const ackBy      = e.acknowledgedBy || '';
-      const ackAt      = e.acknowledgedAt || '';
-
-      html += '<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid #dc2626;overflow:hidden;">';
-
-      // ── Card header row ──
-      html += '<div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(220,38,38,.1);">';
-      html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-      html += '<span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;">'+errType+'</span>';
-      html += '<span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+mode+'</span>';
-      if(task&&task!=='—') html += '<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+task+'</span>';
-      if(pct) html += '<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+pct+'%</span>';
+    html += '<span style="font-size:11px;font-weight:700;color:#b91c1c;background:rgba(220,38,38,.1);padding:3px 10px;border-radius:20px;">'+clientName+'</span>';
+    html += '</div>';
+    html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">';
+    recent.forEach(e=>{
+      const dateStr = e.date || String(e._created||'').slice(0,10) || '—';
+      const errType = e.errorType || '—';
+      const mode    = e.mode || '—';
+      const desc    = e.errorDescription || e.description || '';
+      html += '<div style="padding:10px 14px;background:#fff8f8;border:1px solid rgba(220,38,38,.15);border-radius:10px;border-left:4px solid #dc2626;">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
+      html += '<span style="font-size:12px;font-weight:700;color:#dc2626;">'+errType+'</span>';
+      html += '<span style="font-size:11px;color:#6b7280;font-family:var(--mono);">'+dateStr+' · '+mode+'</span>';
       html += '</div>';
-      html += '<span style="font-size:10px;color:#9ca3af;font-family:var(--mono);">'+dateStr+'</span>';
+      if(desc) html += '<div style="font-size:12px;color:#374151;line-height:1.6;margin-top:2px;">'+desc+'</div>';
       html += '</div>';
-
-      // ── Meta grid: TXN + Created By + Source ──
-      html += '<div style="padding:8px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;border-bottom:1px solid rgba(220,38,38,.07);">';
-      html += '<div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div>';
-      html += '<div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.06);padding:3px 8px;border-radius:5px;display:inline-block;">'+txn+'</div></div>';
-      html += '<div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Created By</div>';
-      html += '<div style="font-size:12px;font-weight:600;color:#374151;">'+createdBy+'</div></div>';
-      if(srcErr){
-        html += '<div style="grid-column:span 2;"><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Source of Error Reported</div>';
-        html += '<div style="font-size:12px;font-weight:600;color:#374151;">'+srcErr+'</div></div>';
-      }
-      html += '</div>';
-
-      // ── Comment blocks ──
-      let hasComments = clientCmt || userCmt || tlCmt;
-      if(hasComments){
-        html += '<div style="padding:8px 14px 10px;display:flex;flex-direction:column;gap:7px;">';
-        if(clientCmt){
-          html += '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔴 Client Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+clientCmt+'</div></div>';
-        }
-        if(userCmt){
-          html += '<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👤 User Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+userCmt+'</div></div>';
-        }
-        if(tlCmt){
-          html += '<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👔 Team Lead Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+tlCmt+'</div></div>';
-        }
-        html += '</div>';
-      }
-
-      // ── Acknowledged badge ──
-      if(ackBy){
-        html += '<div style="padding:0 14px 10px;">';
-        html += '<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">';
-        html += '<span style="font-size:13px;">✅</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by '+ackBy+(ackAt?' · '+String(ackAt).slice(0,10):'')+'</span></div></div>';
-      }
-
-      html += '</div>'; // end card
     });
-    html += '</div></div>'; // end section
+    html += '</div></div>';
   }
 
   if(!html){
