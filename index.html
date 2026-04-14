@@ -17559,6 +17559,23 @@ function renderRelease2(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
+  // Fetch true total count from DB (DB.release2 is 30-day window only)
+  // Run async, update card when result arrives — no page block
+  if(_supa && !(CU && CU.task && CU.task!=='Manager' && !isSuperLead())){
+    _supa.from('release').select('id',{count:'exact',head:true}).then(({count,error})=>{
+      if(!error && count !== null){
+        const card=document.getElementById('rlTotalCard');
+        if(card) card.textContent=count;
+        const rlC=document.getElementById('rlCount');
+        // Only update rlCount badge if no filter is active
+        if(rlC && (!window._pgState||!window._pgState['rl']||window._pgState['rl'].filtered.length===all.length)){
+          rlC.textContent=count+' records';
+        }
+        // Cache true count for this session
+        window._rlTrueCount=count;
+      }
+    }).catch(()=>{});
+  }
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🚀 Release <span class="pbadge">Live</span></div>
@@ -17674,9 +17691,14 @@ function renderRLRows(data){
   }).join('');
   const cnt=document.getElementById('rlCount');
   const _filtered=_pgState['rl']?.filtered;
-  const _displayLen = (_filtered && _filtered.length < (DB.release2||[]).length) ? _filtered.length : (_filtered?.length ?? data.length);
+  const _allScope=_scopeByUser(DB.release2,'user');
+  const _isFiltered = _filtered && _filtered.length < _allScope.length;
+  // If filtered: show filtered count. If no filter: show true DB count (if fetched) else local count
+  const _displayLen = _isFiltered ? _filtered.length : (window._rlTrueCount ?? (_filtered?.length ?? data.length));
   if(cnt) cnt.textContent=_displayLen+' records';
-  const _rlTotal=document.getElementById('rlTotalCard');if(_rlTotal)_rlTotal.textContent=_displayLen;
+  const _rlTotal=document.getElementById('rlTotalCard');
+  if(_rlTotal && !_isFiltered && window._rlTrueCount) _rlTotal.textContent=window._rlTrueCount;
+  else if(_rlTotal) _rlTotal.textContent=_displayLen;
 }
 
 function updateRLStatus(dbid){
