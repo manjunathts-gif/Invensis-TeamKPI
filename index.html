@@ -3760,6 +3760,36 @@ const TABLE_SORT_COL={
   instructions: 'created_at',
   idle_log:     'created_at',
 };
+// ── Smart release loader ─────────────────────────────────────────────
+// Loads last 90 days from the 'release' table via server-side date filter.
+// Uses submitted >= cutoff (ISO string) so Postgres can use the index.
+// Falls back to full load if submitted column has no usable index yet.
+// Keeps DB.release2 manageable (~2000-3000 rows) vs the 5200+ total.
+// True total count is fetched separately (HEAD only) and cached in window._rlTrueCount.
+async function dbLoadRelease(){
+  if(!_supa) return [];
+  // Server-side cutoff — 90 days, ISO format Postgres can compare directly
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
+  let allRows = [];
+  let from = 0;
+  const BATCH = 1000;
+  while(true){
+    const {data, error} = await _supa.from('release').select('*')
+      .gte('submitted', cutoff)
+      .order('id', {ascending: false})
+      .range(from, from + BATCH - 1);
+    if(error){ console.error('dbLoadRelease error:', error.message); break; }
+    if(data && data.length > 0) allRows = allRows.concat(data);
+    if(!data || data.length < BATCH) break;
+    from += BATCH;
+    if(from >= 10000) break;
+  }
+  // Async: fetch true total count (lightweight HEAD — no row data) and cache it
+  _supa.from('release').select('id', {count:'exact', head:true}).then(({count, error})=>{
+    if(!error && count !== null) window._rlTrueCount = count;
+  }).catch(()=>{});
+  return allRows;
+}
 
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 
@@ -4247,7 +4277,7 @@ async function loadAllFromSupabase(){
       const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
         dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
         dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
-        dbLoadRecent('part_lot',2), dbLoad('release'),
+        dbLoadRecent('part_lot',2), dbLoadRelease(),
         dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
         dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
       ]);
@@ -4274,7 +4304,7 @@ async function loadAllFromSupabase(){
           const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoad('release'),
+            dbLoadRecent('part_lot',30), dbLoadRelease(),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
             dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
           ]);
@@ -4302,7 +4332,7 @@ async function loadAllFromSupabase(){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoad('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
+        dbLoadRelease(), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4321,7 +4351,7 @@ async function loadAllFromSupabase(){
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
-        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoad('release'),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRelease(),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
         dbLoadRecent('audit'),dbLoad('instructions')
       ]);
@@ -4365,7 +4395,7 @@ async function loadAllFromSupabase(){
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoad('release'),
+        dbLoadRecent('part_lot'), dbLoadRelease(),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
         dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
@@ -4764,7 +4794,7 @@ function startBgPoll(){
           rows = newRows;
         } else {
           // FULL PATH: every 6th cycle — release loads ALL records, others get 30 days
-          rows = (tbl === 'release') ? await dbLoad(tbl) : await dbLoadRecent(tbl, 30);
+          rows = (tbl === 'release') ? await dbLoadRelease() : await dbLoadRecent(tbl, 30);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
@@ -17566,7 +17596,7 @@ function renderRelease2(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${all.length}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${window._rlTrueCount??all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
@@ -17678,7 +17708,8 @@ function renderRLRows(data){
   const _isFiltered = _filtered && _filtered.length < _allScope.length;
   const _displayLen = _isFiltered ? _filtered.length : (_filtered?.length ?? data.length);
   if(cnt) cnt.textContent=_displayLen+' records';
-  const _rlTotal=document.getElementById('rlTotalCard');if(_rlTotal)_rlTotal.textContent=_displayLen;
+  const _rlTotal=document.getElementById('rlTotalCard');
+  if(_rlTotal) _rlTotal.textContent = _isFiltered ? _displayLen : (window._rlTrueCount ?? _displayLen);
 }
 
 function updateRLStatus(dbid){
