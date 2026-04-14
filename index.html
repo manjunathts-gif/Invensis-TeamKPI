@@ -4254,7 +4254,7 @@ async function loadAllFromSupabase(){
       if(bar) bar.style.width='100%';
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
-      showToast('✅ App ready — loading 30-day history in background...');
+      showToast('✅ App ready — loading full history in background. Counts update shortly...');
 
       // ── PHASE 2: Load full 30-day history silently in background ──────────
       setTimeout(async()=>{
@@ -4278,11 +4278,12 @@ async function loadAllFromSupabase(){
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
           DB.audit     = auditF.map(mapAudit);
           _saveTaskCache();
-          if(CU && !isPanelOpen()) refreshPage();
-          showToast('✅ 30-day history loaded — '+DB.release2.length+' Release records');
+          // Always refresh so all pages show full 30-day counts
+          if(CU) refreshPage();
+          showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
           console.log('✅ Manager background history load complete');
         }catch(bg){ console.warn('Background history load error:', bg.message); }
-      }, 1500); // start after user is already in the app
+      }, 500); // start immediately after initial render
 
 
     } else if(isRlTL){
@@ -6269,17 +6270,17 @@ function _clearDataCache(){
   DATA_KEYS.forEach(k => localStorage.removeItem(k));
   console.log('[Cache] Cleared stale data cache on login');
 }
-const TASK_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
+const TASK_CACHE_TTL = 8 * 60 * 60 * 1000; // 8 hours — covers a full shift
 
 function _saveTaskCache(){
   try{
     // Only cache if we have meaningful data
     const totalRecs = DB.lvs.length + DB.cls.length + DB.release2.length;
     if(totalRecs < 5) return;
-    // SPEED FIX: skip save if data hasn't grown (avoid unnecessary localStorage writes)
+    // Only skip write if count unchanged AND dataset is large (avoids phase2 getting skipped)
     const _prevCount = parseInt(localStorage.getItem('kpi_task_cache_count')||'0');
-    if(totalRecs === _prevCount) return; // no change — skip write
     localStorage.setItem('kpi_task_cache_count', String(totalRecs));
+    if(totalRecs === _prevCount && totalRecs > 100) return; // no change in large dataset — skip write
     const cache = {
       ts: Date.now(),
       role: CU?.role||'',
@@ -9040,10 +9041,12 @@ async function _proceedWithLogin(lu, u){
         : 'Connected in '+_pingMs+'ms — loading data...';
     }catch(e){}
     if(msg) msg.textContent='Loading your data...';
+    // Show cached data instantly while fresh data loads
+    if(!window._dbLoaded) _restoreTaskCache();
     try{
       await Promise.race([
         loadAllFromSupabase(),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),30000)) // 30s — allow for Supabase cold start
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),45000)) // 45s — Supabase cold start
       ]);
     } catch(e){
       console.warn('User data load failed — booting offline:',e.message);
