@@ -4247,7 +4247,7 @@ async function loadAllFromSupabase(){
       const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
         dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
         dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
-        dbLoadRecent('part_lot',2), dbLoadRecent('release',2),
+        dbLoadRecent('part_lot',2), dbLoad('release'),
         dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
         dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
       ]);
@@ -4274,7 +4274,7 @@ async function loadAllFromSupabase(){
           const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoadRecent('release',30),
+            dbLoadRecent('part_lot',30), dbLoad('release'),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
             dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
           ]);
@@ -4302,7 +4302,7 @@ async function loadAllFromSupabase(){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoadRecent('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
+        dbLoad('release'), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4321,7 +4321,7 @@ async function loadAllFromSupabase(){
              partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
-        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRecent('release'),
+        dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoad('release'),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
         dbLoadRecent('audit'),dbLoad('instructions')
       ]);
@@ -4365,7 +4365,7 @@ async function loadAllFromSupabase(){
       const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
         dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoadRecent('release'),
+        dbLoadRecent('part_lot'), dbLoad('release'),
         dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
         dbLoadRecent('client_errors'), dbLoad('clients')
       ]);
@@ -4763,8 +4763,8 @@ function startBgPoll(){
           if(!newRows || newRows.length === 0) continue; // nothing new — skip
           rows = newRows;
         } else {
-          // FULL PATH: every 6th cycle — fetch last 30 days only (date-filtered)
-          rows = await dbLoadRecent(tbl, 30);
+          // FULL PATH: every 6th cycle — release loads ALL records, others get 30 days
+          rows = (tbl === 'release') ? await dbLoad(tbl) : await dbLoadRecent(tbl, 30);
         }
         if(!rows || rows.length === 0) continue;
         const current=arr();
@@ -17559,23 +17559,6 @@ function renderRelease2(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
-  // Fetch true total count from DB (DB.release2 is 30-day window only)
-  // Run async, update card when result arrives — no page block
-  if(_supa && !(CU && CU.task && CU.task!=='Manager' && !isSuperLead())){
-    _supa.from('release').select('id',{count:'exact',head:true}).then(({count,error})=>{
-      if(!error && count !== null){
-        const card=document.getElementById('rlTotalCard');
-        if(card) card.textContent=count;
-        const rlC=document.getElementById('rlCount');
-        // Only update rlCount badge if no filter is active
-        if(rlC && (!window._pgState||!window._pgState['rl']||window._pgState['rl'].filtered.length===all.length)){
-          rlC.textContent=count+' records';
-        }
-        // Cache true count for this session
-        window._rlTrueCount=count;
-      }
-    }).catch(()=>{});
-  }
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🚀 Release <span class="pbadge">Live</span></div>
@@ -17693,12 +17676,9 @@ function renderRLRows(data){
   const _filtered=_pgState['rl']?.filtered;
   const _allScope=_scopeByUser(DB.release2,'user');
   const _isFiltered = _filtered && _filtered.length < _allScope.length;
-  // If filtered: show filtered count. If no filter: show true DB count (if fetched) else local count
-  const _displayLen = _isFiltered ? _filtered.length : (window._rlTrueCount ?? (_filtered?.length ?? data.length));
+  const _displayLen = _isFiltered ? _filtered.length : (_filtered?.length ?? data.length);
   if(cnt) cnt.textContent=_displayLen+' records';
-  const _rlTotal=document.getElementById('rlTotalCard');
-  if(_rlTotal && !_isFiltered && window._rlTrueCount) _rlTotal.textContent=window._rlTrueCount;
-  else if(_rlTotal) _rlTotal.textContent=_displayLen;
+  const _rlTotal=document.getElementById('rlTotalCard');if(_rlTotal)_rlTotal.textContent=_displayLen;
 }
 
 function updateRLStatus(dbid){
