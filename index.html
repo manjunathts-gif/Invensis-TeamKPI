@@ -1818,6 +1818,7 @@ body.style-modern .fs2:focus{
 .hd-date-txt{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px;}
 .hd-live{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:hdpulse 1.4s infinite;flex-shrink:0;}
 @keyframes hdpulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+@keyframes errBlink{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.5;transform:scale(1.18);}}
 .hd-meta{padding:11px 22px;background:#f8f9fd;border-bottom:1px solid #eceef5;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;flex-shrink:0;}
 .hd-av{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#3F2B96,#A8C0FF);}
 .hd-body{padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:11px;}
@@ -2098,44 +2099,41 @@ body.style-modern .fs2:focus{
 <div class="overlay" id="overlay"></div>
 
 <!-- ═══ RELEASE CLIENT ERROR HISTORY POPUP ═══ -->
-<div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
-<div id="rlErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
-  background:#fff;flex-direction:column;overflow:hidden;
-  border-left:4px solid #dc2626;
-  box-shadow:-8px 0 60px rgba(0,0,0,.22);
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+<div id="rlErrPopup" style="display:none;position:fixed;top:0;left:0;bottom:0;width:420px;max-width:92vw;z-index:300;
+  background:#fff;box-shadow:8px 0 40px rgba(0,8,51,.18);
+  display:none;flex-direction:column;overflow:hidden;
+  border-right:3px solid #e11d48;">
 
   <!-- Header -->
-  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
-    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
+  <div style="background:linear-gradient(135deg,#7f1d1d,#dc2626,#f87185);padding:18px 20px;flex-shrink:0">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:18px">⚠️</div>
         <div>
-          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
-          <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
+          <div style="font-size:16px;font-weight:800;color:#fff">Error History Alert</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:1px" id="rlErrPopupSub">Loading...</div>
         </div>
       </div>
-      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
-        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
+      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;font-weight:700">✕</button>
     </div>
-    <div id="rlErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
+    <!-- Error count badge -->
+    <div id="rlErrPopupBadges" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"></div>
   </div>
 
   <!-- Body -->
-  <div id="rlErrPopupBody" style="flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#fafafa;"></div>
+  <div style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px" id="rlErrPopupBody"></div>
 
   <!-- Acknowledgment footer -->
-  <div style="flex-shrink:0;padding:16px 20px 20px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
-    <label id="rlErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:14px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);border-radius:12px;transition:all .15s;margin-bottom:12px;"
-      onmouseover="this.style.background='#fff0f0';this.style.borderColor='rgba(220,38,38,.4)'"
-      onmouseout="this.style.background='#fff8f8';this.style.borderColor='rgba(220,38,38,.2)'">
-      <input type="checkbox" id="rlErrAckBox" onchange="_rlErrAckChanged()" style="width:20px;height:20px;accent-color:#dc2626;flex-shrink:0;margin-top:2px;cursor:pointer"/>
-      <span style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.6;">I have reviewed all error records &amp; instructions above and acknowledge them before processing this shipment</span>
+  <div style="flex-shrink:0;padding:14px 18px;background:#fff7f7;border-top:2px solid rgba(220,38,38,.2)">
+    <label id="rlErrAckLabel" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:10px;transition:all .15s">
+      <input type="checkbox" id="rlErrAckBox" onchange="_rlErrAckChanged()" style="width:18px;height:18px;accent-color:#dc2626;flex-shrink:0;margin-top:1px;cursor:pointer"/>
+      <span style="font-size:13px;font-weight:700;color:#374060;line-height:1.5">I have reviewed the error history and acknowledge all records before processing this shipment</span>
     </label>
     <button id="rlErrAckBtn" onclick="_rlErrConfirm()" disabled
-      style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
-      &#10003; Acknowledged — Continue to Form
+      style="width:100%;margin-top:10px;padding:12px;border-radius:10px;border:none;
+      background:#e5e7eb;color:#9ca3af;font-size:14px;font-weight:800;cursor:not-allowed;
+      font-family:var(--font);transition:all .2s">
+      ✅ Acknowledged — Continue
     </button>
   </div>
 </div>
@@ -3006,22 +3004,15 @@ body.style-modern .fs2:focus{
         <input class="fpi" id="rl_client" type="number" placeholder="Enter client number" oninput="lookupClientRL(this);rlCheckClientErrors()" autocomplete="off"/>
         <div class="ferr" id="rle_client" style="display:none">Client number must be 4-6 digits</div>
       </div>
-      <!-- Client Error Alert — handled by rlErrPopup floating panel -->
-      <div id="rl_client_alert" style="display:none" data-client-no="">
-        <div id="rl_client_error_list"></div>
-        <input type="checkbox" id="rl_acknowledge" style="display:none"/>
-      </div>
-      <!-- Inline trigger badge — shown when errors found -->
-      <div id="rl_err_trigger_badge" style="display:none;margin-top:12px;padding:11px 14px;
-        background:rgba(220,38,38,.07);border:2px solid rgba(220,38,38,.3);border-radius:12px;
-        align-items:center;gap:10px;cursor:pointer;transition:background .15s"
-        onclick="_openRlErrPopup()">
-        <span style="font-size:20px;flex-shrink:0">&#9888;&#65039;</span>
-        <div style="flex:1;min-width:0">
-          <div id="rl_err_badge_title" style="font-size:13px;font-weight:800;color:#dc2626;line-height:1.3">Error History Found</div>
-          <div id="rl_err_badge_sub" style="font-size:11px;color:#b91c1c;margin-top:2px">Click to review &amp; acknowledge before processing</div>
-        </div>
-        <span style="font-size:11px;font-weight:700;color:#dc2626;background:rgba(220,38,38,.12);padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">View &#8594;</span>
+      <!-- Client Error Alert -->
+      <div id="rl_client_alert" style="display:none;margin-top:10px;padding:14px 16px;background:rgba(225,29,72,.07);border:1.5px solid rgba(225,29,72,.3);border-radius:10px">
+        <div style="font-weight:800;font-size:13px;color:var(--rose);margin-bottom:8px">⚠️ Error History for this Client</div>
+        <div id="rl_client_error_list" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:6px">📌 Review error patterns above before processing this shipment.</div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text)">
+          <input type="checkbox" id="rl_acknowledge" style="margin-top:2px;width:15px;height:15px;accent-color:var(--rose)"/>
+          I have reviewed the error history and acknowledge before processing
+        </label>
       </div>
     </div>
 
@@ -3751,77 +3742,69 @@ const TABLE_SORT_COL={
 
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 
-// Load only recent rows — last N days (keeps payload small for large teams)
+// Load only recent rows — last N days with server-side date filter
 async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
-
-  // Fetch ALL rows by id DESC — no server-side date filter to avoid text comparison
-  // issues with mixed date formats (ISO vs DD-MM-YYYY in same column).
-  // Tables are small enough (max ~5000 rows) that fetching all is fine.
-  // Client-side filter below handles all date formats correctly.
   const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const cutoffISO = new Date(cutoffMs).toISOString();
 
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
 
   while(true){
+    // Server-side filter: only fetch rows within the window — cuts HTTP requests dramatically
     const {data, error} = await _supa.from(table).select('*')
-      .order('id', {ascending:false})
+      .gte(dateCol, cutoffISO)
+      .order(dateCol, {ascending:false})
       .range(from, from + BATCH - 1);
 
     if(error){
-      console.error('dbLoadRecent '+table+' failed:', error.message);
-      break;
+      // Column missing or wrong format — fall back to full fetch + client-side filter
+      let fallbackRows = [], f2 = 0;
+      while(true){
+        const {data:d2, error:e2} = await _supa.from(table).select('*')
+          .order('id', {ascending:false}).range(f2, f2 + BATCH - 1);
+        if(e2) break;
+        if(d2 && d2.length > 0) fallbackRows = fallbackRows.concat(d2);
+        if(!d2 || d2.length < BATCH) break;
+        f2 += BATCH;
+        if(f2 >= 10000) break;
+      }
+      return _clientSideDateFilter(fallbackRows, dateCol, cutoffMs);
     }
+
     if(data && data.length > 0) allRows = allRows.concat(data);
-    if(!data || data.length < BATCH) break; // reached last page
+    if(!data || data.length < BATCH) break;
     from += BATCH;
-    if(from >= 10000) break; // hard safety cap
+    if(from >= 10000) break;
   }
 
-  // Client-side date filter — handles all 3 formats stored in DB:
-  //   ISO:        2026-04-01T14:36:31-05:00  → new Date() natively
-  //   DD-MM-YYYY: 31-03-2026 12:37:21        → reorder to YYYY-MM-DDTHH:MM:SS
-  //   D/M/YYYY:   1/4/2026 16:58             → reorder to YYYY-MM-DDTHH:MM:SS
-  const filtered = allRows.filter(r => {
+  return allRows;
+}
+
+// Client-side date filter — handles ISO, DD-MM-YYYY, and D/M/YYYY formats
+function _clientSideDateFilter(rows, dateCol, cutoffMs){
+  return rows.filter(r => {
     const raw = r[dateCol] || r.created_at;
-    if(!raw || raw === '—' || raw === '') return true; // no date — include
+    if(!raw || raw === '—' || raw === '') return true;
     const s = String(raw).trim();
     let ms = NaN;
-
-    // 1. ISO format — new Date() handles natively (2026-04-01T...)
     const d1 = new Date(s);
     if(!isNaN(d1)){ ms = d1.getTime(); }
-
-    // 2. DD-MM-YYYY HH:MM:SS  e.g. "31-03-2026 12:37:21"
-    // Also handles malformed double-colon e.g. "03-04-2026 14:00::00"
     if(isNaN(ms)){
-      const sClean = s.replace(/::/g,':');
-      const m = sClean.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
-      if(m){
-        const d2 = new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00'));
-        if(!isNaN(d2)) ms = d2.getTime();
-      }
+      const sC = s.replace(/::/g,':');
+      const m = sC.match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
+      if(m){ const d2=new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00')); if(!isNaN(d2)) ms=d2.getTime(); }
     }
-
-    // 3. D/M/YYYY H:MM  e.g. "1/4/2026 16:58" (day/month/year, no leading zeros)
     if(isNaN(ms)){
-      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))? *$/);
-      if(m){
-        const dd = m[1].padStart(2,'0');
-        const mm = m[2].padStart(2,'0');
-        const d3 = new Date(m[3]+'-'+mm+'-'+dd+'T'+(m[4]||'00:00:00'));
-        if(!isNaN(d3)) ms = d3.getTime();
-      }
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))?/);
+      if(m){ const d3=new Date(m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')+'T'+(m[4]||'00:00:00')); if(!isNaN(d3)) ms=d3.getTime(); }
     }
-
-    if(isNaN(ms)) return true; // unparseable — always include
+    if(isNaN(ms)) return true;
     return ms >= cutoffMs;
   });
-
-  return filtered;
 }
 
 // Paginated fetch — gets ALL rows even if > 1000
@@ -8856,15 +8839,13 @@ async function doLogin(){
       const msg=document.getElementById('loadingMsg');
       if(overlay) overlay.style.display='flex';
       if(msg) msg.textContent='Loading all data...';
-      // Load with timeout — if fails, boot anyway with cached/empty data
+      // ── Manager: boot app immediately, load data fully in background ──
+      // Do NOT use Promise.race with a timeout — it kills Phase 2 before it runs.
+      // Instead: show the app shell right away, let the full load run to completion.
       try{
-        await Promise.race([
-          loadAllFromSupabase(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000)) // 15s for admin
-        ]);
+        await loadAllFromSupabase();
       } catch(e){
-        console.warn('Admin data load timed out or failed — booting with cached data:',e.message);
-        // Try restore from cache
+        console.warn('Admin data load failed — booting with cached data:',e.message);
         try{
           const cLU=localStorage.getItem('kpi_lu_cache');
           const cU=localStorage.getItem('kpi_users_cache');
@@ -9043,7 +9024,7 @@ async function _proceedWithLogin(lu, u){
     try{
       await Promise.race([
         loadAllFromSupabase(),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),30000)) // 30s — allow for Supabase cold start
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),60000)) // 60s — allow for Supabase cold start + large datasets
       ]);
     } catch(e){
       console.warn('User data load failed — booting offline:',e.message);
@@ -18197,8 +18178,6 @@ function openRelease2(){
   });
   const rla=document.getElementById('rl_client_alert');if(rla)rla.style.display='none';
   const ack=document.getElementById('rl_acknowledge');if(ack)ack.checked=false;
-  const rlBadge=document.getElementById('rl_err_trigger_badge');if(rlBadge)rlBadge.style.display='none';
-  _closeRlErrPopup();
   _closeRlErrPopup(); window._rlErrClientNo=null;
   document.getElementById('rl_mode').value='';
   document.getElementById('rl_status').value='';
@@ -18382,12 +18361,7 @@ function rlCheckClientErrors(){
 
   const clientErrors=(DB.errors||[]).filter(e=>e.client==clientNo);
   const clientInstructions=(DB.instructions||[]).filter(r=>String(r.clientNo)==String(clientNo));
-  if(clientErrors.length===0&&clientInstructions.length===0){
-    _closeRlErrPopup();
-    const badge=document.getElementById('rl_err_trigger_badge');
-    if(badge) badge.style.display='none';
-    return;
-  }
+  if(clientErrors.length===0&&clientInstructions.length===0){ _closeRlErrPopup(); return; }
 
   const clientName=clientErrors[0]?.clientName||clientInstructions[0]?.clientName||
     document.getElementById('rl_clientname')?.value||'Client #'+clientNo;
@@ -18452,23 +18426,31 @@ function rlCheckClientErrors(){
     }
     html+=`</div>`;
 
-    // Recent errors table
+    // Recent errors table — now shows TXN and Client Comments
     const recent=[...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0)).slice(0,5);
     html+=`<div style="border-top:1px solid rgba(220,38,38,.15);padding:10px 14px">
       <div style="font-size:11px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Recent 5 Errors</div>`;
     recent.forEach(e=>{
-      html+=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5">
-        <span style="font-size:10px;color:#9ca3af;min-width:80px">${e.date||String(e._created||'').slice(0,10)}</span>
-        <span style="background:rgba(220,38,38,.1);color:#dc2626;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;flex:1">${e.errorType||'—'}</span>
-        <span style="font-size:11px;color:#6b7280">${e.mode||'—'}</span>
+      const txnVal = e.txn ? `<span style="font-family:var(--mono);font-size:11px;font-weight:800;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:1px 7px">TXN: ${e.txn}</span>` : '';
+      const clientCommentHtml = (e.clientComments && e.clientComments !== '—' && e.clientComments.trim())
+        ? `<div style="margin-top:5px;padding:5px 8px;background:#fef9c3;border-left:3px solid #eab308;border-radius:0 6px 6px 0;font-size:11px;color:#713f12;line-height:1.5"><span style="font-weight:800;text-transform:uppercase;letter-spacing:.3px;font-size:10px">Client Comments: </span>${e.clientComments}</div>`
+        : '';
+      html+=`<div style="padding:7px 0;border-bottom:1px solid #f5f5f5">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:${clientCommentHtml?'3':'0'}px">
+          <span style="font-size:10px;color:#9ca3af;min-width:80px">${e.date||String(e._created||'').slice(0,10)}</span>
+          <span style="background:rgba(220,38,38,.1);color:#dc2626;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700">${e.errorType||'—'}</span>
+          <span style="font-size:11px;color:#6b7280">${e.mode||'—'}</span>
+          ${txnVal}
+        </div>
+        ${clientCommentHtml}
       </div>`;
     });
     html+=`</div></div>`;
   }
 
-  // Warning message
+  // Warning message with blinking alert
   html+=`<div style="padding:12px 14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:flex-start;gap:8px">
-    <span style="font-size:16px;flex-shrink:0">⚡</span>
+    <span style="font-size:20px;flex-shrink:0;animation:errBlink 1s infinite;display:inline-block">⚠️</span>
     <span>Review all error patterns above carefully before processing this shipment. Acknowledge to proceed.</span>
   </div>`;
 
@@ -18483,27 +18465,10 @@ function rlCheckClientErrors(){
   const oldAck=document.getElementById('rl_acknowledge');
   if(oldAck) oldAck.checked=false;
 
-  // Show trigger badge
-  const badge=document.getElementById('rl_err_trigger_badge');
-  if(badge){
-    badge.style.display='flex';
-    badge.style.background='rgba(220,38,38,.07)';
-    badge.style.borderColor='rgba(220,38,38,.3)';
-    badge.onclick=_openRlErrPopup;
-    const bt=document.getElementById('rl_err_badge_title');
-    const bs=document.getElementById('rl_err_badge_sub');
-    const ba=badge.querySelector('span:last-child');
-    if(bt){bt.textContent='Error History Found';bt.style.color='#dc2626';}
-    if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#b91c1c';}
-    if(ba){ba.textContent='View →';ba.style.color='#dc2626';ba.style.background='rgba(220,38,38,.12)';}
-  }
-  // Reset ack state
-  const rlAckBox=document.getElementById('rlErrAckBox');
-  const rlOldAck=document.getElementById('rl_acknowledge');
-  if(rlAckBox){rlAckBox.checked=false;_rlErrAckChanged();}
-  if(rlOldAck) rlOldAck.checked=false;
-  // Auto-open popup
-  setTimeout(_openRlErrPopup, 150);
+  // Show popup
+  const popup=document.getElementById('rlErrPopup');
+  if(popup){ popup.style.display='flex'; }
+  // Store client no so we can sync acknowledgment
   window._rlErrClientNo=clientNo;
 }
 
@@ -18524,40 +18489,16 @@ function _rlErrAckChanged(){
 function _rlErrConfirm(){
   const ackBox=document.getElementById('rlErrAckBox');
   if(!ackBox||!ackBox.checked) return;
+  // Sync to old inline checkbox so save validation passes
   const oldAck=document.getElementById('rl_acknowledge');
   if(oldAck) oldAck.checked=true;
-  // Update trigger badge to green acknowledged state
-  const badge=document.getElementById('rl_err_trigger_badge');
-  if(badge){
-    badge.style.background='rgba(16,185,129,.07)';
-    badge.style.borderColor='rgba(16,185,129,.35)';
-    const bt=document.getElementById('rl_err_badge_title');
-    const bs=document.getElementById('rl_err_badge_sub');
-    const ba=badge.querySelector('span:last-child');
-    if(bt){bt.textContent='✅ Error History Acknowledged';bt.style.color='#059669';}
-    if(bs){bs.textContent='You may now proceed to save';bs.style.color='#047857';}
-    if(ba){ba.textContent='Done ✓';ba.style.color='#059669';ba.style.background='rgba(16,185,129,.12)';}
-    badge.onclick=_openRlErrPopup;
-  }
   _closeRlErrPopup();
   showToast('✅ Error history acknowledged — proceed with entry');
 }
 
-function _openRlErrPopup(){
-  const popup=document.getElementById('rlErrPopup');
-  const overlay=document.getElementById('rlErrPopupOverlay');
-  if(!popup) return;
-  popup.style.display='flex';
-  if(overlay) overlay.style.display='block';
-  requestAnimationFrame(()=>{ popup.style.transform='translateX(0)'; });
-}
 function _closeRlErrPopup(){
   const popup=document.getElementById('rlErrPopup');
-  const overlay=document.getElementById('rlErrPopupOverlay');
-  if(!popup) return;
-  popup.style.transform='translateX(100%)';
-  if(overlay) overlay.style.display='none';
-  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
+  if(popup) popup.style.display='none';
 }
 
 // ── CLS: same client error + instruction check as Release ──
@@ -22786,16 +22727,29 @@ function _buildLvsErrPopup(clientNo){
       const dateStr = e.date || String(e._created||'').slice(0,10) || '—';
       const errType = e.errorType || '—';
       const mode    = e.mode || '—';
-      const desc    = e.errorDescription || e.description || '';
+      const txnVal  = e.txn ? `<span style="font-family:var(--mono);font-size:11px;font-weight:800;color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:1px 7px;white-space:nowrap">TXN: ${e.txn}</span>` : '';
+      const clientCommentHtml = (e.clientComments && e.clientComments !== '—' && String(e.clientComments).trim())
+        ? `<div style="margin-top:6px;padding:6px 10px;background:#fef9c3;border-left:3px solid #eab308;border-radius:0 7px 7px 0;font-size:12px;color:#713f12;line-height:1.55"><span style="font-weight:800;text-transform:uppercase;letter-spacing:.3px;font-size:10px;display:block;margin-bottom:2px">💬 Client Comments</span>${e.clientComments}</div>`
+        : '';
       html += '<div style="padding:10px 14px;background:#fff8f8;border:1px solid rgba(220,38,38,.15);border-radius:10px;border-left:4px solid #dc2626;">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:2px;">';
       html += '<span style="font-size:12px;font-weight:700;color:#dc2626;">'+errType+'</span>';
+      html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
       html += '<span style="font-size:11px;color:#6b7280;font-family:var(--mono);">'+dateStr+' · '+mode+'</span>';
-      html += '</div>';
-      if(desc) html += '<div style="font-size:12px;color:#374151;line-height:1.6;margin-top:2px;">'+desc+'</div>';
+      html += txnVal;
+      html += '</div></div>';
+      html += clientCommentHtml;
       html += '</div>';
     });
     html += '</div></div>';
+  }
+
+  // Blinking warning banner — shown whenever there are any records
+  if(clientErrors.length || clientInstructions.length){
+    html += '<div style="padding:13px 16px;background:#fffbeb;border:2px solid #fcd34d;border-radius:12px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:center;gap:10px;">';
+    html += '<span style="font-size:22px;flex-shrink:0;animation:errBlink 1s infinite;display:inline-block">⚠️</span>';
+    html += '<span style="line-height:1.6">Be careful — this client has error history on file.<br><strong>Review all records &amp; instructions above carefully before processing.</strong></span>';
+    html += '</div>';
   }
 
   if(!html){
