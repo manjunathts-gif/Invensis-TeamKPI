@@ -15908,6 +15908,7 @@ function renderAudit(c){
 
 function switchAuditTab(tab){
   window._auditActiveTab=tab;
+  window._auditPageNum=1; // reset to page 1 on tab switch
   ['pending','done','all'].forEach(t=>{const b=document.getElementById('atab_'+t);if(b)b.classList.toggle('active',t===tab);});
   renderAuditTab(tab);
   const _ar=window._auditTeamRecords||[];
@@ -15926,6 +15927,14 @@ function clearAuditFilter(){
   filterAuditTab();
 }
 
+const AUDIT_PAGE_SIZE = 50;
+window._auditPageNum = window._auditPageNum || 1;
+
+function pgGoAudit(p){
+  window._auditPageNum = p;
+  renderAuditTab(window._auditActiveTab||'pending');
+}
+
 function renderAuditTab(tab){
   const q=(document.getElementById('audit_search')?.value||'').toLowerCase();
   const d1=document.getElementById('audit_fd1')?.value;
@@ -15934,25 +15943,37 @@ function renderAuditTab(tab){
   const all=window._auditTeamRecords||[];
   let data=tab==='pending'?all.filter(r=>!auditedTxns.has(r.txn)):
            tab==='done'?all.filter(r=>auditedTxns.has(r.txn)):all;
-  // Date filter: filter by the record's _created date (when release record was added)
   if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
   if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
-  if(q) data=data.filter(r=>(r.txn+'').includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q));
+  if(q){ window._auditPageNum=1; data=data.filter(r=>(r.txn+'').includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
   const cont=document.getElementById('auditTabContent');
   if(!cont)return;
   if(!data.length){
     cont.innerHTML=`<div class="empty"><div class="empty-ico">${tab==='pending'?'🎉':'🔍'}</div><div class="empty-t">${tab==='pending'?'All audited! Great work!':'No records found'}</div></div>`;
     return;
   }
+  // Paginate — only render 50 rows at a time
+  const totalPages = Math.max(1, Math.ceil(data.length / AUDIT_PAGE_SIZE));
+  window._auditPageNum = Math.max(1, Math.min(window._auditPageNum||1, totalPages));
+  const pageData = data.slice((window._auditPageNum-1)*AUDIT_PAGE_SIZE, window._auditPageNum*AUDIT_PAGE_SIZE);
   // All tabs show unified table
-  cont.innerHTML=`<div style="overflow-x:auto"><table class="dt">
+  const _auditOffset = (window._auditPageNum-1)*AUDIT_PAGE_SIZE;
+  cont.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;margin-bottom:6px">
+    <span style="font-size:12px;color:var(--text3)">${data.length} records · page ${window._auditPageNum} of ${totalPages}</span>
+    <div style="display:flex;gap:6px">
+      ${window._auditPageNum>1?`<button onclick="pgGoAudit(${window._auditPageNum-1})" style="padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:12px">← Prev</button>`:''}
+      ${window._auditPageNum<totalPages?`<button onclick="pgGoAudit(${window._auditPageNum+1})" style="padding:4px 12px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-size:12px">Next →</button>`:''}
+    </div>
+  </div>
+  <div style="overflow-x:auto"><table class="dt">
     <thead><tr>
       <th>#</th><th>Txn</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Team</th><th>Mode</th><th>User</th><th>Submitted</th>
       <th>Audit By</th><th>Error Type</th><th>Score %</th><th>Double Sign</th><th>Comments</th><th>Audit Start</th><th>Audit End</th>
       ${tab!=='done'?'<th>Action</th>':''}
       ${isAdmin()?'<th>Admin</th>':''}
     </tr></thead>
-    <tbody>${data.map((r,i)=>{
+    <tbody>${pageData.map((r,i)=>{
+      const i2 = i + _auditOffset;
       const ar=window._auditByTxn.get(String(r.txn));
       if(ar){
         // Audited row
@@ -15960,7 +15981,7 @@ function renderAuditTab(tab){
         const col=sc>=95?'#166534':sc>=80?'#b45309':sc>=70?'#d97706':'#991b1b';
         const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';
         return`<tr style="background:#f8fff8">
-          <td class="mono" style="color:var(--text3)">${i+1}</td>
+          <td class="mono" style="color:var(--text3)">${i2+1}</td>
           <td class="mono" style="color:var(--rose);font-weight:800">${_esc(r.txn)}</td>
           <td class="mono">${_clientCode(r.client)}</td>
           <td class="hide-client" style="font-weight:600">${_clientName(r.clientname)}</td>
@@ -15981,7 +16002,7 @@ function renderAuditTab(tab){
       } else {
         // Pending row
         return`<tr>
-          <td class="mono" style="color:var(--text3)">${i+1}</td>
+          <td class="mono" style="color:var(--text3)">${i2+1}</td>
           <td class="mono" style="color:var(--rose);font-weight:800">${_esc(r.txn)}</td>
           <td class="mono">${_clientCode(r.client)}</td>
           <td class="hide-client" style="font-weight:600">${_clientName(r.clientname)}</td>
