@@ -4934,7 +4934,7 @@ function stopBgPoll(){
 // ── Realtime state ──
 let _rtConnected = false;
 let _rtFallbackTimer = null;
-const RT_FALLBACK_MS = 12000; // if no WS connection in 12s → fall back to bgPoll
+const RT_FALLBACK_MS = 20000; // if no WS connection in 20s → fall back to bgPoll
 
 function _setRTIndicator(state){
   // state: 'connecting' | 'live' | 'polling' | 'offline'
