@@ -1,7 +1,7 @@
 {
   "name": "Invensis KPI Tracker",
   "short_name": "KPI Tracker",
-  "description": "Custom Broker Daily Production Tracker",
+  "description": "Invensis Daily Production Tracker",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f6fb",
@@ -31,6 +31,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "KPI Tracker Dashboard"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "KPI Tracker Mobile"
     }
   ],
   "categories": ["productivity", "business"],
