@@ -5026,12 +5026,14 @@ function setupRealtime(){
   _realtimeChannel = _supaRT
     .channel('kpi-live-all')
     .on('system', {}, (status)=>{
-      // Filter out non-critical RLS errors on DELETE (read-only Realtime still works)
-      if(status && status.status === 'error' && status.message && status.message.includes('DELETE')){
-        console.warn('[RT] DELETE subscription blocked by RLS (non-critical — inserts/updates still live)');
-        return;
+      // Only log errors — suppress routine 'ok' subscription confirmations
+      if(status && status.status === 'error'){
+        if(status.message && status.message.includes('DELETE')){
+          console.warn('[RT] DELETE subscription blocked by RLS (non-critical)');
+        } else {
+          console.warn('[RT] System error:', status);
+        }
       }
-      console.log('[RT] System status:', status);
     });
 
   // Subscribe to all tables — INSERT, UPDATE, DELETE
