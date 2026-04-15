@@ -5021,23 +5021,37 @@ function setupRealtime(){
     }
   }, RT_FALLBACK_MS);
 
-  const tables = ['lvs','cls','comp','pars_docs','ocean_docs','part_lot',
-                  'release','ocean_tt','b2_entries','audit','client_errors','login_users'];
+  // Subscribe only to tables relevant for this user's role — fewer subscriptions = faster connect
+  const isMgrRT  = CU && (CU.role==='Manager' || CU.task==='Manager');
+  const isSupRT  = CU && CU.role==='Supervisor';
+  const isTLRT   = CU && CU.role==='Team Lead';
+  const taskTbl  = CU ? ({
+    'LVS':'lvs','Classifier':'cls','Compliance':'comp',
+    'PARS Docs Clerk':'pars_docs','Ocean Docs Clerk':'ocean_docs',
+    'Part Lot':'part_lot','Release':'release',
+    'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
+  }[CU.task]||null) : null;
+
+  // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task only
+  const tables = isMgrRT || isSupRT
+    ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
+    : isTLRT
+    ? [taskTbl,'audit','login_users','client_errors'].filter(Boolean)
+    : [taskTbl,'login_users'].filter(Boolean);
 
   _realtimeChannel = _supaRT
-    .channel('kpi-live-all')
+    .channel('kpi-live-'+((CU&&CU.username)||'anon'))
     .on('system', {}, (status)=>{
-      // Only log errors — suppress routine 'ok' subscription confirmations
       if(status && status.status === 'error'){
         if(status.message && status.message.includes('DELETE')){
-          console.warn('[RT] DELETE subscription blocked by RLS (non-critical)');
+          // non-critical
         } else {
           console.warn('[RT] System error:', status);
         }
       }
     });
 
-  // Subscribe to all tables — INSERT, UPDATE, DELETE
+  // Subscribe to relevant tables — INSERT, UPDATE, DELETE
   tables.forEach(tbl=>{
     _realtimeChannel
       .on('postgres_changes',{ event:'INSERT', schema:'public', table:tbl },
