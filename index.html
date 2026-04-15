@@ -3756,7 +3756,7 @@ function _initSupaRT(){
       realtime: { params: { eventsPerSecond: 10 } },
       auth: { persistSession: false, autoRefreshToken: false }
     });
-    console.log('[RT] Supabase Realtime client ready →', _rtUrl);
+    console.log('[RT] Supabase Realtime client ready');
   }catch(e){ console.warn('[RT] Failed to init realtime client:', e.message); _supaRT = null; }
 }
 _initSupaRT();
@@ -4953,54 +4953,46 @@ function _setRTIndicator(state){
 
 function _applyRealtimeRow(table, row, eventType){
   // Apply a single realtime event to the correct DB array and refresh
-  if(!row) return;
-  const mapper = {
-    'lvs':mapLVS,'cls':mapCLS,'comp':mapCOMP,'pars_docs':mapPARSDocs,
-    'ocean_docs':mapOceanDocs,'part_lot':mapPartLot,'release':mapRelease,
-    'ocean_tt':mapOceanTT,'b2_entries':mapB2,'audit':mapAudit,
-    'client_errors':mapError,'login_users':mapLoginUser
-  }[table];
-  const arrKey = {
-    'lvs':'lvs','cls':'cls','comp':'comp','pars_docs':'parsDocs',
-    'ocean_docs':'oceanDocs','part_lot':'partLot','release':'release2',
-    'ocean_tt':'oceanTT','b2_entries':'b2entries','audit':'audit',
-    'client_errors':'errors','login_users':'loginUsers'
-  }[table];
-  if(!mapper||!arrKey) return;
+  if(!row && eventType!=='DELETE') return;
+
+  // Use REALTIME_MAP — single source of truth for mapper + array + idx
+  const rtEntry = REALTIME_MAP.find(e=>e.table===table);
+  if(!rtEntry) return;
 
   // Skip if panel open — don't interrupt active form entry
   if(isPanelOpen()){ window._pendingPageRefresh = _currentPage; return; }
 
-  const mapped = mapper(row);
-  const arr = DB[arrKey];
+  const arr = rtEntry.arr();
   if(!arr) return;
 
-  if(eventType==='INSERT'){
-    // Only add if not already present (guard against duplicate events)
+  if(eventType==='INSERT' && row){
     const exists = arr.some(r=>String(r._dbid||r.id||'')===String(row.id));
     if(!exists){
+      const mapped = rtEntry.map(row);
       arr.unshift(mapped);
       _sortAllTaskArrays();
-      // Invalidate release cache so next full load gets fresh data
       if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
         if(window._rlTrueCount) window._rlTrueCount++; }
     }
-  } else if(eventType==='UPDATE'){
+  } else if(eventType==='UPDATE' && row){
+    const mapped = rtEntry.map(row);
     const idx = arr.findIndex(r=>String(r._dbid||r.id||'')===String(row.id));
     if(idx>=0){ arr[idx]={...arr[idx],...mapped}; }
-    else { arr.unshift(mapped); _sortAllTaskArrays(); }
+    else{ arr.unshift(mapped); _sortAllTaskArrays(); }
   } else if(eventType==='DELETE'){
-    const idx = arr.findIndex(r=>String(r._dbid||r.id||'')===String(row.id));
-    if(idx>=0) arr.splice(idx,1);
+    const rowId = String((row||{}).id||'');
+    if(rowId){
+      const idx = arr.findIndex(r=>String(r._dbid||r.id||'')===rowId);
+      if(idx>=0) arr.splice(idx,1);
+    }
     if(table==='release' && window._rlTrueCount) window._rlTrueCount--;
   }
 
-  // Re-index
-  if(['lvs','cls','comp','release2','errors'].includes(arrKey))
-    DB[arrKey].forEach((r,i)=>r._idx=i);
+  // Re-index if needed
+  if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
 
-  // Refresh visible pages that show this table
-  const pages = TABLE_PAGE_MAP[table]||[];
+  // Refresh visible pages using TABLE_TO_PAGES map
+  const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
   _updateLastRefreshed(0);
 }
