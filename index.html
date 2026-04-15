@@ -7350,10 +7350,19 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // For past months, show everyone who has any attendance record that month.
   let userList;
   if(isCurrentMonth){
-    // Primary: users with attendance_log record today
+    // Show ALL active users — merge those with attendance records + all active login users
     const attendedSet = new Set([...presentUnameSet]);
-
-    userList = [...attendedSet].sort();
+    // Add all active users from login_users (so Team Leads without today's record still show)
+    allUsers.forEach(u=>{
+      const uname = u.loginName||u.username||'';
+      if(uname) attendedSet.add(uname);
+    });
+    // Sort by name for display
+    userList = [...attendedSet].sort((a,b)=>{
+      const nameA = (allUsers.find(u=>(u.loginName||u.username)===a)?.empName||a).toLowerCase();
+      const nameB = (allUsers.find(u=>(u.loginName||u.username)===b)?.empName||b).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
   } else {
     // Past month: show all users who have any record in that month
     userList = [...new Set(Object.keys(byUser))].sort();
@@ -7442,8 +7451,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     const txnCount = isCurrentMonth ? _countTxnToday(uname, name) : 0;
     const todayStatus = !isCurrentMonth ? '—'
       : session1 ? (login1Late ? 'Late' : 'Present')
-      : txnCount > 0 ? 'Present' // has task submissions — clearly logged in
-      : 'Absent';
+      : 'Absent'; // no attendance_log record = Absent (removed task fallback)
 
     const statusBadge = todayStatus==='Present'
       ? `<span style="background:#ecfdf5;color:#065f46;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #6ee7b780">✅ Present</span>`
@@ -7455,18 +7463,19 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
 
     // Sessions detail pill row (shown below name)
     const sessionPills = todaySessions.map(s => {
-      const dot  = s.logout_time ? '#10b981' : '#3b82f6';
-      const endT = s.logout_time ? _fmtTime(s.logout_time) : '⚡';
-      const dur  = s.total_minutes>0 ? _fmtMins(s.total_minutes) : '';
-      const gap  = s.gap_before>0 ? `<span style="color:var(--amber);font-size:10px;margin-left:3px">(idle ${_fmtMins(s.gap_before)})</span>` : '';
-      return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 7px;font-size:11px;margin-right:4px;margin-top:3px;white-space:nowrap">
+      const isOpen = !s.logout_time || s.logout_time===null || s.logout_time==='null';
+      const dot    = isOpen ? '#3b82f6' : '#10b981';
+      const loginT = _fmtTime(s.login_time);
+      const logoutT= isOpen ? '<span style="color:#3b82f6;font-weight:800">Active ⚡</span>' : `<span style="color:#e11d48">${_fmtTime(s.logout_time)}</span>`;
+      const dur    = s.total_minutes>0 ? `<span style="color:var(--text3);font-size:10px"> ${_fmtMins(s.total_minutes)}</span>` : '';
+      const gap    = s.gap_before>5 ? `<span style="background:#fffbeb;color:#92400e;border-radius:4px;padding:1px 5px;font-size:10px;margin-left:3px">idle ${_fmtMins(s.gap_before)}</span>` : '';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;background:${isOpen?'#eff6ff':'var(--surface2)'};border:1px solid ${isOpen?'#bfdbfe':'var(--border)'};border-radius:7px;padding:3px 8px;font-size:11px;margin-right:5px;margin-top:3px;white-space:nowrap">
         <span style="width:7px;height:7px;border-radius:50%;background:${dot};flex-shrink:0"></span>
-        <span style="font-family:var(--mono);font-weight:700;color:var(--text2)">S${s.session_no||1}</span>
-        <span style="font-family:var(--mono);color:var(--emerald)">${_fmtTime(s.login_time)}</span>
+        <span style="font-weight:700;color:var(--text3);font-size:10px">S${s.session_no||1}</span>
+        <span style="font-family:var(--mono);color:#15803d;font-weight:700">IN ${loginT}</span>
         <span style="color:var(--text3)">→</span>
-        <span style="font-family:var(--mono);color:${s.logout_time?'var(--rose)':'#3b82f6'}">${endT}</span>
-        ${dur?`<span style="font-family:var(--mono);color:var(--text3);font-size:10px">${dur}</span>`:''}
-        ${gap}
+        ${logoutT}
+        ${dur}${gap}
       </span>`;
     }).join('');
 
