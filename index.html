@@ -11069,88 +11069,101 @@ function refreshTaskHeatmap(){
 }
 
 function renderDashboard(c){
-  const today=todayDateStringET();
-  const now=nowET();
-  const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-  // Idle log is now on its own dedicated page (Idle Log tab)
-
-  // ── TL task map: which DB array belongs to each task ──
-  const tlTaskDbMap={
-    'LVS':             {key:'lvs',      db:DB.lvs,       label:'LVS',        color:'#3b82f6'},
-    'Classifier':      {key:'cls',      db:DB.cls,       label:'Classifier', color:'#0d9488'},
-    'Compliance':      {key:'comp',     db:DB.comp,      label:'Compliance', color:'#7c3aed'},
-    'PARS Docs Clerk': {key:'parsDocs', db:DB.parsDocs,  label:'PARS Docs',  color:'#0ea5e9'},
-    'Ocean Docs Clerk':{key:'oceanDocs',db:DB.oceanDocs, label:'Ocean Docs', color:'#10b981'},
-    'Part Lot':        {key:'partLot',  db:DB.partLot,   label:'Part Lot',   color:'#d97706'},
-    'Release':         {key:'release2', db:DB.release2,  label:'Release',    color:'#e11d48'},
-    'Ocean T&T':       {key:'oceanTT',  db:DB.oceanTT,   label:'Ocean T&T',  color:'#0891b2'},
-    'B2 Entries':      {key:'b2entries',db:DB.b2entries, label:'B2 Entries', color:'#f59e0b'},
-  };
-
-  const isTL = CU.role==='Team Lead';
+  const today = todayDateStringET();
+  const now   = nowET();
+  const isTL  = CU.role==='Team Lead';
   const isMgr = CU.task==='Manager'||CU.role==='Manager';
-  const isSup = CU.role==='Supervisor';
 
-  // For TL: show only their assigned task; for Manager/Supervisor: show all
-  const allDB = (isTL && !isMgr && tlTaskDbMap[CU.task])
-    ? { [CU.task]: tlTaskDbMap[CU.task] }
-    : {
-        lvs:{db:DB.lvs,label:'LVS',color:'#3b82f6'},
-        cls:{db:DB.cls,label:'Classifier',color:'#0d9488'},
-        comp:{db:DB.comp,label:'Compliance',color:'#7c3aed'},
-        parsDocs:{db:DB.parsDocs,label:'PARS Docs',color:'#0ea5e9'},
-        oceanDocs:{db:DB.oceanDocs,label:'Ocean Docs',color:'#10b981'},
-        partLot:{db:DB.partLot,label:'Part Lot',color:'#d97706'},
-        release2:{db:DB.release2,label:'Release',color:'#e11d48'},
-        oceanTT:{db:DB.oceanTT,label:'Ocean T&T',color:'#0891b2'},
-        b2entries:{db:DB.b2entries,label:'B2 Entries',color:'#f59e0b'},
-      };
-  const totalAll=Object.values(allDB).reduce((s,t)=>s+(t===allDB.release2&&window._rlTrueCount?window._rlTrueCount:t.db.length),0);
-  const todayAll=Object.values(allDB).reduce((s,t)=>s+t.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length,0);
-  const allHold=DB.lvs.filter(r=>r.status==='Hold').length+DB.cls.filter(r=>r.status==='Hold').length+DB.comp.filter(r=>r.status==='Hold').length+DB.release2.filter(r=>r.status==='Hold').length;
+  // ── Pre-compute all stats once using Maps for O(n) performance ──
+  const todayStr = now.toDateString();
 
-  // Hourly breakdown across all tasks for heatmap
-  const hourlyTotal=hours.map(h=>{
-    const cnt=Object.values(allDB).reduce((s,t)=>s+t.db.filter(r=>{
-      // Use multiple fields to find the actual submission hour
-      const candidates=[r._submitRaw,r.submittedTime,r.submitted,r.completedTime,r.completed,r._created,r.created];
-      let recDate=null;
-      for(const ts of candidates){
-        if(!ts) continue;
-        const d=(ts instanceof Date)?ts:parseAppDate(String(ts));
-        if(d&&!isNaN(d)){recDate=d;break;}
-      }
-      return recDate&&pad(recDate.getHours())===h&&recDate.toDateString()===today;
-    }).length,0);
-    return{h,cnt};
+  // Build allDB scope
+  const _taskDefs = [
+    {key:'lvs',      db:DB.lvs,       label:'LVS Records',  color:'#3b82f6', grad:'#1d4ed8,#3b82f6', ico:'📋'},
+    {key:'cls',      db:DB.cls,       label:'Classifier',   color:'#0d9488', grad:'#0d9488,#14b8a6', ico:'🗂️'},
+    {key:'comp',     db:DB.comp,      label:'Compliance',   color:'#4f46e5', grad:'#4f46e5,#818cf8', ico:'✅'},
+    {key:'parsDocs', db:DB.parsDocs,  label:'PARS Docs',    color:'#0284c7', grad:'#0284c7,#38bdf8', ico:'📄'},
+    {key:'oceanDocs',db:DB.oceanDocs, label:'Ocean Docs',   color:'#059669', grad:'#059669,#34d399', ico:'🌊'},
+    {key:'partLot',  db:DB.partLot,   label:'Part Lot',     color:'#d97706', grad:'#d97706,#fbbf24', ico:'📦'},
+    {key:'release2', db:DB.release2,  label:'Release',      color:'#e11d48', grad:'#2563eb,#60a5fa', ico:'🚀'},
+    {key:'oceanTT',  db:DB.oceanTT,   label:'Ocean T&T',    color:'#0891b2', grad:'#0891b2,#22d3ee', ico:'🔍'},
+    {key:'b2entries',db:DB.b2entries, label:'B2 Entries',   color:'#b45309', grad:'#b45309,#fcd34d', ico:'📝'},
+  ];
+  const tlKeyMap = {'LVS':'lvs','Classifier':'cls','Compliance':'comp','PARS Docs Clerk':'parsDocs','Ocean Docs Clerk':'oceanDocs','Part Lot':'partLot','Release':'release2','Ocean T&T':'oceanTT','B2 Entries':'b2entries'};
+  const visibleDefs = (isTL&&!isMgr&&tlKeyMap[CU.task])
+    ? _taskDefs.filter(d=>d.key===tlKeyMap[CU.task])
+    : _taskDefs;
+
+  // Single pass per array — compute today count + TAT stats
+  const stats = {};
+  visibleDefs.forEach(d=>{
+    let todayCnt=0, tatR=0, tatN=0, hold=0;
+    d.db.forEach(r=>{
+      if((parseAppDate(r._created)||new Date(0)).toDateString()===todayStr) todayCnt++;
+      const tv=(r.tat||'').toLowerCase();
+      if(tv==='tat reached') tatR++;
+      else if(tv.includes('not reached')||tv.includes('not-reached')) tatN++;
+      if(r.status==='Hold') hold++;
+    });
+    const total = d.key==='release2' && window._rlTrueCount ? window._rlTrueCount : d.db.length;
+    stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
   });
-  const maxHour=Math.max(...hourlyTotal.map(x=>x.cnt),1);
 
-  // Per-task row
-  const taskRows=Object.entries(allDB).map(([key,t])=>{
-    const todayCnt=t.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;
-    const tatR=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached';}).length;
-    const tatN=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat not reached'||tv.includes('not-reached');}).length;
-    const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
-    const pctColor=tatPct>=80?'#34d399':tatPct>=50?'#fbbf24':'#fb7185';
-    return`<tr>
-      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:7px"></span><span style="font-weight:700;color:var(--text)">${t.label}</span></td>
-      <td class="mono" style="text-align:center;color:var(--primary-lt);font-weight:700">${t.db.length}</td>
-      <td class="mono" style="text-align:center;color:var(--text3)">${todayCnt}</td>
-      <td class="mono" style="text-align:center;color:#34d399">${tatR}</td>
-      <td style="text-align:center"><span style="font-family:var(--mono);font-weight:800;font-size:13px;color:${pctColor}">${tatPct}%</span></td>
-    </tr>`;
-  }).join('');
+  const totalAll = visibleDefs.reduce((s,d)=>s+stats[d.key].total,0);
+  const todayAll = visibleDefs.reduce((s,d)=>s+stats[d.key].todayCnt,0);
+  const holdAll  = visibleDefs.reduce((s,d)=>s+stats[d.key].hold,0);
 
-  // userHeatRows removed — replaced by Task × Hourly heatmap (buildTaskHeatRows)
+  // Audit stats — use Map for O(1) lookup instead of O(n²) find
+  const auditedTxnSet = new Set(DB.audit.map(a=>a.txn));
+  const auditDone = DB.release2.filter(r=>auditedTxnSet.has(r.txn)).length;
+  const auditPend = DB.release2.length - auditDone;
+  const auditPct  = DB.release2.length ? Math.round(auditDone/DB.release2.length*100) : 0;
+  const todayAuditCnt = DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr).length;
+  const scoreArr  = DB.audit.map(a=>parseFloat(a.score)||0).filter(s=>s>0);
+  const avgScore  = scoreArr.length ? (scoreArr.reduce((a,b)=>a+b,0)/scoreArr.length).toFixed(1) : '0';
 
-  c.innerHTML=`
+  // TAT overall
+  const allTatR = visibleDefs.reduce((s,d)=>s+stats[d.key].tatR,0);
+  const allTatN = visibleDefs.reduce((s,d)=>s+stats[d.key].tatN,0);
+  const allTatT = allTatR+allTatN;
+  const allTatPct = allTatT ? Math.round(allTatR/allTatT*100) : 0;
+  const tatColor  = allTatPct>=90?'#17a00e':allTatPct>=75?'#f59e0b':'#e11d48';
+
+  // Active users today
+  const todayUserSet = new Set();
+  visibleDefs.forEach(d=>d.db.forEach(r=>{
+    if((parseAppDate(r._created)||new Date(0)).toDateString()===todayStr){
+      const u=r.user||r.user_name||r.assignedTo||'';
+      if(u) todayUserSet.add(u);
+    }
+  }));
+
+  // Mode stats for audit — single pass
+  const modes = ['Truck','Ocean','Air','Rail'];
+  const modeCfg = {
+    'Truck':{color:'#f97316',bg:'#fff7ed',border:'#fed7aa',text:'#92400e',icon:'🚛'},
+    'Ocean':{color:'#0891b2',bg:'#f0f9ff',border:'#bae6fd',text:'#075985',icon:'🌊'},
+    'Air':  {color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',icon:'✈️'},
+    'Rail': {color:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',icon:'🚂'},
+  };
+  const modeStats = {};
+  modes.forEach(m=>{
+    const recs = DB.release2.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
+    const done = recs.filter(r=>auditedTxnSet.has(r.txn));
+    const scores = done.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0).filter(s=>s>0);
+    const avg = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
+    const pct = recs.length?Math.round(done.length/recs.length*100):0;
+    modeStats[m]={total:recs.length,done:done.length,pend:recs.length-done.length,avg,pct};
+  });
+
+  // ── BUILD HTML ──
+  c.innerHTML = `
   <div class="dash-ed">
 
-  <!-- ══ EDITORIAL HERO HEADER ══ -->
+  <!-- HERO -->
   <div class="dash-ed-hero">
     <div>
-      <div class="dash-ed-main-title">${isTL&&!isMgr ? `🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}` : `Admin <strong>Command</strong><br>Centre`}</div>
+      <div class="dash-ed-main-title">${isTL&&!isMgr?`🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}`:`Admin <strong>Command</strong><br>Centre`}</div>
       <div class="dash-ed-sub">Welcome, ${CU.name} &nbsp;·&nbsp; ${now.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
     </div>
     <div class="dash-ed-pills">
@@ -11159,562 +11172,196 @@ function renderDashboard(c){
     </div>
   </div>
 
-  <!-- ══ KPI CARDS ══ -->
+  <!-- KPI CARDS -->
   <div class="dash-ed-kpi-grid">
-    ${(()=>{
-      const kpiDefs=[
-        {key:'lvs',      ico:'📋', lbl:'LVS Records',  db:DB.lvs,       grad:'#1d4ed8,#3b82f6'},
-        {key:'cls',      ico:'🗂️', lbl:'Classifier',   db:DB.cls,       grad:'#0d9488,#14b8a6'},
-        {key:'comp',     ico:'✅', lbl:'Compliance',   db:DB.comp,      grad:'#4f46e5,#818cf8'},
-        {key:'parsDocs', ico:'📄', lbl:'PARS Docs',    db:DB.parsDocs,  grad:'#0284c7,#38bdf8'},
-        {key:'oceanDocs',ico:'🌊', lbl:'Ocean Docs',   db:DB.oceanDocs, grad:'#059669,#34d399'},
-        {key:'partLot',  ico:'📦', lbl:'Part Lot',     db:DB.partLot,   grad:'#d97706,#fbbf24'},
-        {key:'release2', ico:'🚀', lbl:'Release',      db:DB.release2,  grad:'#2563eb,#60a5fa'},
-        {key:'oceanTT',  ico:'🔍', lbl:'Ocean T&T',    db:DB.oceanTT,   grad:'#0891b2,#22d3ee'},
-        {key:'b2entries',ico:'📝', lbl:'B2 Entries',   db:DB.b2entries, grad:'#b45309,#fcd34d'},
-      ];
-      // TL task → DB key map
-      const tlKeyMap={'LVS':'lvs','Classifier':'cls','Compliance':'comp','PARS Docs Clerk':'parsDocs','Ocean Docs Clerk':'oceanDocs','Part Lot':'partLot','Release':'release2','Ocean T&T':'oceanTT','B2 Entries':'b2entries'};
-      const visibleKpis = (isTL&&!isMgr&&tlKeyMap[CU.task])
-        ? kpiDefs.filter(k=>k.key===tlKeyMap[CU.task])
-        : kpiDefs;
-      return visibleKpis.map(k=>`
-        <div class="dash-ed-kpi" style="background:linear-gradient(135deg,${k.grad})">
-          <div class="dash-ed-kpi-ico">${k.ico}</div>
-          <div class="dash-ed-kpi-lbl">${k.lbl}</div>
-          <div class="dash-ed-kpi-num">${k.key==='release2'&&window._rlTrueCount?window._rlTrueCount:k.db.length}</div>
-          <div class="dash-ed-kpi-foot">Today: ${k.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div>
-        </div>`).join('');
-    })()}
-
-    ${(()=>{
-      // On Hold card — show for manager/supervisor; for TL show hold count for their task only
-      const tlKeyMap2={'LVS':'lvs','Classifier':'cls','Compliance':'comp','PARS Docs Clerk':'parsDocs','Ocean Docs Clerk':'oceanDocs','Part Lot':'partLot','Release':'release2','Ocean T&T':'oceanTT','B2 Entries':'b2entries'};
-      const holdCount = (isTL&&!isMgr&&tlKeyMap2[CU.task])
-        ? (DB[tlKeyMap2[CU.task]]||[]).filter(r=>r.status==='Hold').length
-        : allHold;
-      return`
-      <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
-        <div class="dash-ed-kpi-ico">⏸️</div>
-        <div class="dash-ed-kpi-lbl">On Hold</div>
-        <div class="dash-ed-kpi-num">${holdCount}</div>
-        <div class="dash-ed-kpi-foot">Needs attention</div>
-      </div>`;
-    })()}
-
-    ${(()=>{
-      // Audit card — only show if manager/supervisor or Release TL
-      if(isTL&&!isMgr&&CU.task!=='Release') return '';
-      const totalRel=DB.release2.length;
-      const auditDone=DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length;
-      const auditPend=totalRel-auditDone;
-      const todayAudit=DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length;
-      const pct=totalRel?Math.round(auditDone/totalRel*100):0;
-      const scoreArr=DB.audit.map(a=>parseFloat(a.score)||0);
-      const avgScore=scoreArr.length?(scoreArr.reduce((s,v)=>s+v,0)/scoreArr.length).toFixed(1):0;
-      return`
-      <div class="dash-ed-audit-card">
-        <div class="dash-ed-audit-label">
-          🔍 Audit — Release Quality
-          <span class="dash-ed-audit-pct-badge">${pct}% audited</span>
-        </div>
-        <div class="dash-ed-audit-nums">
-          <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditDone}</div><div class="dash-ed-audit-num-lbl">✅ Audited</div></div>
-          <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditPend}</div><div class="dash-ed-audit-num-lbl">⏳ Pending</div></div>
-          <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${todayAudit}</div><div class="dash-ed-audit-num-lbl">📅 Done Today</div></div>
-          <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${avgScore}%</div><div class="dash-ed-audit-num-lbl">⭐ Avg Score</div></div>
-        </div>
-        <div class="dash-ed-progress"><div class="dash-ed-progress-fill" style="width:${pct}%"></div></div>
-      </div>`;
-    })()}
-
+    ${visibleDefs.map(d=>`
+      <div class="dash-ed-kpi" style="background:linear-gradient(135deg,${d.grad})">
+        <div class="dash-ed-kpi-ico">${d.ico}</div>
+        <div class="dash-ed-kpi-lbl">${d.label}</div>
+        <div class="dash-ed-kpi-num">${stats[d.key].total.toLocaleString()}</div>
+        <div class="dash-ed-kpi-foot">Today: ${stats[d.key].todayCnt}</div>
+      </div>`).join('')}
+    <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
+      <div class="dash-ed-kpi-ico">⏸️</div>
+      <div class="dash-ed-kpi-lbl">On Hold</div>
+      <div class="dash-ed-kpi-num">${holdAll}</div>
+      <div class="dash-ed-kpi-foot">Needs attention</div>
+    </div>
+    ${(!isTL||isMgr||CU.task==='Release')?`
+    <div class="dash-ed-audit-card">
+      <div class="dash-ed-audit-label">🔍 Audit — Release Quality
+        <span class="dash-ed-audit-pct-badge">${auditPct}% audited</span>
+      </div>
+      <div class="dash-ed-audit-nums">
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditDone}</div><div class="dash-ed-audit-num-lbl">✅ Audited</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditPend}</div><div class="dash-ed-audit-num-lbl">⏳ Pending</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${todayAuditCnt}</div><div class="dash-ed-audit-num-lbl">📅 Done Today</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${avgScore}%</div><div class="dash-ed-audit-num-lbl">⭐ Avg Score</div></div>
+      </div>
+      <div class="dash-ed-progress"><div class="dash-ed-progress-fill" style="width:${auditPct}%"></div></div>
+    </div>`:''}
   </div>
 
-  <!-- ══ TOTAL COUNT + HOURLY BAR ══ -->
+  <!-- ANALYTICS QUICK STATS -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📅 Today</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${todayAll.toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">entries across all tasks</div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✅ Overall TAT</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}">${allTatPct}%</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">${allTatR} reached · ${allTatN} missed</div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">👥 Active Today</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed">${todayUserSet.size}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">of ${DB.loginUsers.filter(u=>u.active!==false).length} total staff</div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">⚠️ Errors</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#e11d48">${DB.errors.length}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">
+        <button onclick="showPage('errorreport')" style="background:none;border:none;color:#4d79ff;cursor:pointer;font-size:11px;padding:0;text-decoration:underline">View all →</button>
+      </div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📊 Total Records</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${totalAll.toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">all tasks combined</div>
+    </div>
+  </div>
+
+  <!-- TASK COUNT TABLE + AUDIT MODE -->
   <div class="dash-ed-two">
     <div class="dash-ed-panel">
       <div class="dash-ed-panel-hdr">
         <div class="dash-ed-panel-title">📊 Total Count</div>
-        <div class="dash-ed-panel-badge">${totalAll} records</div>
+        <div class="dash-ed-panel-badge">${totalAll.toLocaleString()} records</div>
       </div>
       <table class="dash-ed-table">
-        <thead><tr>
-          <th>Task</th>
-          <th style="text-align:center">Total</th>
-          <th style="text-align:center">Today</th>
-          <th style="text-align:center">TAT ✅</th>
-          <th style="text-align:center">TAT %</th>
-        </tr></thead>
-        <tbody>${taskRows}</tbody>
+        <thead><tr><th>Task</th><th style="text-align:center">Total</th><th style="text-align:center">Today</th><th style="text-align:center">TAT ✅</th><th style="text-align:center">TAT %</th></tr></thead>
+        <tbody>
+          ${visibleDefs.map(d=>{
+            const s=stats[d.key];
+            const tp=s.tatR+s.tatN?Math.round(s.tatR/(s.tatR+s.tatN)*100):0;
+            const tc=tp>=80?'#34d399':tp>=50?'#fbbf24':'#fb7185';
+            return`<tr>
+              <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${d.color};margin-right:7px"></span><span style="font-weight:700">${d.label}</span></td>
+              <td class="mono" style="text-align:center;color:var(--primary-lt);font-weight:700">${s.total.toLocaleString()}</td>
+              <td class="mono" style="text-align:center;color:var(--text3)">${s.todayCnt}</td>
+              <td class="mono" style="text-align:center;color:#34d399">${s.tatR}</td>
+              <td style="text-align:center"><span style="font-family:var(--mono);font-weight:800;font-size:13px;color:${tc}">${tp}%</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
       </table>
-      <!-- Task volume bar chart -->
       <div style="padding:14px 14px 6px">
         <div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.05em;margin-bottom:10px">📊 VOLUME BY TASK</div>
-        ${Object.entries(allDB).map(([k,t])=>{
-          const pct=totalAll?Math.max(2,Math.round(t.db.length/totalAll*100)):2;
+        ${visibleDefs.map(d=>{
+          const pct=totalAll?Math.max(2,Math.round(stats[d.key].total/totalAll*100)):2;
           return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <div style="width:90px;font-size:11px;font-weight:600;color:var(--text2);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${t.label}">${t.label}</div>
+            <div style="width:90px;font-size:11px;font-weight:600;color:var(--text2);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.label}</div>
             <div style="flex:1;height:16px;background:var(--border);border-radius:4px;overflow:hidden">
-              <div style="height:100%;width:${pct}%;background:${t.color};border-radius:4px;transition:width .5s"></div>
+              <div style="height:100%;width:${pct}%;background:${d.color};border-radius:4px"></div>
             </div>
-            <div style="width:32px;font-size:11px;font-weight:800;color:${t.color};text-align:right;flex-shrink:0">${(t===allDB.release2&&window._rlTrueCount)?window._rlTrueCount:t.db.length}</div>
+            <div style="width:40px;font-size:11px;font-weight:800;color:${d.color};text-align:right;flex-shrink:0">${stats[d.key].total}</div>
           </div>`;
         }).join('')}
       </div>
     </div>
 
-    <!-- ══ MODE-WISE AUDIT STATUS ══ -->
-    ${(()=>{
-      if(isTL&&!isMgr&&CU.task!=='Release') return '';
-      const modes=['Truck','Ocean','Air','Rail'];
-      const modeColors={'Truck':'#4d79ff','Ocean':'#0d9488','Air':'#e11d48','Rail':'#f59e0b'};
-      const modeRows = modes.map(m => {
-        const relByMode = DB.release2.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
-        const auditedByMode = relByMode.filter(r=>DB.audit.find(a=>a.txn===r.txn));
-        const total = relByMode.length;
-        const audited = auditedByMode.length;
-        const pending = total - audited;
-        const pct = total ? Math.round(audited/total*100) : 0;
-        const scores = auditedByMode.map(r=>{const a=DB.audit.find(x=>x.txn===r.txn);return parseFloat(a?.score)||0;});
-        const avg = scores.length ? (scores.reduce((s,v)=>s+v,0)/scores.length).toFixed(1) : '—';
-        const col = modeColors[m]||'#888';
-        return `<tr>
-          <td style="padding:9px 12px;font-weight:700;display:flex;align-items:center;gap:7px">
-            <span style="width:10px;height:10px;border-radius:50%;background:${col};display:inline-block;flex-shrink:0"></span>${m}
-          </td>
-          <td style="text-align:center;font-family:var(--mono);font-weight:700">${total}</td>
-          <td style="text-align:center;font-family:var(--mono);color:#17a00e;font-weight:700">${audited}</td>
-          <td style="text-align:center;font-family:var(--mono);color:#e11d48;font-weight:700">${pending}</td>
-          <td style="padding:9px 12px">
-            <div style="display:flex;align-items:center;gap:6px">
-              <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:${pct}%;background:${col};border-radius:4px;transition:width .5s"></div>
-              </div>
-              <span style="font-size:11px;font-weight:800;color:${col};min-width:32px;text-align:right">${pct}%</span>
-            </div>
-          </td>
-          <td style="text-align:center;font-family:var(--mono);font-weight:700;color:var(--amber)">${avg}${avg!=='—'?'%':''}</td>
-        </tr>`;
-      }).join('');
-      const totalAudit = DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length;
-      return `<div class="dash-ed-panel" style="margin-top:0">
-        <div class="dash-ed-panel-hdr">
-          <div class="dash-ed-panel-title">🚢 Audit — Mode-wise Status</div>
-          <div class="dash-ed-panel-badge">${totalAudit} audited</div>
-        </div>
-        <table class="dash-ed-table" style="width:100%">
-          <thead><tr>
-            <th>Mode</th>
-            <th style="text-align:center">Release</th>
-            <th style="text-align:center">Audited</th>
-            <th style="text-align:center">Pending</th>
-            <th style="min-width:140px">Coverage</th>
-            <th style="text-align:center">Avg Score</th>
-          </tr></thead>
-          <tbody>${modeRows}</tbody>
-        </table>
-      </div>`;
-    })()}
-
+    ${(!isTL||isMgr||CU.task==='Release')?`
+    <div class="dash-ed-panel" style="margin-top:0">
+      <div class="dash-ed-panel-hdr">
+        <div class="dash-ed-panel-title">🚢 Audit — Mode-wise Status</div>
+        <div class="dash-ed-panel-badge">${auditDone} audited</div>
+      </div>
+      <table class="dash-ed-table" style="width:100%">
+        <thead><tr><th>Mode</th><th style="text-align:center">Release</th><th style="text-align:center">Audited</th><th style="text-align:center">Pending</th><th style="min-width:140px">Coverage</th><th style="text-align:center">Avg Score</th></tr></thead>
+        <tbody>
+          ${modes.map(m=>{
+            const s=modeStats[m]; const cfg=modeCfg[m];
+            return`<tr>
+              <td style="padding:9px 12px;font-weight:700;display:flex;align-items:center;gap:7px">
+                <span style="width:10px;height:10px;border-radius:50%;background:${cfg.color};display:inline-block;flex-shrink:0"></span>${m}
+              </td>
+              <td style="text-align:center;font-family:var(--mono);font-weight:700">${s.total}</td>
+              <td style="text-align:center;font-family:var(--mono);color:#17a00e;font-weight:700">${s.done}</td>
+              <td style="text-align:center;font-family:var(--mono);color:#e11d48;font-weight:700">${s.pend}</td>
+              <td style="padding:9px 12px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${s.pct}%;background:${cfg.color};border-radius:4px"></div>
+                  </div>
+                  <span style="font-size:11px;font-weight:800;color:${cfg.color};min-width:32px;text-align:right">${s.pct}%</span>
+                </div>
+              </td>
+              <td style="text-align:center;font-family:var(--mono);font-weight:700;color:var(--amber)">${s.avg}${s.avg!=='—'?'%':''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`:''}
   </div>
 
-  <!-- ══ TASK × HOURLY HEATMAP ══ -->
+  <!-- TASK HEATMAP -->
   <div class="dash-ed-panel">
     <div class="dash-ed-panel-hdr">
       <div class="dash-ed-panel-title">📋 Task × Hourly Count</div>
       <div style="display:flex;align-items:center;gap:8px" class="dash-ed-filter">
-        <input type="date" id="dash_heat_date" value="${todayStrET()}"
-          onchange="refreshTaskHeatmap()"/>
+        <input type="date" id="dash_heat_date" value="${todayStrET()}" onchange="refreshTaskHeatmap()"/>
         <div class="dash-ed-panel-badge" id="dash_heat_badge">Today</div>
       </div>
     </div>
     <div style="overflow-x:auto">
       <table class="dash-ed-table" id="taskHeatTable">
         <thead><tr>
-          <th>Task</th>
-          <th style="text-align:center">Total</th>
-          ${hours.map(h=>`<th style="text-align:center;min-width:30px;font-size:10px;padding:6px 2px">${h}</th>`).join('')}
+          <th>Task</th><th style="text-align:center">Total</th>
+          ${['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'].map(h=>`<th style="text-align:center;min-width:30px;font-size:10px;padding:6px 2px">${h}</th>`).join('')}
         </tr></thead>
-        <tbody id="taskHeatBody">${buildTaskHeatRows(allDB,hours,today)}</tbody>
+        <tbody id="taskHeatBody"></tbody>
       </table>
     </div>
-    <div style="padding:10px 16px;border-top:1px solid #eef1fb;display:flex;gap:12px;font-size:10px;color:#7b92d2;align-items:center">
-      <span style="font-weight:700;color:#7b92d2">HEAT:</span>
-      <span class="dash-heat-cell h1" style="border-radius:4px;padding:2px 8px;font-size:11px">1–2</span>
-      <span class="dash-heat-cell h2" style="border-radius:4px;padding:2px 8px;font-size:11px">3–5</span>
-      <span class="dash-heat-cell h3" style="border-radius:4px;padding:2px 8px;font-size:11px">6–9</span>
-      <span class="dash-heat-cell h4" style="border-radius:4px;padding:2px 8px;font-size:11px">10+</span>
-    </div>
   </div>
 
-  <!-- ══ TOP USERS CHART ══ -->
-  ${(()=>{
-    // Collect all task counts per user across all visible DB arrays
-    const userMap={};
-    Object.values(allDB).forEach(t=>{
-      t.db.forEach(r=>{
-        const u=r.user||r.user_name||r.assignedTo||r.auditor||'Unknown';
-        if(!u||u==='Unknown') return;
-        userMap[u]=(userMap[u]||0)+1;
-      });
-    });
-    const top10=Object.entries(userMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    if(!top10.length) return '';
-    const maxU=top10[0][1];
-    const userColors=['#4d79ff','#0ea5e9','#17a00e','#f59e0b','#7c3aed','#e11d48','#0891b2','#d97706','#0d9488','#2563eb'];
-    const bars=top10.map((e,i)=>{
-      const pct=Math.max(2,Math.round(e[1]/maxU*100));
-      return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="width:120px;font-size:12px;font-weight:700;color:var(--text2);text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${e[0]}">${e[0]}</div>
-        <div style="flex:1;height:20px;background:var(--border);border-radius:5px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:${userColors[i%userColors.length]};border-radius:5px;transition:width .5s"></div>
-        </div>
-        <div style="width:40px;font-size:12px;font-weight:800;color:${userColors[i%userColors.length]};text-align:right;flex-shrink:0">${e[1]}</div>
-      </div>`;
-    }).join('');
-    return`<div class="dash-ed-panel" style="margin-top:4px">
-      <div class="dash-ed-panel-hdr">
-        <div class="dash-ed-panel-title">👑 Top Users by Task Count</div>
-        <div class="dash-ed-panel-badge">${Object.keys(userMap).length} active users</div>
-      </div>
-      <div style="padding:16px 18px">${bars}</div>
-    </div>`;
-  })()}
-
-  <!-- ══ AUDIT AUDITOR × HOURLY ══ -->
+  <!-- RECENT ERRORS -->
+  ${DB.errors.length?`
   <div class="dash-ed-panel" style="margin-top:4px">
     <div class="dash-ed-panel-hdr">
-      <div class="dash-ed-panel-title">🔍 Audit — Auditor × Hourly (Today)</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span style="background:#dbeafe;color:#1e40af;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">■ Audited</span>
-        <span style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">⏳ Pending</span>
-        <div class="dash-ed-panel-badge">${DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length} done today</div>
+      <div class="dash-ed-panel-title">⚠️ Recent Error Feedback</div>
+      <div style="display:flex;gap:8px">
+        <div class="dash-ed-panel-badge">${DB.errors.length} total</div>
+        <button class="dash-ed-btn-pri" onclick="showPage('errorreport')" style="font-size:11px;padding:4px 12px">View All →</button>
       </div>
     </div>
-    ${(()=>{
-      const auditHours=['06','07','08','09','10','11','12','13','14','15','16','17','18','19','20'];
-      const allTxns=DB.release2;
-      const auditedSet=new Set(DB.audit.map(a=>a.txn));
-      const pendingAll=allTxns.filter(r=>!auditedSet.has(r.txn));
-      const auditors=[...new Set(DB.audit.map(a=>a.auditor))].filter(Boolean).sort();
-      if(!auditors.length) return`<div style="padding:30px;text-align:center;color:#7b92d2;font-family:'Playfair Display',serif;font-style:italic">No audits completed yet · Pending: ${pendingAll.length} release records</div>`;
-      const auditHdrCols=auditHours.map(h=>`<th style="text-align:center;min-width:40px">${h}:xx</th>`).join('');
-      const todayAudits=DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today);
-      const auditorRows=auditors.map(auditor=>{
-        const myDone=DB.audit.filter(a=>a.auditor===auditor);
-        const myTodayDone=todayAudits.filter(a=>a.auditor===auditor);
-        const cells=auditHours.map(h=>{
-          const cnt=myTodayDone.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;
-          if(!cnt) return`<td style="text-align:center;padding:8px 4px;color:#94a3b8;font-size:11px">—</td>`;
-          const bg=cnt>=5?'#1e3a8a':cnt>=3?'#1d4ed8':cnt>=2?'#3b82f6':'#60a5fa';
-          return`<td style="text-align:center;padding:6px 3px;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
-        }).join('');
-        const myPend=allTxns.filter(r=>!auditedSet.has(r.txn)).length;
-        return`<tr>
-          <td style="font-weight:800;padding:8px 14px;white-space:nowrap;border-left:3px solid #3b82f6;font-size:12px;color:#1e2d6b">${auditor}</td>
-          <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);padding:8px 10px">${myDone.length}</td>
-          <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#dc2626;padding:8px 10px">${myPend}</td>
-          ${cells}
-        </tr>`;
-      }).join('');
-      const pendCells=auditHours.map(h=>{
-        const cnt=pendingAll.filter(r=>{const t=r.submitted||r._created||'';return t&&pad(new Date(t).getHours())===h;}).length;
-        if(!cnt) return`<td style="text-align:center;padding:8px 4px;color:#94a3b8;font-size:11px">—</td>`;
-        const bg=cnt>=5?'#7f1d1d':cnt>=3?'#991b1b':cnt>=2?'#dc2626':'#fca5a5';
-        const tc=cnt>=2?'#fff':'#7f1d1d';
-        return`<td style="text-align:center;padding:6px 3px;background:${bg};color:${tc};font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
-      }).join('');
-      const compCells=auditHours.map(h=>{
-        const cnt=todayAudits.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;
-        if(!cnt) return`<td style="text-align:center;padding:8px 4px;color:#94a3b8;font-size:11px">—</td>`;
-        const bg=cnt>=5?'#1e3a8a':cnt>=3?'#1d4ed8':cnt>=2?'#2563eb':'#60a5fa';
-        return`<td style="text-align:center;padding:6px 3px;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
-      }).join('');
-      return`<div style="overflow-x:auto"><table class="dash-ed-table">
-        <thead><tr>
-          <th style="min-width:140px">Auditor</th>
-          <th style="text-align:center;background:#1e40af">✅ Total Done</th>
-          <th style="text-align:center;background:#991b1b">⏳ Pending</th>
-          ${auditHdrCols}
-        </tr></thead>
-        <tbody>
-          ${auditorRows}
-          <tr style="border-top:2px solid #fca5a5">
-            <td style="font-weight:800;padding:8px 14px;color:#991b1b;border-left:3px solid #ef4444;background:#fff5f5;font-size:12px">⏳ Pending (by submitted hr)</td>
-            <td style="background:#fff5f5;color:#94a3b8;text-align:center">—</td>
-            <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;background:#fff5f5">${pendingAll.length}</td>
-            ${pendCells}
-          </tr>
-          <tr style="border-top:2px solid #3b82f6">
-            <td style="font-weight:800;padding:8px 14px;color:#1e3a8a;border-left:3px solid #1d4ed8;background:#eff6ff;font-size:12px">✅ Completed (today, by audit hr)</td>
-            <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#1e3a8a;background:#eff6ff">${todayAudits.length}</td>
-            <td style="background:#eff6ff;color:#94a3b8;text-align:center">—</td>
-            ${compCells}
-          </tr>
-        </tbody>
-      </table></div>`;
-    })()}
-  </div>
+    <div style="overflow-x:auto"><table class="dash-ed-table">
+      <thead><tr><th>#</th><th>Date</th><th>Txn</th><th>User</th><th>Task</th><th>Error Type</th><th>%</th><th>Status</th></tr></thead>
+      <tbody>${DB.errors.slice(0,8).map((e,i)=>`<tr>
+        <td style="color:#7b92d2;font-size:11px">${i+1}</td>
+        <td style="font-size:11px;color:#7b92d2">${(e.date||e._created||'').toString().slice(0,10)}</td>
+        <td style="font-family:var(--mono);font-weight:700">${e.txn||'—'}</td>
+        <td style="font-weight:600">${e.userName||e.user||'—'}</td>
+        <td><span style="background:var(--primary-pale);color:var(--primary);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${e.task||'—'}</span></td>
+        <td style="font-size:11px;color:var(--text2)">${e.errorType||'—'}</td>
+        <td style="font-family:var(--mono);font-weight:800;color:#e11d48">${e.percentage||'—'}</td>
+        <td><span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;background:${e.acknowledgedAt?'#eefbee':'#fff1f2'};color:${e.acknowledgedAt?'#17a00e':'#e11d48'}">${e.acknowledgedAt?'✅ Ack':'⏳ Pending'}</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`:''}
 
-  <!-- ══ AUDIT — MODE-WISE STATUS CARDS ══ -->
-  ${(()=>{
-    if(isTL&&!isMgr&&CU.task!=='Release') return '';
-    const auditedTxns=new Set(DB.audit.map(a=>a.txn));
-    const allRelease=DB.release2;
-    const modes=[...new Set(allRelease.map(r=>r.mode||'Unknown'))].sort();
-    if(!modes.length||!allRelease.length) return '';
-    const mCfg={
-      'Truck': {bg:'#fff7ed',border:'#fed7aa',text:'#92400e',bar:'#f97316',track:'#ffe4c4',icon:'🚛'},
-      'Ocean': {bg:'#f0f9ff',border:'#bae6fd',text:'#075985',bar:'#0891b2',track:'#dbeafe',icon:'🌊'},
-      'Air':   {bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',bar:'#7c3aed',track:'#ede9fe',icon:'✈️'},
-      'Rail':  {bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',bar:'#16a34a',track:'#dcfce7',icon:'🚂'},
-    };
-    const cards=modes.map(md=>{
-      const c=mCfg[md]||{bg:'#f8fafc',border:'#e2e8f0',text:'#475569',bar:'#6366f1',track:'#e0e7ff',icon:'📦'};
-      const mdRecs=allRelease.filter(r=>(r.mode||'Unknown')===md);
-      const mdDone=mdRecs.filter(r=>auditedTxns.has(r.txn));
-      const mdPend=mdRecs.filter(r=>!auditedTxns.has(r.txn));
-      const mdScores=mdDone.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0);
-      const mdAvg=mdScores.length?(mdScores.reduce((s,v)=>s+v,0)/mdScores.length).toFixed(1):'—';
-      const mPct=mdRecs.length?Math.round(mdDone.length/mdRecs.length*100):0;
-      const allDone=mdPend.length===0&&mdRecs.length>0;
-      return`
-      <div style="background:${c.bg};border:2px solid ${c.border};border-radius:16px;padding:18px 20px;position:relative;overflow:hidden;min-width:220px;flex:1">
-        ${allDone?`<div style="position:absolute;top:10px;right:10px;background:#dcfce7;color:#166534;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;letter-spacing:.3px">✅ COMPLETE</div>`:''}
-        <!-- Header -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <div style="font-size:26px;line-height:1">${c.icon}</div>
-          <div style="flex:1">
-            <div style="font-size:15px;font-weight:900;color:${c.text};letter-spacing:-.2px">${md}</div>
-            <div style="font-size:11px;color:${c.text};opacity:.65;font-weight:600">${mdRecs.length} total records</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${c.text};line-height:1">${mPct}%</div>
-            <div style="font-size:9px;color:${c.text};opacity:.6;font-weight:700;letter-spacing:.5px;text-align:right">AUDITED</div>
-          </div>
-        </div>
-        <!-- Progress bar -->
-        <div style="height:10px;background:${c.track};border-radius:10px;overflow:hidden;margin-bottom:14px">
-          <div style="height:100%;width:${mPct}%;background:${c.bar};border-radius:10px"></div>
-        </div>
-        <!-- 3 stat boxes -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div style="background:rgba(22,163,74,.1);border:1.5px solid rgba(22,163,74,.25);border-radius:10px;padding:9px 6px;text-align:center">
-            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#15803d;line-height:1">${mdDone.length}</div>
-            <div style="font-size:10px;font-weight:800;color:#15803d;margin-top:4px">✅ Audited</div>
-          </div>
-          <div style="background:${mdPend.length?'rgba(245,158,11,.1)':'rgba(22,163,74,.06)'};border:1.5px solid ${mdPend.length?'rgba(245,158,11,.3)':'rgba(22,163,74,.2)'};border-radius:10px;padding:9px 6px;text-align:center">
-            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${mdPend.length?'#92400e':'#15803d'};line-height:1">${mdPend.length}</div>
-            <div style="font-size:10px;font-weight:800;color:${mdPend.length?'#92400e':'#15803d'};margin-top:4px">${mdPend.length?'⏳ Pending':'✅ All Done'}</div>
-          </div>
-          <div style="background:rgba(99,102,241,.08);border:1.5px solid rgba(99,102,241,.2);border-radius:10px;padding:9px 6px;text-align:center">
-            <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#4338ca;line-height:1">${mdAvg}${mdAvg!=='—'?'%':''}</div>
-            <div style="font-size:10px;font-weight:800;color:#4338ca;margin-top:4px">⭐ Avg Score</div>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-    return`
-    <div class="dash-ed-panel" style="margin-top:4px">
-      <div class="dash-ed-panel-hdr">
-        <div class="dash-ed-panel-title">🚢 Audit — Mode-wise Status</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">✅ ${DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length} audited</span>
-          <span style="background:#fef9c3;color:#92400e;border-radius:8px;padding:2px 10px;font-size:10px;font-weight:700">⏳ ${DB.release2.length-DB.audit.filter(a=>DB.release2.find(r=>r.txn===a.txn)).length} pending</span>
-        </div>
-      </div>
-      <div style="padding:16px 18px;display:flex;gap:14px;flex-wrap:wrap">
-        ${cards}
-      </div>
-    </div>`;
-  })()}
+  </div>`;
 
-  <!-- ══ ANALYTICS CARDS ROW ══ -->
-  <div id="dash-analytics-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:4px;margin-bottom:4px"></div>
-  <!-- ══ DB STORAGE INDICATOR ══ -->
-  <div id="dash-storage-bar" style="margin-top:4px"></div>
-  <!-- ══ TAT BREAKDOWN BY TASK ══ -->
-  <div id="dash-tat-breakdown" style="margin-top:4px"></div>
-  <!-- ══ RECENT ERRORS SUMMARY ══ -->
-  <div id="dash-recent-errors" style="margin-top:4px"></div>
-
-  </div>
-`;
-  // Populate analytics sections after HTML is set (avoids nested template literal issues)
-  renderDashboardAnalytics(allDB, today, todayAll);
+  // Populate heatmap after render
+  const _heatAllDB = {};
+  visibleDefs.forEach(d=>{ _heatAllDB[d.key]={db:d.db,label:d.label,color:d.color}; });
+  const _heatBody = document.getElementById('taskHeatBody');
+  if(_heatBody) _heatBody.innerHTML = buildTaskHeatRows(_heatAllDB,['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'],today);
 }
 
-// ══════════════════════════════════════════════════════════
-// IDLE LOG PAGE (Admin only)
-// ══════════════════════════════════════════════════════════
+function renderDashboardAnalytics(allDB, today, todayAll){ /* merged into renderDashboard */ }
 
-// ── Render analytics sections AFTER dashboard innerHTML is set ──
-function renderDashboardAnalytics(allDB, today, todayAll){
-  const allRecs = Object.values(allDB).flatMap(t=>t.db);
-  const tatReached = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached';}).length;
-  const tatMissed  = allRecs.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat not reached'||tv.includes('not-reached');}).length;
-  const _tatTotal  = tatReached + tatMissed;
-  const tatPct     = _tatTotal ? Math.round(tatReached/_tatTotal*100) : 0;
-  const tatColor   = tatPct>=90?'#17a00e':tatPct>=75?'#f59e0b':'#e11d48';
-  const ahtRecs    = [...DB.lvs,...DB.b2entries].filter(r=>parseFloat(r.aht)>0);
-  const avgAHT     = ahtRecs.length ? (ahtRecs.reduce((s,r)=>s+parseFloat(r.aht||0),0)/ahtRecs.length).toFixed(1) : '—';
-  const totalErrors= DB.errors.length;
-  const errRate    = allRecs.length ? ((totalErrors/allRecs.length)*100).toFixed(1) : '0.0';
-  const errColor   = parseFloat(errRate)>5?'#e11d48':parseFloat(errRate)>2?'#f59e0b':'#17a00e';
-  const nowM       = nowET();
-  const ym         = nowM.getFullYear()+'-'+String(nowM.getMonth()+1).padStart(2,'0');
-  const monthTotal = allRecs.filter(r=>{const d=parseAppDate(r._created||'');return d&&d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')===ym;}).length;
-  const todayRecs  = allRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
-  const hourMap    = {};
-  todayRecs.forEach(r=>{const d=parseAppDate(r._created||'');if(d){const h=pad(d.getHours());hourMap[h]=(hourMap[h]||0)+1;}});
-  const peakEntry  = Object.entries(hourMap).sort((a,b)=>b[1]-a[1])[0];
-  const peakHour   = peakEntry ? peakEntry[0]+':00 ('+peakEntry[1]+' entries)' : '—';
-  const activeUsers= [...new Set(todayRecs.map(r=>r.user||r.user_name||r.assignedTo||'').filter(Boolean))].length;
-  const staffCount = DB.loginUsers.filter(u=>u.active!==false).length;
-  const monthLabel = nowM.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
-
-  // ── Analytics Cards ──
-  const cardsEl = document.getElementById('dash-analytics-cards');
-  if(cardsEl){
-    cardsEl.innerHTML =
-      '<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📅 This Month</div>'
-        +'<div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">'+monthTotal.toLocaleString()+'</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">'+monthLabel+'</div>'
-      +'</div>'
-      +'<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✅ Overall TAT</div>'
-        +'<div style="font-size:28px;font-weight:900;font-family:var(--mono);color:'+tatColor+'">'+tatPct+'%</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">'+tatReached+' reached · '+tatMissed+' missed</div>'
-        +'<div style="margin-top:6px;height:5px;background:var(--border);border-radius:4px;overflow:hidden">'
-          +'<div style="height:100%;width:'+tatPct+'%;background:'+tatColor+';border-radius:4px;transition:width .5s"></div>'
-        +'</div>'
-      +'</div>'
-      +'<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">⏱ Avg AHT (mins)</div>'
-        +'<div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#0ea5e9">'+avgAHT+'</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">LVS + B2 Entries · '+ahtRecs.length+' records</div>'
-      +'</div>'
-      +'<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">👥 Active Today</div>'
-        +'<div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed">'+activeUsers+'</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">of '+staffCount+' total staff</div>'
-      +'</div>'
-      +'<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">⚠️ Error Rate</div>'
-        +'<div style="font-size:28px;font-weight:900;font-family:var(--mono);color:'+errColor+'">'+errRate+'%</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">'+totalErrors+' errors logged</div>'
-      +'</div>'
-      +'<div class="dash-ed-panel" style="padding:14px 16px">'
-        +'<div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">⚡ Peak Hour Today</div>'
-        +'<div style="font-size:16px;font-weight:900;font-family:var(--mono);color:#d97706;margin-top:4px">'+peakHour+'</div>'
-        +'<div style="font-size:11px;color:#7b92d2;margin-top:4px">'+todayAll+' total entries today</div>'
-      +'</div>';
-  }
-
-  // ── DB Storage Bar ──
-  const storageEl = document.getElementById('dash-storage-bar');
-  if(storageEl){
-    const totalRecords = allRecs.length + DB.errors.length + DB.audit.length + DB.clients.length + DB.users.length + DB.loginUsers.length + (DB.idleLog||[]).length;
-    const estSizeMB  = (Math.round(totalRecords*0.8)/1024).toFixed(2);
-    const storagePct = Math.min(100, Math.round((estSizeMB/500)*100));
-    const sColor     = storagePct>=80?'#e11d48':storagePct>=50?'#f59e0b':'#17a00e';
-    const sLabel     = storagePct>=80?'⚠️ Critical':storagePct>=50?'⚠️ Watch':'✅ Healthy';
-    let html = '<div class="dash-ed-panel" style="padding:14px 20px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
-        +'<div style="display:flex;align-items:center;gap:10px">'
-          +'<span style="font-size:16px">🗄️</span>'
-          +'<div><div style="font-size:13px;font-weight:800;color:var(--text)">Database Storage Usage</div>'
-          +'<div style="font-size:11px;color:#7b92d2">Supabase Free Tier · 500 MB limit · Estimated from record count</div></div>'
-        +'</div>'
-        +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-          +'<span style="font-size:12px;font-weight:700;color:'+sColor+';background:'+sColor+'18;padding:4px 12px;border-radius:8px;border:1px solid '+sColor+'44">'+sLabel+'</span>'
-          +'<span style="font-size:12px;font-weight:700;color:var(--text2)">~'+estSizeMB+' MB / 500 MB</span>'
-          +'<span style="font-size:12px;font-weight:700;color:'+sColor+'">'+storagePct+'%</span>'
-        +'</div>'
-      +'</div>'
-      +'<div style="height:14px;background:var(--border);border-radius:8px;overflow:hidden">'
-        +'<div style="height:100%;width:'+storagePct+'%;background:linear-gradient(90deg,'+sColor+','+sColor+'aa);border-radius:8px;transition:width .8s"></div>'
-      +'</div>'
-      +'<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:#7b92d2;flex-wrap:wrap;gap:6px">'
-        +'<span>📊 '+totalRecords.toLocaleString()+' total records across all tables</span>'
-        +'<span style="display:flex;gap:14px;flex-wrap:wrap">'
-          +'<span>LVS: '+DB.lvs.length+'</span>'
-          +'<span>Release: '+DB.release2.length+'</span>'
-          +'<span>Audit: '+DB.audit.length+'</span>'
-          +'<span>Errors: '+DB.errors.length+'</span>'
-          +'<span>Clients: '+DB.clients.length+'</span>'
-          +'<span>Users: '+DB.loginUsers.length+'</span>'
-        +'</span>'
-      +'</div>';
-    if(storagePct>=80) html+='<div style="margin-top:10px;padding:8px 14px;background:#fff1f2;border:1.5px solid rgba(225,29,72,.25);border-radius:8px;font-size:12px;color:#e11d48;font-weight:600">⚠️ Storage above 80% — consider upgrading Supabase to Pro ($25/month) or archiving old records.</div>';
-    else if(storagePct>=50) html+='<div style="margin-top:10px;padding:8px 14px;background:#fffbeb;border:1.5px solid rgba(245,158,11,.25);border-radius:8px;font-size:12px;color:#d97706;font-weight:600">💡 Storage above 50% — monitor weekly. Upgrade Supabase when approaching 80%.</div>';
-    html+='</div>';
-    storageEl.innerHTML=html;
-  }
-
-  // ── TAT Breakdown ──
-  const tatEl = document.getElementById('dash-tat-breakdown');
-  if(tatEl){
-    let tatCards='';
-    Object.entries(allDB).forEach(([k,t])=>{
-      const tr2=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-      const tm2=t.db.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
-      const tp2=t.db.length?Math.round(tr2/t.db.length*100):0;
-      const tc2=tp2>=90?'#17a00e':tp2>=75?'#f59e0b':'#e11d48';
-      tatCards+='<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid var(--border)">'
-        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">'
-          +'<span style="width:10px;height:10px;border-radius:50%;background:'+t.color+';display:inline-block;flex-shrink:0"></span>'
-          +'<span style="font-size:12px;font-weight:700;color:var(--text)">'+t.label+'</span>'
-          +'<span style="margin-left:auto;font-size:12px;font-weight:900;color:'+tc2+';font-family:var(--mono)">'+tp2+'%</span>'
-        +'</div>'
-        +'<div style="height:6px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:6px">'
-          +'<div style="height:100%;width:'+tp2+'%;background:'+tc2+';border-radius:4px"></div>'
-        +'</div>'
-        +'<div style="font-size:10px;color:#7b92d2;display:flex;justify-content:space-between">'
-          +'<span>✅ '+tr2+' reached</span><span>❌ '+tm2+' missed</span><span>Total: '+t.db.length+'</span>'
-        +'</div>'
-      +'</div>';
-    });
-    tatEl.innerHTML='<div class="dash-ed-panel">'
-      +'<div class="dash-ed-panel-hdr">'
-        +'<div class="dash-ed-panel-title">📊 TAT Breakdown by Task</div>'
-        +'<div class="dash-ed-panel-badge">All time · '+allRecs.length+' records</div>'
-      +'</div>'
-      +'<div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'+tatCards+'</div>'
-    +'</div>';
-  }
-
-  // ── Recent Errors ──
-  const errEl = document.getElementById('dash-recent-errors');
-  if(errEl && DB.errors.length){
-    let errRows='';
-    DB.errors.slice(0,10).forEach((e,i)=>{
-      const ackBg  = e.acknowledgedAt?'#eefbee':'#fff1f2';
-      const ackClr = e.acknowledgedAt?'#17a00e':'#e11d48';
-      const ackTxt = e.acknowledgedAt?'✅ Ack':'⏳ Pending';
-      errRows+='<tr>'
-        +'<td style="color:#7b92d2;font-size:11px">'+(i+1)+'</td>'
-        +'<td style="font-size:11px;color:#7b92d2">'+((e.date||e._created||'').toString().slice(0,10))+'</td>'
-        +'<td style="font-family:var(--mono);font-weight:700">'+(e.txn||'—')+'</td>'
-        +'<td style="font-weight:600">'+(e.userName||e.user||'—')+'</td>'
-        +'<td><span style="background:var(--primary-pale);color:var(--primary);padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">'+(e.task||'—')+'</span></td>'
-        +'<td style="font-size:11px;color:var(--text2)">'+(e.errorType||'—')+'</td>'
-        +'<td style="font-family:var(--mono);font-weight:800;color:#e11d48">'+(e.percentage||'—')+'</td>'
-        +'<td><span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;background:'+ackBg+';color:'+ackClr+'">'+ackTxt+'</span></td>'
-        +'</tr>';
-    });
-    errEl.innerHTML='<div class="dash-ed-panel">'
-      +'<div class="dash-ed-panel-hdr">'
-        +'<div class="dash-ed-panel-title">⚠️ Recent Error Feedback (Last 10)</div>'
-        +'<div style="display:flex;gap:8px"><div class="dash-ed-panel-badge">'+DB.errors.length+' total errors</div>'
-        +'<button class="dash-ed-btn-pri" onclick="showPage(\'errorreport\')" style="font-size:11px;padding:4px 12px">View All →</button>'
-        +'</div></div>'
-      +'<div style="overflow-x:auto"><table class="dash-ed-table">'
-        +'<thead><tr><th>#</th><th>Date</th><th>Txn</th><th>User</th><th>Task</th><th>Error Type</th><th>%</th><th>Status</th></tr></thead>'
-        +'<tbody>'+errRows+'</tbody></table></div></div>';
-  }
-}
 function renderIdleLogPage(c){
   if(!isAdmin()&&CU.role!=='Supervisor'&&CU.role!=='Team Lead'){
     c.innerHTML='<div class="ph"><div class="pt">🚫 Access Denied</div><div class="ps">Admin / Manager / Supervisor / Team Lead only.</div></div>';
