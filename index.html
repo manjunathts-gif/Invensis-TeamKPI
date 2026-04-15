@@ -11797,7 +11797,7 @@ const KPI_TABS=[
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
-  {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#e0f7fa',
+  {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#200132',
    db:()=>DB.oceanTT,   uf:'user',      ef:'complete',  tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:null,
@@ -12375,7 +12375,7 @@ function renderReports(c){
       <button class="btn-exp" style="background:var(--teal-bg);border-color:rgba(13,148,136,.3);color:var(--teal)" onclick="exportOceanDocs()">⬇️ Ocean Docs</button>
       <button class="btn-exp" style="background:var(--amber-bg);border-color:rgba(217,119,6,.3);color:var(--amber)" onclick="exportPartLot()">⬇️ Part Lot</button>
       <button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose)" onclick="exportRelease2()">⬇️ Release</button>
-      <button class="btn-exp" style="background:#e0f7fa;border-color:#0891b2;color:#0891b2" onclick="exportOTT()">⬇️ Ocean T&T</button>
+      <button class="btn-exp" style="background:#200132;border-color:#0891b2;color:#0891b2" onclick="exportOTT()">⬇️ Ocean T&T</button>
       <button class="btn-exp" style="background:var(--amber-bg);border-color:rgba(217,119,6,.3);color:var(--amber)" onclick="exportB2()">⬇️ B2 Entries</button>
     </div>
   </div>
@@ -21244,7 +21244,7 @@ function renderOceanTT(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc" style="background:#e0f7fa;border-color:#0891b2"><div class="sc-top" style="background:#0891b2"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard" style="color:#0891b2">${all.length}</div></div>
+    <div class="sc" style="background:#200132;border-color:#0891b2"><div class="sc-top" style="background:#0891b2"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard" style="color:#0891b2">${all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv">${all.filter(r=>r.destination==='Toronto').length}</div></div>
