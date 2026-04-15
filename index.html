@@ -15561,44 +15561,10 @@ function renderAudit(c){
   window._auditTLOpts=tlNames.map(n=>`<option value="${n}">${n}</option>`).join('');
   window._auditErrOpts=Object.keys(AUDIT_ERROR_SCORES).map(t=>`<option value="${t}">${t} (${AUDIT_ERROR_SCORES[t]}%)</option>`).join('');
 
-  // ── User-wise hourly audit heatmap ──
-  const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-  const releaseUsers=[...new Set(teamRecords.map(r=>r.user).filter(Boolean))].sort();
-  const auditorNames=[...new Set(DB.audit.map(a=>a.auditor).filter(Boolean))].sort();
-
-  const heatClass2=(n)=>n===0?'':n===1?'h1':n<=3?'h2':n<=6?'h3':'h4';
-
-  // Build heatmap rows: per-user, per-hour
-  const heatRows=releaseUsers.map(user=>{
-    // Records added by this user per hour (pending = not audited)
-    const userRecs=teamRecords.filter(r=>r.user===user);
-    const userDone=userRecs.filter(r=>auditedTxns.has(r.txn));
-    const userPend=userRecs.filter(r=>!auditedTxns.has(r.txn));
-    const cells=hours.map(h=>{
-      const addedThisHour=userRecs.filter(r=>r._created&&pad((parseAppDate(r._created)||new Date(0)).getHours())===h).length;
-      const doneThisHour=userDone.filter(r=>{
-        const ar=auditByTxn.get(r.txn); // O(1) lookup
-        return ar&&ar._created&&pad(new Date(ar._created).getHours())===h;
-      }).length;
-      const pendThisHour=Math.max(0,addedThisHour-doneThisHour);
-      const cls=heatClass2(addedThisHour);
-      if(!addedThisHour) return`<td class="hcell" style="padding:9px 10px;text-align:center;font-size:10px;color:var(--text3)">—</td>`;
-      return`<td class="hcell ${cls}" style="padding:6px 8px;text-align:center;min-width:52px">
-        <div style="font-size:12px;font-weight:800;font-family:var(--mono);color:inherit">${addedThisHour}</div>
-        <div style="display:flex;gap:3px;justify-content:center;margin-top:2px">
-          <span style="font-size:9px;background:#dcfce7;color:#166534;border-radius:8px;padding:1px 5px;font-weight:700">✅${doneThisHour}</span>
-          ${pendThisHour?`<span style="font-size:9px;background:#fef9c3;color:#854d0e;border-radius:8px;padding:1px 5px;font-weight:700">⏳${pendThisHour}</span>`:''}
-        </div>
-      </td>`;
-    }).join('');
-    return`<tr>
-      <td style="font-weight:700;padding:10px 14px;white-space:nowrap;font-size:12px">${user}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);padding:10px 10px;font-size:13px">${userRecs.length}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;padding:10px 10px;font-size:13px">${userDone.length}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${userPend.length?'#854d0e':'#166534'};padding:10px 10px;font-size:13px">${userPend.length}</td>
-      ${cells}
-    </tr>`;
-  }).join('');
+  // Heatmap deferred — built after page renders to avoid freeze
+  // Store data needed for deferred build
+  window._auditHeatData = { teamRecords, auditedTxns, auditByTxn };
+  const heatRows = ''; // placeholder — filled by _buildAuditHeatmap() after render
 
   c.innerHTML=`
   <div class="ph">
@@ -15794,87 +15760,11 @@ function renderAudit(c){
     </div>
   </div>
 
-  <!-- Auditor-wise Hourly Audit Heatmap -->
-  <div class="tw" style="margin-bottom:18px">
-    <div class="th2">
-      <div class="tt">⏰ Hourly Audit Activity — Auditor Wise</div>
-      <div style="display:flex;gap:8px;font-size:11px;align-items:center;flex-wrap:wrap">
-        <span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 8px;font-weight:700">■ Audited count</span>
-        <span style="background:#fee2e2;color:#991b1b;border-radius:8px;padding:2px 8px;font-weight:700">⏳ Pending row = not yet audited by submitted hour</span>
-        <span style="background:#d1fae5;color:#065f46;border-radius:8px;padding:2px 8px;font-weight:700">✅ Completed row = audited by hour</span>
-      </div>
+  <!-- Auditor-wise Hourly Audit Heatmap — deferred for performance -->
+  <div id="auditHeatmapSection" style="margin-bottom:18px">
+    <div style="padding:18px;text-align:center;color:var(--text3);font-size:13px">
+      ⏳ Loading heatmap...
     </div>
-    <div style="overflow-x:auto"><table class="dt">
-      <thead><tr>
-        <th style="white-space:nowrap;padding:9px 14px;min-width:140px">Auditor / Row</th>
-        <th style="text-align:center;padding:9px 10px;background:#dcfce7;color:#166534">✅ Total</th>
-        <th style="text-align:center;padding:9px 10px;background:#fee2e2;color:#991b1b">⏳ Pending</th>
-        ${hours.map(h=>`<th style="text-align:center;padding:9px 8px;min-width:48px;font-size:11px">${h}:xx</th>`).join('')}
-      </tr></thead>
-      <tbody>
-        ${(()=>{
-          const todayStr=todayDateStringET();
-          const auditors=[...new Set([...DB.audit.map(a=>a.auditor),CU.name])].filter(Boolean).sort();
-          const pendingSet=new Set(pending.map(r=>r.txn));
-          // Auditor rows
-          const auditorRows=auditors.map(auditor=>{
-            const myAudits=DB.audit.filter(a=>a.auditor===auditor&&teamRecords.find(r=>r.txn===a.txn));
-            const todayAudits=myAudits.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr);
-            const myPending=pending.length; // pending is global for the team
-            const cells=hours.map(h=>{
-              const cnt=todayAudits.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;
-              if(!cnt) return'<td style="text-align:center;padding:9px 6px;color:var(--text3);font-size:11px">—</td>';
-              const bg=cnt>=5?'#166534':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
-              return`<td style="text-align:center;padding:8px 4px;background:${bg};color:#fff;font-family:var(--mono);font-size:13px;font-weight:800">${cnt}</td>`;
-            }).join('');
-            return`<tr>
-              <td style="font-weight:700;padding:9px 14px;white-space:nowrap;border-left:3px solid #22c55e">${auditor}${auditor===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 6px">you</span>':''}</td>
-              <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;background:#f0fdf4">${myAudits.length}</td>
-              <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;background:#fff5f5">${pending.length}</td>
-              ${cells}
-            </tr>`;
-          }).join('');
-
-          // Hourly Pending row (based on submitted time of unaudited txns)
-          const pendCells=hours.map(h=>{
-            const cnt=pending.filter(r=>{
-              const t=r.submitted||r._created||'';
-              return t&&pad(new Date(t).getHours())===h;
-            }).length;
-            if(!cnt) return'<td style="text-align:center;padding:9px 6px;color:var(--text3);font-size:11px">—</td>';
-            const bg=cnt>=5?'#991b1b':cnt>=3?'#dc2626':cnt>=2?'#ef4444':'#fca5a5';
-            const tc=cnt>=2?'#fff':'#7f1d1d';
-            return`<td style="text-align:center;padding:8px 4px;background:${bg};color:${tc};font-family:var(--mono);font-size:13px;font-weight:800">${cnt}</td>`;
-          }).join('');
-
-          // Hourly Completed row (based on audit completion time, today)
-          const doneCells=hours.map(h=>{
-            const cnt=DB.audit.filter(a=>{
-              if(!teamRecords.find(r=>r.txn===a.txn)) return false;
-              const d=parseAppDate(a._created);
-              return new Date(d).toDateString()===todayStr&&pad(d.getHours())===h;
-            }).length;
-            if(!cnt) return'<td style="text-align:center;padding:9px 6px;color:var(--text3);font-size:11px">—</td>';
-            const bg=cnt>=5?'#065f46':cnt>=3?'#047857':cnt>=2?'#059669':'#10b981';
-            return`<td style="text-align:center;padding:8px 4px;background:${bg};color:#fff;font-family:var(--mono);font-size:13px;font-weight:800">${cnt}</td>`;
-          }).join('');
-
-          return`${auditorRows}
-          <tr style="border-top:2px solid #fca5a5">
-            <td style="font-weight:800;padding:9px 14px;color:#991b1b;border-left:3px solid #ef4444;background:#fff5f5">⏳ Pending (by submitted hr)</td>
-            <td style="text-align:center;color:var(--text3);background:#fff5f5">—</td>
-            <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;background:#fff5f5">${pending.length}</td>
-            ${pendCells}
-          </tr>
-          <tr style="border-top:2px solid #10b981">
-            <td style="font-weight:800;padding:9px 14px;color:#065f46;border-left:3px solid #10b981;background:#f0fdf4">✅ Completed (today, by audit hr)</td>
-            <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${done.length}</td>
-            <td style="text-align:center;color:var(--text3);background:#f0fdf4">—</td>
-            ${doneCells}
-          </tr>`;
-        })()}
-      </tbody>
-    </table></div>
   </div>
 
   <!-- Audit tabs + Date Filter -->
@@ -15898,11 +15788,85 @@ function renderAudit(c){
     <div id="auditTabContent"></div>
   </div>`;
 
-  window._auditTeamRecords=teamRecords; // finalRecords assigned above
+  window._auditTeamRecords=teamRecords;
   window._auditPending=pending;
   window._auditDone=done;
   window._auditActiveTab='pending';
+  window._auditPageNum=1;
   renderAuditTab('pending');
+  // Build heatmap AFTER page renders — 400ms delay avoids freeze
+  setTimeout(()=>_buildAuditHeatmap(teamRecords, pending, done, auditedTxns), 400);
+}
+
+function _buildAuditHeatmap(teamRecords, pending, done, auditedTxns){
+  const el = document.getElementById('auditHeatmapSection');
+  if(!el) return;
+  const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
+  const todayStr = new Date().toDateString();
+  const teamTxnSet = new Set(teamRecords.map(r=>String(r.txn)));
+  const auditors = [...new Set([...DB.audit.map(a=>a.auditor),CU.name])].filter(Boolean).sort();
+
+  const auditorRows = auditors.map(auditor=>{
+    const myAudits = DB.audit.filter(a=>a.auditor===auditor && teamTxnSet.has(String(a.txn)));
+    const todayAudits = myAudits.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr);
+    const cells = hours.map(h=>{
+      const cnt = todayAudits.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;
+      if(!cnt) return '<td style="text-align:center;padding:8px 4px;color:var(--text3);font-size:11px">—</td>';
+      const bg = cnt>=5?'#166534':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
+      return `<td style="text-align:center;padding:7px 3px;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
+    }).join('');
+    return `<tr>
+      <td style="font-weight:700;padding:8px 12px;white-space:nowrap;border-left:3px solid #22c55e;font-size:12px">${auditor}${auditor===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 6px">you</span>':''}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;background:#f0fdf4">${myAudits.length}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;background:#fff5f5">${pending.length}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  const pendCells = hours.map(h=>{
+    const cnt = pending.filter(r=>{const t=r.submitted||r._created||'';return t&&pad(new Date(t).getHours())===h;}).length;
+    if(!cnt) return '<td style="text-align:center;padding:8px 4px;color:var(--text3);font-size:11px">—</td>';
+    const bg=cnt>=5?'#991b1b':cnt>=3?'#dc2626':cnt>=2?'#ef4444':'#fca5a5';
+    return `<td style="text-align:center;padding:7px 3px;background:${bg};color:${cnt>=2?'#fff':'#7f1d1d'};font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
+  }).join('');
+
+  const doneCells = hours.map(h=>{
+    const cnt = DB.audit.filter(a=>{
+      if(!teamTxnSet.has(String(a.txn))) return false;
+      const d=parseAppDate(a._created);
+      return d&&d.toDateString()===todayStr&&pad(d.getHours())===h;
+    }).length;
+    if(!cnt) return '<td style="text-align:center;padding:8px 4px;color:var(--text3);font-size:11px">—</td>';
+    const bg=cnt>=5?'#065f46':cnt>=3?'#047857':cnt>=2?'#059669':'#10b981';
+    return `<td style="text-align:center;padding:7px 3px;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800">${cnt}</td>`;
+  }).join('');
+
+  el.innerHTML=`<div class="tw">
+    <div class="th2"><div class="tt">⏰ Hourly Audit Activity — Auditor Wise</div></div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr>
+        <th style="white-space:nowrap;padding:9px 12px;min-width:130px">Auditor</th>
+        <th style="text-align:center;padding:8px;background:#dcfce7;color:#166534">✅ Total</th>
+        <th style="text-align:center;padding:8px;background:#fee2e2;color:#991b1b">⏳ Pending</th>
+        ${hours.map(h=>`<th style="text-align:center;min-width:40px;font-size:10px;padding:6px 2px">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${auditorRows}
+        <tr style="border-top:2px solid #fca5a5">
+          <td style="font-weight:800;padding:8px 12px;color:#991b1b;border-left:3px solid #ef4444;background:#fff5f5;font-size:12px">⏳ Pending (by submitted hr)</td>
+          <td style="background:#fff5f5;color:var(--text3);text-align:center">—</td>
+          <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;background:#fff5f5">${pending.length}</td>
+          ${pendCells}
+        </tr>
+        <tr style="border-top:2px solid #10b981">
+          <td style="font-weight:800;padding:8px 12px;color:#065f46;border-left:3px solid #10b981;background:#f0fdf4;font-size:12px">✅ Completed (today)</td>
+          <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${done.length}</td>
+          <td style="background:#f0fdf4;color:var(--text3);text-align:center">—</td>
+          ${doneCells}
+        </tr>
+      </tbody>
+    </table></div>
+  </div>`;
 }
 
 
