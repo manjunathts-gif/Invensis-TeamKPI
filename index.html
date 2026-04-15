@@ -10911,7 +10911,7 @@ function renderDashboard(c){
         oceanTT:{db:DB.oceanTT,label:'Ocean T&T',color:'#0891b2'},
         b2entries:{db:DB.b2entries,label:'B2 Entries',color:'#f59e0b'},
       };
-  const totalAll=Object.values(allDB).reduce((s,t)=>s+t.db.length,0);
+  const totalAll=Object.values(allDB).reduce((s,t)=>s+(t===allDB.release2&&window._rlTrueCount?window._rlTrueCount:t.db.length),0);
   const todayAll=Object.values(allDB).reduce((s,t)=>s+t.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length,0);
   const allHold=DB.lvs.filter(r=>r.status==='Hold').length+DB.cls.filter(r=>r.status==='Hold').length+DB.comp.filter(r=>r.status==='Hold').length+DB.release2.filter(r=>r.status==='Hold').length;
 
@@ -10988,7 +10988,7 @@ function renderDashboard(c){
         <div class="dash-ed-kpi" style="background:linear-gradient(135deg,${k.grad})">
           <div class="dash-ed-kpi-ico">${k.ico}</div>
           <div class="dash-ed-kpi-lbl">${k.lbl}</div>
-          <div class="dash-ed-kpi-num">${k.db.length}</div>
+          <div class="dash-ed-kpi-num">${k.key==='release2'&&window._rlTrueCount?window._rlTrueCount:k.db.length}</div>
           <div class="dash-ed-kpi-foot">Today: ${k.db.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div>
         </div>`).join('');
     })()}
@@ -11063,7 +11063,7 @@ function renderDashboard(c){
             <div style="flex:1;height:16px;background:var(--border);border-radius:4px;overflow:hidden">
               <div style="height:100%;width:${pct}%;background:${t.color};border-radius:4px;transition:width .5s"></div>
             </div>
-            <div style="width:32px;font-size:11px;font-weight:800;color:${t.color};text-align:right;flex-shrink:0">${t.db.length}</div>
+            <div style="width:32px;font-size:11px;font-weight:800;color:${t.color};text-align:right;flex-shrink:0">${(t===allDB.release2&&window._rlTrueCount)?window._rlTrueCount:t.db.length}</div>
           </div>`;
         }).join('')}
       </div>
