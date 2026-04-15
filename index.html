@@ -6878,7 +6878,7 @@ async function _attendanceLogIn(username){
     };
 
     // Insert new session row
-    await _supa.from('attendance_log').insert([{
+    const {data:insertedRow} = await _supa.from('attendance_log').insert([{
       username,
       emp_name:    name,
       task, role, team,
@@ -6889,7 +6889,15 @@ async function _attendanceLogIn(username){
       status:      'Present',
       session_no:  sessionNo,
       gap_before:  gapBeforeMin,
-    }]);
+    }]).select('id').single();
+    // Cache the DB id so logout targets the exact session
+    if(insertedRow?.id){
+      window._attendanceCache[username] = {
+        ...window._attendanceCache[username],
+        dbId: insertedRow.id,
+        loginTime: now
+      };
+    }
 
 
 
@@ -6918,19 +6926,39 @@ async function _attendanceLogOut(username){
     const timeET = nowStr();
     const dateET = _todayLocal(); // local date matches login date storage
 
-    let dbId = cached?.dbId;
+    let dbId   = cached?.dbId;
+    let loginTimeFromDB = null;
 
-    // If no cached ID, look up today's record
+    // Find the OPEN session (no logout_time) — fixes overlapping sessions
     if(!dbId){
       const {data:existing} = await _supa.from('attendance_log')
+        .select('id,login_time,logout_time')
+        .eq('username', username)
+        .eq('date', dateET)
+        .is('logout_time', null)   // only open sessions
+        .order('id', {ascending:false})
+        .limit(1);
+      if(existing && existing.length > 0){
+        dbId = existing[0].id;
+        loginTimeFromDB = existing[0].login_time;
+      }
+    }
+
+    // Fallback: get latest session even if already closed
+    if(!dbId){
+      const {data:fallback} = await _supa.from('attendance_log')
         .select('id,login_time')
         .eq('username', username)
         .eq('date', dateET)
+        .order('id', {ascending:false})
         .limit(1);
-      if(existing && existing.length > 0) dbId = existing[0].id;
+      if(fallback && fallback.length > 0){
+        dbId = fallback[0].id;
+        loginTimeFromDB = fallback[0].login_time;
+      }
     }
 
-    if(!dbId){ console.warn('[Attendance] No record found for logout'); return; }
+    if(!dbId){ return; }
 
     // Calculate hours worked
     const loginTime = cached?.loginTime || now;
@@ -7141,8 +7169,8 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // Normalize date comparison — handle any leftover timestamp format from DB
   // Match local IST date, ET today, AND ET yesterday — Indian morning = prev ET date
   const todayET2 = todayStrET();
-  const _etYestGlobal = (()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-  const _validTodayDates = new Set([today, todayET2, _etYestGlobal]);
+  // Only match actual today dates — do NOT include yesterday (causes ghost present)
+  const _validTodayDates = new Set([today, todayET2].filter(Boolean));
   const todayRows   = rows.filter(r => _validTodayDates.has(String(r.date||'').slice(0,10)));
   // For "present today": user present if they have at least 1 session today (either date)
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
@@ -7185,28 +7213,6 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
     // Primary: users with attendance_log record today
     const attendedSet = new Set([...presentUnameSet]);
 
-    // Fallback: also include users who submitted tasks today but have no attendance record
-    // This catches users whose attendance_log date was stored incorrectly (ET vs IST)
-    const allTaskArrays=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
-    const localToday = _todayLocal();
-    allTaskArrays.forEach(arr=>{
-      (arr||[]).forEach(r=>{
-        const recDate = (r._created||'').slice(0,10);
-        if(!_validTodayDates.has(recDate)) return;
-        const uname = r.user||r.assignedTo||r.user_name||'';
-        if(!uname) return;
-        // Find login username from allUsers by matching emp name
-        const lu = allUsers.find(u=>
-          (u.empName||u.name||'').toLowerCase()===uname.toLowerCase()||
-          (u.loginName||u.username||'').toLowerCase()===uname.toLowerCase()
-        );
-        const loginUname = lu ? (lu.loginName||lu.username||uname) : uname;
-        if(loginUname && !attendedSet.has(loginUname)){
-          attendedSet.add(loginUname);
-          console.log('[Attendance] Fallback: added '+loginUname+' from task submission');
-        }
-      });
-    });
     userList = [...attendedSet].sort();
   } else {
     // Past month: show all users who have any record in that month
