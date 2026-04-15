@@ -9748,32 +9748,31 @@ function showPage(id){
     else if(id==='oceantt') renderOceanTT(c);
     else if(id==='b2entries') renderB2Entries(c);
     else if(id==='productivity') renderProductivity(c);
+    else if(id==='loginusers'){
+      if(_supa){
+        dbLoad('login_users').then(rows=>{
+          if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
+          renderLoginUsers(c);
+        }).catch(()=>renderLoginUsers(c));
+      } else { renderLoginUsers(c); }
+    }
+    else if(id==='gdrive') renderGDrive(c);
+    else if(id==='mystatus') renderMyStatus(c);
+    else if(id==='errorreport') renderErrorReport(c);
+    else if(id==='audit') renderAudit(c);
+    else if(id==='tatanalyzer') renderTATAnalyzer(c);
+    else if(id==='tatreasons') renderTATReasons(c);
+    else if(id==='tatissue') renderTATIssue(c);
+    else if(id==='dcissue') renderDCIssue(c);
+    else if(id==='instructions') renderInstructions(c);
+    else if(id==='huddle') renderHuddlePage(c);
+    else if(id==='qualityanalytics') renderQualityAnalytics(c);
+    else if(id==='idlelog') renderIdleLogPage(c);
+    else if(id==='archive') renderArchivePage(c);
+    else if(id==='attendance') renderAttendancePage(c);
+    else renderComing(c);
   };
   setTimeout(_renderFn, 0);
-  else if(id==='loginusers'){
-    // Always reload from DB when opening the page so changes by others appear instantly
-    if(_supa){
-      dbLoad('login_users').then(rows=>{
-        if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
-        renderLoginUsers(c);
-      }).catch(()=>renderLoginUsers(c));
-    } else { renderLoginUsers(c); }
-  }
-  else if(id==='gdrive') renderGDrive(c);
-  else if(id==='mystatus') renderMyStatus(c);
-  else if(id==='errorreport') renderErrorReport(c);
-  else if(id==='audit') renderAudit(c);
-  else if(id==='tatanalyzer') renderTATAnalyzer(c);
-  else if(id==='tatreasons') renderTATReasons(c);
-  else if(id==='tatissue') renderTATIssue(c);
-  else if(id==='dcissue') renderDCIssue(c);
-  else if(id==='instructions') renderInstructions(c);
-  else if(id==='huddle') renderHuddlePage(c);
-  else if(id==='qualityanalytics') renderQualityAnalytics(c);
-  else if(id==='idlelog') renderIdleLogPage(c);
-  else if(id==='archive') renderArchivePage(c);
-  else if(id==='attendance') renderAttendancePage(c);
-  else renderComing(c);
   // After page renders, show error alert banner for users with unacknowledged errors
   setTimeout(injectErrAlertBanner, 80);
 }
