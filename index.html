@@ -12255,7 +12255,10 @@ function kpiShowTab(id){
   if(!c2) return;
 
   // ── Stat KPIs ──
-  const total=data.length;
+  // For release tab with no date/mode/team filter: use true DB count (DB.release2 is 90-day only)
+  const _useRlTrue = tab.id==='release' && !_kpiD1 && !_kpiD2 && !_kpiMode && !_kpiTeam
+    && window._rlTrueCount && window._rlTrueCount > data.length;
+  const total = _useRlTrue ? window._rlTrueCount : data.length;
   const tf=tab.tf; const sf=tab.sf;
   const done = sf ? data.filter(r=>tab.doneVals.some(v=>(r[sf]||'').toLowerCase().includes(v))).length : 0;
   const hold = sf ? data.filter(r=>(r[sf]||'')===tab.holdVal).length : 0;
@@ -16805,6 +16808,10 @@ function renderPARSDocs(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.parsDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
+    <select class="fs2" id="pd_fmode">
+      <option value="">All Modes</option>
+      ${[...new Set(DB.parsDocs.map(r=>r.mode).filter(Boolean))].sort().map(m=>`<option>${m}</option>`).join('')}
+    </select>
     <input class="fi2" id="pd_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('pd',applyPDFilter)"/>
     <button class="btn-f" onclick="applyPDFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPDFilter()">Clear</button>
@@ -16855,17 +16862,19 @@ function renderPDRows(data){
 }
 
 function applyPDFilter(){
-  _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
+  _saveFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_fmode','pd_search']);
   const d1=document.getElementById('pd_fd1')?.value;
   const d2=document.getElementById('pd_fd2')?.value;
   const u=document.getElementById('pd_fu')?.value;
   const tm=document.getElementById('pd_fteam')?.value;
+  const mo=document.getElementById('pd_fmode')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.parsDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pd', data);
   renderPDRows(pgSlice('pd'));
@@ -16875,7 +16884,7 @@ function pgGoPD(p){
   pgGo('pd', p, renderPDRows, 'pg_pd', 'pgGoPD');
 }
 function clearPDFilter(){
-  _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_search']);
+  _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_fmode','pd_search']);
   const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
 }
 
@@ -17257,6 +17266,10 @@ function renderOceanDocs(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.oceanDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
+    <select class="fs2" id="od_fmode">
+      <option value="">All Modes</option>
+      ${[...new Set(DB.oceanDocs.map(r=>r.mode).filter(Boolean))].sort().map(m=>`<option>${m}</option>`).join('')}
+    </select>
     <input class="fi2" id="od_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('od',applyODFilter)"/>
     <button class="btn-f" onclick="applyODFilter()">Apply</button>
     <button class="btn-cl" onclick="clearODFilter()">Clear</button>
@@ -17304,17 +17317,19 @@ function renderODRows(data){
 }
 
 function applyODFilter(){
-  _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
+  _saveFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_fmode','od_search']);
   const d1=document.getElementById('od_fd1')?.value;
   const d2=document.getElementById('od_fd2')?.value;
   const u=document.getElementById('od_fu')?.value;
   const tm=document.getElementById('od_fteam')?.value;
+  const mo=document.getElementById('od_fmode')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.oceanDocs,'user');
   if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('od', data);
   renderODRows(pgSlice('od'));
@@ -17324,7 +17339,7 @@ function pgGoOD(p){
   pgGo('od', p, renderODRows, 'pg_od', 'pgGoOD');
 }
 function clearODFilter(){
-  _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_search']);
+  _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_fmode','od_search']);
   const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
 }
 
@@ -17836,6 +17851,10 @@ function renderRelease2(c){
       <option value="">All Teams</option>
       ${[...new Set(DB.release2.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
     </select>
+    <select class="fs2" id="rl_fmode">
+      <option value="">All Modes</option>
+      ${[...new Set(DB.release2.map(r=>r.mode).filter(Boolean))].sort().map(m=>`<option>${m}</option>`).join('')}
+    </select>
     <select class="fs2" id="rl_fstatus">
       <option value="">All Status</option>
       <option>Recap done</option><option>Submitted</option><option>Hold</option><option>SWI Rejected</option><option>Docs-Recap</option><option>Recap-EDI</option><option>Recap-ETA</option>
@@ -17946,11 +17965,12 @@ function updateRLStatus(dbid){
 }
 
 function applyRLFilter(){
-  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  _saveFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
   const d1=document.getElementById('rl_fd1')?.value;
   const d2=document.getElementById('rl_fd2')?.value;
   const u=document.getElementById('rl_fu')?.value;
   const tm=document.getElementById('rl_fteam')?.value;
+  const mo=document.getElementById('rl_fmode')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.release2,'user');
@@ -17958,6 +17978,7 @@ function applyRLFilter(){
   if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
   if(s) data=data.filter(r=>r.status===s);
   if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('rl', data);
@@ -17968,7 +17989,7 @@ function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
 function clearRLFilter(){
-  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fstatus','rl_search']);
+  _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
   const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
 }
 
