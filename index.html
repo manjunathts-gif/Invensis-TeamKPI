@@ -3813,9 +3813,15 @@ async function dbLoadRelease(){
     if(from >= 10000) break;
   }
   // Async: fetch true total count (lightweight HEAD — no row data) and cache it
-  _supa.from('release').select('id', {count:'exact', head:true}).then(({count, error})=>{
-    if(!error && count !== null) window._rlTrueCount = count;
-  }).catch(()=>{});
+  // Use direct HEAD fetch for release count — same pattern as _fetchAllTrueCounts
+  (async()=>{
+    try{
+      const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
+      const res = await fetch(SUPA_URL+'/rest/v1/release?select=id',{method:'HEAD',headers:{'apikey':_rk,'Authorization':'Bearer '+_rk,'Prefer':'count=exact'}});
+      const cr  = res.headers.get('Content-Range');
+      if(cr){ const n=parseInt(cr.split('/')[1]); if(!isNaN(n)) window._rlTrueCount=n; }
+    }catch(e){}
+  })();
   // Cache result for 5 minutes
   window._rlCache = allRows;
   window._rlCacheTs = Date.now();
@@ -3838,20 +3844,29 @@ window._trueCounts = window._trueCounts || {};
 
 async function _fetchAllTrueCounts(){
   if(!_supa) return;
-  // Fetch counts one at a time to avoid connection burst
+  // Use direct HEAD fetch — custom REST client doesn't support head:true
+  // HEAD + Prefer:count=exact returns count in Content-Range with zero row data
+  const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
+  const _base   = SUPA_URL + '/rest/v1/';
+  const _hdrs   = {
+    'apikey': _rawKey,
+    'Authorization': 'Bearer ' + _rawKey,
+    'Prefer': 'count=exact'
+  };
   for(const {table, card} of _TRUE_COUNT_TABLES){
     try{
-      const {data, count, error} = await _supa.from(table).select('id',{count:'exact',head:true});
-      if(!error && count !== null){
-        window._trueCounts[table] = count;
-        // Update visible card if on screen
-        const el = document.getElementById(card);
-        if(el && !el.closest('[data-filtered]')){
-          el.textContent = count.toLocaleString();
+      const res = await fetch(_base + table + '?select=id', {method:'HEAD', headers:_hdrs});
+      const cr  = res.headers.get('Content-Range');
+      if(cr){
+        const total = parseInt(cr.split('/')[1]);
+        if(!isNaN(total)){
+          window._trueCounts[table] = total;
+          const el = document.getElementById(card);
+          if(el) el.textContent = total.toLocaleString();
         }
       }
     }catch(e){}
-    await new Promise(r=>setTimeout(r,200)); // small delay between each
+    await new Promise(r=>setTimeout(r,150));
   }
 }
 
