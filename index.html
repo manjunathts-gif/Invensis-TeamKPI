@@ -3842,6 +3842,13 @@ const _TRUE_COUNT_TABLES = [
 ];
 window._trueCounts = window._trueCounts || {};
 
+// ── Global audit lookup Map — rebuilt whenever DB.audit changes ──
+// Eliminates O(n²) window._auditByTxn.get(String(r.txn)) across all render functions
+window._auditByTxn = new Map();
+function _rebuildAuditMap(){
+  window._auditByTxn = new Map((DB.audit||[]).map(a=>[String(a.txn),a]));
+}
+
 async function _fetchAllTrueCounts(){
   if(!_supa) return;
   // Use direct HEAD fetch — custom REST client doesn't support head:true
@@ -4388,6 +4395,7 @@ async function loadAllFromSupabase(){
       DB.b2entries = b2T.map(mapB2);
       DB.errors    = errT.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
       DB.audit     = auditT.map(mapAudit);
+      _rebuildAuditMap();
 
       if(bar) bar.style.width='100%';
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
@@ -4642,19 +4650,26 @@ function _sortAllTaskArrays(){
 }
 
 // ── Silent page refresh — preserves scroll position to eliminate blink ──
+// Debounce timers per page — batch rapid Realtime events into one render
+const _silentRefreshTimers = {};
+
 function _silentRefreshPage(id){
-  window._forceRefresh = true; // bypass same-page skip
-  const c=document.getElementById('pc');
-  if(!c) return showPage(id);
-  const scrollY = c.scrollTop;
-  // For status page — refresh without resetting to tab 1
-  if(id==='status'){
-    renderStatus(c, window._statusActiveKey||undefined);
+  // Debounce: if multiple events arrive within 1.5s, only render once
+  if(_silentRefreshTimers[id]) clearTimeout(_silentRefreshTimers[id]);
+  _silentRefreshTimers[id] = setTimeout(()=>{
+    delete _silentRefreshTimers[id];
+    window._forceRefresh = true;
+    const c=document.getElementById('pc');
+    if(!c) return showPage(id);
+    const scrollY = c.scrollTop;
+    if(id==='status'){
+      renderStatus(c, window._statusActiveKey||undefined);
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    showPage(id);
     requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-    return;
-  }
-  showPage(id);
-  requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+  }, 1500); // batch events within 1.5s window
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -5038,6 +5053,7 @@ function _applyRealtimeRow(table, row, eventType){
       _sortAllTaskArrays();
       if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
         if(window._rlTrueCount) window._rlTrueCount++; }
+  if(table==='audit') _rebuildAuditMap();
     }
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
@@ -5139,7 +5155,7 @@ function setupRealtime(){
       // Try to reconnect after 30s
       setTimeout(()=>{
         if(!_rtConnected && _supaRT){
-          try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
+          if(_realtimeChannel && _supaRT){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} }
           _realtimeChannel=null;
           window._realtimeShownToast=false;
           setupRealtime();
@@ -9434,11 +9450,10 @@ function doLogout(){
   if(typeof _rtConnected!=='undefined') _rtConnected=false;
 
   // ── Close realtime channel so it doesn't fire after logout ──
-  if(_realtimeChannel){
-    try{
-      if(_supaRT) _supaRT.removeChannel(_realtimeChannel);
-      else if(_supa && typeof _supa.removeChannel==='function') _supa.removeChannel(_realtimeChannel);
-    }catch(e){}
+  if(_realtimeChannel && _supaRT){
+    try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
+    _realtimeChannel=null;
+  } else {
     _realtimeChannel=null;
   }
 
@@ -10739,7 +10754,7 @@ function renderAuditStatusTab(c,active,visibleTasks){
     const tmAll=allRelease.filter(r=>(r.team||'—')===tm);
     const tmDone=tmAll.filter(r=>auditedTxns.has(r.txn));
     const tmPend=tmAll.filter(r=>!auditedTxns.has(r.txn));
-    const tmScores=tmDone.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0);
+    const tmScores=tmDone.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0);
     const tmAvg=tmScores.length?(tmScores.reduce((s,v)=>s+v,0)/tmScores.length).toFixed(1):'—';
     const tPct=tmAll.length?Math.round(tmDone.length/tmAll.length*100):0;
     return`<tr>
@@ -11271,7 +11286,7 @@ function renderDashboard(c){
   modes.forEach(m=>{
     const recs = DB.release2.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
     const done = recs.filter(r=>auditedTxnSet.has(r.txn));
-    const scores = done.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0).filter(s=>s>0);
+    const scores = done.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0).filter(s=>s>0);
     const avg = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
     const pct = recs.length?Math.round(done.length/recs.length*100):0;
     modeStats[m]={total:recs.length,done:done.length,pend:recs.length-done.length,avg,pct};
@@ -15512,13 +15527,22 @@ function renderAudit(c){
   // Use finalRecords as the working set
   const teamRecords=finalRecords;
 
-  const auditedTxns=new Set(DB.audit.map(a=>a.txn));
-  const pending=teamRecords.filter(r=>!auditedTxns.has(r.txn));
-  const done=teamRecords.filter(r=>auditedTxns.has(r.txn));
-  const today=todayDateStringET();
-  const todayDone=DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today&&teamRecords.find(r=>r.txn===a.txn)).length;
-  const pct=teamRecords.length?Math.round(done.length/teamRecords.length*100):0;
-  const avgScore=done.length?(done.reduce((s,r)=>{const ar=DB.audit.find(a=>a.txn===r.txn);return s+(parseFloat(ar?.score)||0);},0)/done.length).toFixed(1):0;
+  // Pre-compute Maps for O(1) lookup — avoids O(n²) find() in loops
+  const auditedTxns = new Set(DB.audit.map(a=>a.txn));
+  const auditByTxn  = new Map(DB.audit.map(a=>[a.txn, a]));
+  const pending = teamRecords.filter(r=>!auditedTxns.has(r.txn));
+  const done    = teamRecords.filter(r=>auditedTxns.has(r.txn));
+  const today   = todayDateStringET();
+  const todayStr = new Date().toDateString();
+  const teamTxnSet = new Set(teamRecords.map(r=>r.txn));
+  const todayDone = DB.audit.filter(a=>
+    (parseAppDate(a._created)||new Date(0)).toDateString()===todayStr && teamTxnSet.has(a.txn)
+  ).length;
+  const pct = teamRecords.length ? Math.round(done.length/teamRecords.length*100) : 0;
+  const avgScore = done.length ? (done.reduce((s,r)=>{
+    const ar = auditByTxn.get(r.txn);
+    return s + (parseFloat(ar?.score)||0);
+  },0)/done.length).toFixed(1) : 0;
 
   // Daily pending
   const byDate={};
@@ -15553,7 +15577,7 @@ function renderAudit(c){
     const cells=hours.map(h=>{
       const addedThisHour=userRecs.filter(r=>r._created&&pad((parseAppDate(r._created)||new Date(0)).getHours())===h).length;
       const doneThisHour=userDone.filter(r=>{
-        const ar=DB.audit.find(a=>a.txn===r.txn);
+        const ar=auditByTxn.get(r.txn); // O(1) lookup
         return ar&&ar._created&&pad(new Date(ar._created).getHours())===h;
       }).length;
       const pendThisHour=Math.max(0,addedThisHour-doneThisHour);
@@ -15589,7 +15613,7 @@ function renderAudit(c){
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audited</div><div class="sv">${done.length}</div><div class="sf">${pct}% complete</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div><div class="sf">${teamRecords.length?100-pct:0}% remaining</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Today Pending</div><div class="sv">${(()=>{const tAdd=teamRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;const tDoneToday=done.filter(r=>(parseAppDate(DB.audit.find(a=>a.txn===r.txn)?._created||'')||new Date(0)).toDateString()===today).length;return Math.max(0,tAdd-tDoneToday);})()}</div><div class="sf">Added today, not audited</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Today Pending</div><div class="sv">${(()=>{const tAdd=teamRecords.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length;const tDoneToday=done.filter(r=>(parseAppDate(window._auditByTxn.get(String(r.txn))?._created||'')||new Date(0)).toDateString()===today).length;return Math.max(0,tAdd-tDoneToday);})()}</div><div class="sf">Added today, not audited</div></div>
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">⭐</div><div class="sl">Avg Quality</div><div class="sv">${avgScore}%</div><div class="sf">All audited</div></div>
   </div>
 
@@ -15631,7 +15655,7 @@ function renderAudit(c){
           const mdRecs=teamRecords.filter(r=>(r.mode||'Unknown')===md);
           const mdDone=mdRecs.filter(r=>auditedTxns.has(r.txn));
           const mdPend=mdRecs.filter(r=>!auditedTxns.has(r.txn));
-          const mdScores=mdDone.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0);
+          const mdScores=mdDone.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0);
           const mdAvg=mdScores.length?(mdScores.reduce((s,v)=>s+v,0)/mdScores.length).toFixed(1):'—';
           const mPct=mdRecs.length?Math.round(mdDone.length/mdRecs.length*100):0;
           const allDone=mdPend.length===0&&mdRecs.length>0;
@@ -15705,7 +15729,7 @@ function renderAudit(c){
               const tmRecs=teamRecords.filter(r=>(r.team||'—')===tm);
               const tmDone=tmRecs.filter(r=>auditedTxns.has(r.txn));
               const tmPend=tmRecs.filter(r=>!auditedTxns.has(r.txn));
-              const tmScores=tmDone.map(r=>parseFloat(DB.audit.find(a=>a.txn===r.txn)?.score)||0);
+              const tmScores=tmDone.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0);
               const tmAvg=tmScores.length?(tmScores.reduce((s,v)=>s+v,0)/tmScores.length).toFixed(1):'—';
               const pPct=tmRecs.length?Math.round(tmDone.length/tmRecs.length*100):0;
               const allDone=tmPend.length===0&&tmRecs.length>0;
@@ -15929,7 +15953,7 @@ function renderAuditTab(tab){
       ${isAdmin()?'<th>Admin</th>':''}
     </tr></thead>
     <tbody>${data.map((r,i)=>{
-      const ar=DB.audit.find(a=>a.txn===r.txn);
+      const ar=window._auditByTxn.get(String(r.txn));
       if(ar){
         // Audited row
         const sc=parseFloat(ar.score)||0;
@@ -15985,7 +16009,7 @@ function startAudit(rlIdxOrTxn){
     r = DB.release2[rlIdxOrTxn];
   }
   if(!r){showToast('⚠️ Record not found — please refresh and try again',true);return;}
-  if(DB.audit.find(a=>a.txn===r.txn)){showToast('⚠️ Already audited',true);return;}
+  if(window._auditByTxn.get(String(r.txn))){showToast('⚠️ Already audited',true);return;}
   auditActiveTxn = String(r.txn);
   auditActiveIdx = DB.release2.indexOf(r);
   auditStartTime=nowET();
@@ -17090,7 +17114,7 @@ function renderODRows(data){
     <td>${tatBadge(r.tat)}</td>
     <td><span class="badge ${r.shift==='Day Shift'?'b-em':r.shift==='Weekend'?'b-ro':'b-am'}">${r.shift||'—'}</span></td>
     <td style="font-size:12px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.comments||'—'}</td>
-    ${(()=>{const ar=DB.audit.find(a=>a.txn===r.txn);const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);if(sc==null||isNaN(sc))return'<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';const col=sc>=95?'#166534':sc>=80?'#b45309':sc>=70?'#d97706':'#991b1b';const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';return`<td style="text-align:center"><span style="background:${bg};color:${col};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:800;font-family:var(--mono)">${sc}%</span></td>`})()}
+    ${(()=>{const ar=window._auditByTxn.get(String(r.txn));const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);if(sc==null||isNaN(sc))return'<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';const col=sc>=95?'#166534':sc>=80?'#b45309':sc>=70?'#d97706':'#991b1b';const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';return`<td style="text-align:center"><span style="background:${bg};color:${col};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:800;font-family:var(--mono)">${sc}%</span></td>`})()}
     ${isAdmin()?`<td>${adminActionBtns('oceanDocs',r._dbid||r.id,r.txn||r.subject)}</td>`:''}
   </tr>`).join('');
   const cnt=document.getElementById('odCount');if(cnt)cnt.textContent=(_pgState['od']?.filtered?.length||data.length)+' records';
@@ -17607,13 +17631,14 @@ function renderRelease2(c){
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{
       if(!(CU&&CU.role==='Team Lead'&&CU.task==='Release'))return'';
-      const _auditedInAll=DB.audit.filter(a=>all.find(r=>r.txn===a.txn));
+      const _allTxnSet=new Set(all.map(r=>String(r.txn)));
+      const _auditedInAll=DB.audit.filter(a=>_allTxnSet.has(String(a.txn)));
       const auditDone=_auditedInAll.length;
       const auditPending=all.length-auditDone;
-      const todayAudited=DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today&&all.find(r=>r.txn===a.txn)).length;
+      const todayAudited=_auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length;
       const pct=all.length?Math.round(auditDone/all.length*100):0;
       return`
-        <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv">${DB.audit.filter(a=>all.find(r=>r.txn===a.txn)).length}</div><div class="sf">${pct}% audited</div></div>
+        <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv">${_auditedInAll.length}</div><div class="sf">${pct}% audited</div></div>
         <div class="sc c-sky"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Audit Pending</div><div class="sv">${auditPending}</div><div class="sf">Not yet audited</div></div>
         <div class="sc c-blue"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Audited Today</div><div class="sv">${todayAudited}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>`;
     })()}
@@ -17668,7 +17693,7 @@ function renderRLRows(data){
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
   const rlStOpts=(cur)=>['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'].map(o=>`<option ${cur===o?'selected':''}>${o}</option>`).join('');
   tbody.innerHTML=data.map((r,i)=>{
-    const ar=DB.audit.find(a=>a.txn===r.txn);
+    const ar=window._auditByTxn.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
     const qCell=(()=>{
       if(sc==null||isNaN(sc))return'<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
@@ -21176,7 +21201,7 @@ function exportRelease2(){
     'User Comments','TAT Analytics Comment','Created Date',
     'Audit By','Error Type','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
   const rows=_data.map(r=>{
-    const ar=DB.audit.find(a=>a.txn===r.txn);
+    const ar=window._auditByTxn.get(String(r.txn));
     // Split combined comments back: user comments || analytics
     const combined=r.comments||'';
     const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
