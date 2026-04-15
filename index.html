@@ -4591,13 +4591,9 @@ function _silentRefreshPage(id){
   window._forceRefresh = true; // bypass same-page skip
   const c=document.getElementById('pc');
   if(!c) return showPage(id);
-  // Save scroll position before re-render
   const scrollY = c.scrollTop;
-  // Use requestAnimationFrame — yields to browser between frames, prevents freeze
-  requestAnimationFrame(()=>{
-    showPage(id);
-    requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-  });
+  showPage(id);
+  requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -9716,9 +9712,7 @@ function showPage(id){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   const b=document.getElementById('nb_'+id);if(b)b.classList.add('active');
   const c=document.getElementById('pc');
-  // FREEZE FIX: Show instant ⏳ so browser paints nav first, THEN renders content
-  // Without this, browser freezes waiting for the heavy render to complete
-  c.innerHTML='<div style="padding:60px 0;text-align:center;color:var(--text3);font-size:13px">⏳</div>';
+  c.innerHTML='';
   // Set tab background theme
   c.className='pc';
   const tabMap={lvs:'tab-lvs',classifier:'tab-classifier',compliance:'tab-compliance',
@@ -9740,49 +9734,45 @@ function showPage(id){
   const crumbEl=document.getElementById('hopeBreadcrumb');
   if(titleEl) titleEl.textContent=pageTitles[id]||'Overview';
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
-  // Defer render — lets browser paint the ⏳ spinner first, prevents UI freeze
-  const _renderFn = ()=>{
-    if(id==='lvs') renderLVS(c);
-    else if(id==='classifier') renderCLS(c);
-    else if(id==='compliance') renderCOMP(c);
-    else if(id==='status') renderStatus(c);
-    else if(id==='dashboard') renderDashboard(c);
-    else if(id==='users') renderUsers(c);
-    else if(id==='clients') renderClients(c);
-    else if(id==='reports') renderReports(c);
-    else if(id==='kpidashboard') renderKPIDashboard(c);
-    else if(id==='parsdocs') renderPARSDocs(c);
-    else if(id==='oceandocs') renderOceanDocs(c);
-    else if(id==='partlot') renderPartLot(c);
-    else if(id==='release2') renderRelease2(c);
-    else if(id==='oceantt') renderOceanTT(c);
-    else if(id==='b2entries') renderB2Entries(c);
-    else if(id==='productivity') renderProductivity(c);
-    else if(id==='loginusers'){
-      if(_supa){
-        dbLoad('login_users').then(rows=>{
-          if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
-          renderLoginUsers(c);
-        }).catch(()=>renderLoginUsers(c));
-      } else { renderLoginUsers(c); }
-    }
-    else if(id==='gdrive') renderGDrive(c);
-    else if(id==='mystatus') renderMyStatus(c);
-    else if(id==='errorreport') renderErrorReport(c);
-    else if(id==='audit') renderAudit(c);
-    else if(id==='tatanalyzer') renderTATAnalyzer(c);
-    else if(id==='tatreasons') renderTATReasons(c);
-    else if(id==='tatissue') renderTATIssue(c);
-    else if(id==='dcissue') renderDCIssue(c);
-    else if(id==='instructions') renderInstructions(c);
-    else if(id==='huddle') renderHuddlePage(c);
-    else if(id==='qualityanalytics') renderQualityAnalytics(c);
-    else if(id==='idlelog') renderIdleLogPage(c);
-    else if(id==='archive') renderArchivePage(c);
-    else if(id==='attendance') renderAttendancePage(c);
-    else renderComing(c);
-  };
-  setTimeout(_renderFn, 0);
+  if(id==='lvs') renderLVS(c);
+  else if(id==='classifier') renderCLS(c);
+  else if(id==='compliance') renderCOMP(c);
+  else if(id==='status') renderStatus(c);
+  else if(id==='dashboard') renderDashboard(c);
+  else if(id==='users') renderUsers(c);
+  else if(id==='clients') renderClients(c);
+  else if(id==='reports') renderReports(c);
+  else if(id==='kpidashboard') renderKPIDashboard(c);
+  else if(id==='parsdocs') renderPARSDocs(c);
+  else if(id==='oceandocs') renderOceanDocs(c);
+  else if(id==='partlot') renderPartLot(c);
+  else if(id==='release2') renderRelease2(c);
+  else if(id==='oceantt') renderOceanTT(c);
+  else if(id==='b2entries') renderB2Entries(c);
+  else if(id==='productivity') renderProductivity(c);
+  else if(id==='loginusers'){
+    if(_supa){
+      dbLoad('login_users').then(rows=>{
+        if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
+        renderLoginUsers(c);
+      }).catch(()=>renderLoginUsers(c));
+    } else { renderLoginUsers(c); }
+  }
+  else if(id==='gdrive') renderGDrive(c);
+  else if(id==='mystatus') renderMyStatus(c);
+  else if(id==='errorreport') renderErrorReport(c);
+  else if(id==='audit') renderAudit(c);
+  else if(id==='tatanalyzer') renderTATAnalyzer(c);
+  else if(id==='tatreasons') renderTATReasons(c);
+  else if(id==='tatissue') renderTATIssue(c);
+  else if(id==='dcissue') renderDCIssue(c);
+  else if(id==='instructions') renderInstructions(c);
+  else if(id==='huddle') renderHuddlePage(c);
+  else if(id==='qualityanalytics') renderQualityAnalytics(c);
+  else if(id==='idlelog') renderIdleLogPage(c);
+  else if(id==='archive') renderArchivePage(c);
+  else if(id==='attendance') renderAttendancePage(c);
+  else renderComing(c);
   // After page renders, show error alert banner for users with unacknowledged errors
   setTimeout(injectErrAlertBanner, 80);
 }
