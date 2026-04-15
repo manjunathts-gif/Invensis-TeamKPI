@@ -6878,7 +6878,7 @@ async function _attendanceLogIn(username){
     };
 
     // Insert new session row
-    const {data:insertedRow} = await _supa.from('attendance_log').insert([{
+    await _supa.from('attendance_log').insert([{
       username,
       emp_name:    name,
       task, role, team,
@@ -6889,12 +6889,19 @@ async function _attendanceLogIn(username){
       status:      'Present',
       session_no:  sessionNo,
       gap_before:  gapBeforeMin,
-    }]).select('id').single();
-    // Cache the DB id so logout targets the exact session
-    if(insertedRow?.id){
+    }]);
+    // Fetch the inserted row ID separately so logout can target the exact session
+    const {data:insertedRows} = await _supa.from('attendance_log')
+      .select('id')
+      .eq('username', username)
+      .eq('date', dateET)
+      .eq('session_no', sessionNo)
+      .order('id', {ascending:false})
+      .limit(1);
+    if(insertedRows && insertedRows.length > 0){
       window._attendanceCache[username] = {
         ...window._attendanceCache[username],
-        dbId: insertedRow.id,
+        dbId: insertedRows[0].id,
         loginTime: now
       };
     }
