@@ -3868,6 +3868,11 @@ async function _fetchAllTrueCounts(){
     }catch(e){}
     await new Promise(r=>setTimeout(r,150));
   }
+  // Refresh dashboard if currently visible so KPI cards update
+  if(_currentPage==='dashboard'){
+    const c=document.getElementById('pc');
+    if(c) renderDashboard(c);
+  }
 }
 
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
@@ -11179,7 +11184,13 @@ function renderDashboard(c){
       else if(tv.includes('not reached')||tv.includes('not-reached')) tatN++;
       if(r.status==='Hold') hold++;
     });
-    const total = d.key==='release2' && window._rlTrueCount ? window._rlTrueCount : d.db.length;
+    // Map dashboard key → _trueCounts key
+    const _tcKey = {lvs:'lvs',cls:'cls',comp:'comp',parsDocs:'pars_docs',
+      oceanDocs:'ocean_docs',partLot:'part_lot',release2:'release',
+      oceanTT:'ocean_tt',b2entries:'b2_entries'}[d.key];
+    const _tc = _tcKey && window._trueCounts && window._trueCounts[_tcKey];
+    const _rl = d.key==='release2' && window._rlTrueCount;
+    const total = _rl ? window._rlTrueCount : (_tc || d.db.length);
     stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
   });
 
