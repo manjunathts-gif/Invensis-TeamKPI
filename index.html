@@ -3526,9 +3526,7 @@ function _makeSupaClient(){
     const hdrs = Object.assign({}, H, extraHeaders||{});
     const opts = {method, headers:hdrs};
     if(body !== undefined) opts.body = JSON.stringify(body);
-    if(method==='POST'||method==='PATCH'||method==='DELETE'){
-      console.log('🔵 REST', method, BASE+path, body?JSON.stringify(body).substring(0,80):'');
-    }
+
     try {
       const r = await fetch(BASE + path, opts);
       const txt = await r.text();
@@ -3728,7 +3726,7 @@ try {
       sessionStorage.setItem('kpi_api_key', _ak);
       localStorage.setItem('kpi_api_key_pub', _ak);
     }catch(e){}
-    console.log('✅ Direct REST client ready — no auth/websocket overhead');
+
   }
 } catch(e){
   console.warn('Init failed:', e.message);
@@ -4042,7 +4040,7 @@ async function dbInsert(table,row){
   // data is always an array [{...}] — return first row for single inserts
   const result = Array.isArray(data)?data[0]??data:data;
   // Log successful saves so user can verify in DevTools
-  console.log('✅ SAVED to DB:', table, 'id=', result?.id||'?');
+
   return result;
 }
 
@@ -4082,7 +4080,7 @@ async function dbUpdateAdmin(table,id,patch){
 async function dbDeleteAdmin(table, id){
   if(!_supa) throw new Error('Not connected to database');
   if(!id || String(id) === 'undefined') throw new Error('Invalid ID — record not synced to DB yet');
-  console.log('🗑️ Deleting from', table, 'id=', id);
+
   // Use the custom REST client so the request goes through the Cloudflare proxy
   const {data, error} = await _supa.from(table).delete().eq('id', id);
 
@@ -4103,7 +4101,7 @@ async function dbDeleteAdmin(table, id){
     }
     throw new Error('Delete failed: ' + msg.substring(0, 120));
   }
-  console.log('✅ Deleted from', table, 'id=', id);
+
 }
 async function dbUpdate(table,id,patch){
   if(!_supa) return null;
@@ -4343,10 +4341,19 @@ async function loadAllFromSupabase(){
       if(CU) refreshPage();
       showToast('✅ App ready — loading full history in background. Counts update shortly...');
 
-      // ── PHASE 2: Load full 30-day history silently in background ──────────
+      // ── PHASE 2: Load full 30-day history — SKIP if Realtime is active ──────
+      // Realtime keeps data current via WebSocket push — no need to re-fetch everything
+      // Only run Phase 2 if Realtime failed to connect (fallback poll mode)
       setTimeout(async()=>{
+        if(typeof _rtConnected !== 'undefined' && _rtConnected){
+          // Realtime is live — just save cache and done
+          _saveTaskCache();
+          if(CU) refreshPage();
+
+          return;
+        }
+        // Realtime not connected — run full 30-day load for poll mode
         try{
-          // Split into 2 batches — avoid connection burst on Nano plan
           const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRelease()
@@ -4368,12 +4375,11 @@ async function loadAllFromSupabase(){
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
           DB.audit     = auditF.map(mapAudit);
           _saveTaskCache();
-          // Always refresh so all pages show full 30-day counts
           if(CU) refreshPage();
           showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
-          console.log('✅ Manager background history load complete');
+
         }catch(bg){ console.warn('Background history load error:', bg.message); }
-      }, 500); // start immediately after initial render
+      }, 2000); // wait 2s to give Realtime time to connect first
 
 
     } else if(isRlTL){
@@ -4480,7 +4486,7 @@ async function loadAllFromSupabase(){
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
     }
 
-    console.log('✅ Role-based load complete for',CU?.role,CU?.task);
+
     window._dbLoaded = true; // mark DB as loaded — prevent cache from overwriting fresh data
     // Always save clients to localStorage so session restore has them immediately
     try{ if(DB.clients&&DB.clients.length>0) localStorage.setItem('kpi_clients_cache', JSON.stringify(DB.clients)); }catch(e){}
@@ -4587,9 +4593,11 @@ function _silentRefreshPage(id){
   if(!c) return showPage(id);
   // Save scroll position before re-render
   const scrollY = c.scrollTop;
-  showPage(id);
-  // Restore scroll position — use requestAnimationFrame so DOM has painted
-  requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+  // Use requestAnimationFrame — yields to browser between frames, prevents freeze
+  requestAnimationFrame(()=>{
+    showPage(id);
+    requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+  });
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -4906,7 +4914,7 @@ function startBgPoll(){
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
   }, 60000); // Poll every 60s — balanced sync vs DB IO budget
-  console.log('[bgPoll] Started — polling every 60s');
+
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
 let _keepAliveInterval = null;
@@ -4920,7 +4928,7 @@ function stopKeepAlive(){
 }
 
 function stopBgPoll(){
-  if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null; console.log('[bgPoll] Stopped'); }
+  if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null; }
 }
 
 // ── Realtime state ──
@@ -5032,7 +5040,7 @@ function setupRealtime(){
   tables.forEach(tbl=>{
     _realtimeChannel
       .on('postgres_changes',{ event:'INSERT', schema:'public', table:tbl },
-        p=>{ console.log('[RT] INSERT',tbl,p.new?.id); _applyRealtimeRow(tbl,p.new,'INSERT'); })
+        p=>{ _applyRealtimeRow(tbl,p.new,'INSERT'); })
       .on('postgres_changes',{ event:'UPDATE', schema:'public', table:tbl },
         p=>{ _applyRealtimeRow(tbl,p.new,'UPDATE'); })
       .on('postgres_changes',{ event:'DELETE', schema:'public', table:tbl },
@@ -5040,7 +5048,7 @@ function setupRealtime(){
   });
 
   _realtimeChannel.subscribe((status, err)=>{
-    console.log('[RT] Subscribe status:', status, err||'');
+
     if(status==='SUBSCRIBED'){
       _rtConnected=true;
       clearTimeout(_rtFallbackTimer);
@@ -5063,7 +5071,7 @@ function setupRealtime(){
       // Try to reconnect after 30s
       setTimeout(()=>{
         if(!_rtConnected && _supaRT){
-          console.log('[RT] Attempting reconnect...');
+
           try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
           _realtimeChannel=null;
           window._realtimeShownToast=false;
@@ -5075,9 +5083,7 @@ function setupRealtime(){
 }
 
 // ── ETA Monitor removed — all polls and DB writes eliminated ──
-function startETAPoll(){}
-function startETAAckPoll(){}
-function stopETAPoll(){ }
+
 
 
 
@@ -5738,7 +5744,7 @@ function secLockoutMsg(){
 // Security event logging disabled — activity_log table not in use
 async function secLogEvent(type, username, note=''){
   // Table removed — logging to console only
-  console.log('secEvent:', type, username, note||'');
+
 }
 
 // Returns true if any slide-in form panel is currently open
@@ -5778,8 +5784,7 @@ function selTask(btn,task){
 
 // FEATURE 1: ETA MONITOR — REMOVED (eliminated eta_assignments DB polling)
 window._etaAssignments = {};
-function _etaMarkSubmitted(){}
-function _etaCheckUserNotificationsFromDB(){}
+
 function renderETAMonitor(c){ if(c) c.innerHTML='<div class="ph"><div class="pt">⏱️ ETA Monitor</div></div><div style="padding:40px;text-align:center;color:var(--text3)">ETA Monitor removed.</div>'; }
 
 // FEATURE 2: DISABLED — stubs defined above, _prodDBLoaded=true prevents any legacy load
@@ -6558,7 +6563,7 @@ function _restoreTaskCache(){
     if(cache.oceanTT?.length)     DB.oceanTT    = cache.oceanTT;
     if(cache.b2entries?.length)   DB.b2entries  = cache.b2entries;
     if(cache.errors?.length)    { DB.errors     = cache.errors;   DB.errors.forEach((r,i)=>r._idx=i); }
-    console.log('[Cache] Restored task data instantly from localStorage');
+
   }catch(e){ localStorage.removeItem(TASK_CACHE_KEY); }
 }
 
@@ -6874,7 +6879,7 @@ async function _attendanceLogIn(username){
       gap_before:  gapBeforeMin,
     }]);
 
-    console.log(`[Attendance] Session ${sessionNo} started. Gap before: ${gapBeforeMin} min`);
+
 
     // Check break warning for today (gap_before triggers check)
     if(sessionNo > 1){
@@ -9725,22 +9730,26 @@ function showPage(id){
   const crumbEl=document.getElementById('hopeBreadcrumb');
   if(titleEl) titleEl.textContent=pageTitles[id]||'Overview';
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
-  if(id==='lvs') renderLVS(c);
-  else if(id==='classifier') renderCLS(c);
-  else if(id==='compliance') renderCOMP(c);
-  else if(id==='status') renderStatus(c);
-  else if(id==='dashboard'){ renderDashboard(c); }
-  else if(id==='users') renderUsers(c);
-  else if(id==='clients') renderClients(c);
-  else if(id==='reports') renderReports(c);
-  else if(id==='kpidashboard') renderKPIDashboard(c);
-  else if(id==='parsdocs') renderPARSDocs(c);
-  else if(id==='oceandocs') renderOceanDocs(c);
-  else if(id==='partlot') renderPartLot(c);
-  else if(id==='release2') renderRelease2(c);
-  else if(id==='oceantt') renderOceanTT(c);
-  else if(id==='b2entries') renderB2Entries(c);
-  else if(id==='productivity') renderProductivity(c);
+  // Defer render — lets browser paint the ⏳ spinner first, prevents UI freeze
+  const _renderFn = ()=>{
+    if(id==='lvs') renderLVS(c);
+    else if(id==='classifier') renderCLS(c);
+    else if(id==='compliance') renderCOMP(c);
+    else if(id==='status') renderStatus(c);
+    else if(id==='dashboard') renderDashboard(c);
+    else if(id==='users') renderUsers(c);
+    else if(id==='clients') renderClients(c);
+    else if(id==='reports') renderReports(c);
+    else if(id==='kpidashboard') renderKPIDashboard(c);
+    else if(id==='parsdocs') renderPARSDocs(c);
+    else if(id==='oceandocs') renderOceanDocs(c);
+    else if(id==='partlot') renderPartLot(c);
+    else if(id==='release2') renderRelease2(c);
+    else if(id==='oceantt') renderOceanTT(c);
+    else if(id==='b2entries') renderB2Entries(c);
+    else if(id==='productivity') renderProductivity(c);
+  };
+  setTimeout(_renderFn, 0);
   else if(id==='loginusers'){
     // Always reload from DB when opening the page so changes by others appear instantly
     if(_supa){
