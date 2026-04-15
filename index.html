@@ -3768,8 +3768,13 @@ const TABLE_SORT_COL={
 // True total count is fetched separately (HEAD only) and cached in window._rlTrueCount.
 async function dbLoadRelease(){
   if(!_supa) return [];
+  // 5-minute cache — prevents redundant full fetches within same session burst
+  const _now = Date.now();
+  if(window._rlCache && window._rlCacheTs && (_now - window._rlCacheTs) < 5*60*1000){
+    return window._rlCache;
+  }
   // Server-side cutoff — 90 days, ISO format Postgres can compare directly
-  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
+  const cutoff = new Date(_now - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
@@ -3788,6 +3793,9 @@ async function dbLoadRelease(){
   _supa.from('release').select('id', {count:'exact', head:true}).then(({count, error})=>{
     if(!error && count !== null) window._rlTrueCount = count;
   }).catch(()=>{});
+  // Cache result for 5 minutes
+  window._rlCache = allRows;
+  window._rlCacheTs = Date.now();
   return allRows;
 }
 
@@ -4686,7 +4694,9 @@ async function globalRefresh(){
         // Load recent 30 days for task tables (much faster than full load)
         const taskTables = ['lvs','cls','comp','pars_docs','ocean_docs',
           'part_lot','release','ocean_tt','b2_entries','audit','client_errors'];
-        const rows = taskTables.includes(t)
+        const rows = (t === 'release')
+          ? await dbLoadRelease()
+          : taskTables.includes(t)
           ? await dbLoadRecent(t, 30)
           : await dbLoad(t);
         if(!rows) continue;
@@ -4739,7 +4749,7 @@ function startBgPoll(){
       const tables = isMgr
         ? (window._bgPollCycle%5===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users']
-            : [activeTbl,'lvs','cls'].filter(Boolean))
+            : [activeTbl,'lvs','cls','login_users'].filter(Boolean))
         : CU.role==='Supervisor'
         ? (window._bgPollCycle%3===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries']
@@ -4750,15 +4760,20 @@ function startBgPoll(){
       for(const tbl of tables){
         // login_users: reload and refresh page if on loginusers
         if(tbl==='login_users'){
-          const luRows=await dbLoad('login_users');
-          if(luRows&&luRows.length>0){
-            const mapped = luRows.map(mapLoginUser);
-            // Check for client logins (manager notification)
-            _checkClientLogins(mapped);
-            if(luRows.length!==DB.loginUsers.length){
-              DB.loginUsers=mapped;
+          // Lightweight check: only fetch id to detect count change — avoids full row scan
+          const {data:luIds,error:luErr} = await _supa.from('login_users').select('id').order('id',{ascending:false});
+          if(!luErr && luIds && luIds.length !== DB.loginUsers.length){
+            // Count changed — now do full load to sync data
+            const luRows = await dbLoad('login_users');
+            if(luRows && luRows.length > 0){
+              const mapped = luRows.map(mapLoginUser);
+              _checkClientLogins(mapped);
+              DB.loginUsers = mapped;
               if(getActivePage()==='loginusers') _silentRefreshPage('loginusers');
             }
+          } else if(!luErr && luIds){
+            // Count same — still check for client login notifications using cached data
+            _checkClientLogins(DB.loginUsers);
           }
           continue;
         }
@@ -4850,8 +4865,8 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 45000); // Poll every 45s — faster sync without excessive DB calls
-  console.log('[bgPoll] Started — polling every 45s');
+  }, 60000); // Poll every 60s — balanced sync vs DB IO budget
+  console.log('[bgPoll] Started — polling every 60s');
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
 let _keepAliveInterval = null;
