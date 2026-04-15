@@ -5010,13 +5010,14 @@ function setupRealtime(){
 
   _setRTIndicator('connecting');
 
-  // Set fallback timer — if WS doesn't connect in 12s, start bgPoll
+  // Start bgPoll immediately — data syncs while WebSocket warms up
+  // Stops automatically the moment WebSocket connects successfully
+  startBgPoll();
+
+  // Fallback timer — just update indicator if WS still not connected after 20s
   _rtFallbackTimer = setTimeout(()=>{
     if(!_rtConnected){
-      console.warn('[RT] WebSocket connection timeout — falling back to bgPoll');
       _setRTIndicator('polling');
-      startBgPoll();
-      showToast('⚠️ Realtime unavailable — using sync polling',true);
     }
   }, RT_FALLBACK_MS);
 
@@ -5062,16 +5063,11 @@ function setupRealtime(){
     } else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       _rtConnected=false;
       _setRTIndicator('polling');
-      // Realtime dropped — start bgPoll as fallback
-      if(!_bgPollInterval){
-        console.warn('[RT] Connection lost — starting bgPoll fallback');
-        startBgPoll();
-        showToast('⚠️ Live sync interrupted — switching to polling',true);
-      }
+      // bgPoll already running — just ensure it's active
+      if(!_bgPollInterval) startBgPoll();
       // Try to reconnect after 30s
       setTimeout(()=>{
         if(!_rtConnected && _supaRT){
-
           try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
           _realtimeChannel=null;
           window._realtimeShownToast=false;
