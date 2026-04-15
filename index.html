@@ -9096,7 +9096,7 @@ function bootApp(){
   if(CU.role==='Team Lead' || CU.role==='Supervisor'){
     showPage('dashboard');
   } else if(isClient()){
-    showPage('kpidashboard'); // Client lands on KPI Dashboard
+    showPage('clientdashboard'); // Client lands on Client Dashboard
     _clientLoginNotify(); // Notify manager + show client welcome banner
   } else {
     showPage(_landPage);
@@ -9671,6 +9671,7 @@ function buildNav(){
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
     items=[
+      {id:'clientdashboard', l:'🏢 My Dashboard', g:'main'},
       {id:'kpidashboard', l:'📊 KPI Dashboard', g:'main'},
       {id:'lvs',          l:'📋 LVS',            g:'tasks'},
       {id:'classifier',   l:'🗂️ Classifier',     g:'tasks'},
@@ -9892,6 +9893,7 @@ function showPage(id){
   else if(id==='clients') renderClients(c);
   else if(id==='reports') renderReports(c);
   else if(id==='kpidashboard') renderKPIDashboard(c);
+  else if(id==='clientdashboard') renderClientDashboard(c);
   else if(id==='parsdocs') renderPARSDocs(c);
   else if(id==='oceandocs') renderOceanDocs(c);
   else if(id==='partlot') renderPartLot(c);
@@ -11962,6 +11964,88 @@ let _kpiActiveTab='release';
 let _kpiD1='',_kpiD2='',_kpiMode='',_kpiTeam='';
 
 // ── Main render ──────────────────────────────────────────────────────────────
+function renderClientDashboard(c){
+  // Client role home — shows record counts for THIS client across all tasks
+  const clientNo = String(CU?.team||'');
+  const clientName = CU?.name||CU?.username||'Client';
+  const today = todayDateStringET();
+  const todayStr = new Date().toDateString();
+
+  // Filter each DB array by client number
+  const tasks = [
+    {label:'📋 LVS',       db:DB.lvs,       client_field:'client',    color:'#3b82f6', grad:'#1d4ed8,#3b82f6'},
+    {label:'🗂️ Classifier',db:DB.cls,       client_field:'client',    color:'#0d9488', grad:'#0d9488,#14b8a6'},
+    {label:'✅ Compliance', db:DB.comp,      client_field:'clientNo',  color:'#4f46e5', grad:'#4f46e5,#818cf8'},
+    {label:'📄 PARS Docs',  db:DB.parsDocs,  client_field:'client',    color:'#0284c7', grad:'#0284c7,#38bdf8'},
+    {label:'🌊 Ocean Docs', db:DB.oceanDocs, client_field:'client',    color:'#059669', grad:'#059669,#34d399'},
+    {label:'📦 Part Lot',   db:DB.partLot,   client_field:'client',    color:'#d97706', grad:'#d97706,#fbbf24'},
+    {label:'🚀 Release',    db:DB.release2,  client_field:'client',    color:'#e11d48', grad:'#2563eb,#60a5fa'},
+    {label:'🔍 Ocean T&T',  db:DB.oceanTT,   client_field:'client',    color:'#0891b2', grad:'#0891b2,#22d3ee'},
+    {label:'📝 B2 Entries', db:DB.b2entries, client_field:'client',    color:'#b45309', grad:'#b45309,#fcd34d'},
+  ];
+
+  const taskCards = tasks.map(t=>{
+    const myRecs = clientNo
+      ? t.db.filter(r=>String(r[t.client_field]||r.client||r.clientNo||'')===clientNo)
+      : t.db;
+    const todayCnt = myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+    const tatR = myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+    const tatN = myRecs.filter(r=>(r.tat||'').toLowerCase().includes('not reached')).length;
+    const tatPct = (tatR+tatN) ? Math.round(tatR/(tatR+tatN)*100) : 0;
+    const tatColor = tatPct>=80?'rgba(255,255,255,.9)':'rgba(255,200,100,.9)';
+    if(!myRecs.length) return '';
+    return`<div style="background:linear-gradient(135deg,${t.grad});border-radius:14px;padding:18px 20px;color:#fff;min-width:160px;flex:1">
+      <div style="font-size:22px;margin-bottom:6px">${t.label.split(' ')[0]}</div>
+      <div style="font-size:12px;font-weight:700;opacity:.85;margin-bottom:8px">${t.label.split(' ').slice(1).join(' ')}</div>
+      <div style="font-size:32px;font-weight:900;font-family:var(--mono);line-height:1">${myRecs.length.toLocaleString()}</div>
+      <div style="font-size:11px;opacity:.8;margin-top:4px">Today: ${todayCnt}</div>
+      ${tatR+tatN>0?`<div style="font-size:11px;margin-top:4px;color:${tatColor}">TAT: ${tatPct}%</div>`:''}
+    </div>`;
+  }).filter(Boolean).join('');
+
+  // My errors
+  const myErrors = DB.errors.filter(e=>String(e.client||'')===clientNo||String(e.clientName||'').toLowerCase()===clientName.toLowerCase());
+  const pendingErrors = myErrors.filter(e=>!e.acknowledgedAt).length;
+
+  c.innerHTML=`
+  <div class="ph">
+    <div><div class="pt">🏢 Client Dashboard</div>
+    <div class="ps">Welcome, ${clientName} · Your account overview</div></div>
+  </div>
+
+  <!-- Error alert if any pending -->
+  ${pendingErrors>0?`<div style="background:#fff1f2;border:1.5px solid #fecaca;border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">⚠️</span>
+      <div>
+        <div style="font-weight:800;color:#991b1b;font-size:14px">${pendingErrors} Error${pendingErrors>1?'s':''} Pending Review</div>
+        <div style="font-size:12px;color:#dc2626">Please review and acknowledge these error records</div>
+      </div>
+    </div>
+    <button onclick="showPage('errorreport')" style="padding:7px 16px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">View Errors →</button>
+  </div>`:''}
+
+  <!-- Task count cards -->
+  <div style="margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📊 Record Counts ${clientNo?'— Client #'+clientNo:''}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px">${taskCards||'<div style="color:var(--text3);padding:20px;font-style:italic">No records found for your account yet</div>'}</div>
+  </div>
+
+  <!-- Error summary card -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">Total Errors</div><div class="sv">${myErrors.length}</div><div class="sf">Your account</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending Review</div><div class="sv">${pendingErrors}</div><div class="sf">Needs attention</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Reviewed</div><div class="sv">${myErrors.length-pendingErrors}</div><div class="sf">Acknowledged</div></div>
+  </div>
+
+  <!-- Quick links -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    <button onclick="showPage('errorreport')" style="padding:8px 16px;background:var(--rose-bg);color:var(--rose);border:1.5px solid rgba(225,29,72,.25);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚠️ View Error Report</button>
+    <button onclick="showPage('reports')" style="padding:8px 16px;background:var(--primary-pale);color:var(--primary);border:1.5px solid rgba(59,130,246,.25);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📈 View Reports</button>
+    <button onclick="showPage('kpidashboard')" style="padding:8px 16px;background:rgba(16,185,129,.08);color:#059669;border:1.5px solid rgba(16,185,129,.25);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">📊 KPI Dashboard</button>
+  </div>`;
+}
+
 function renderKPIDashboard(c){
   _kpiD1='';_kpiD2='';_kpiMode='';_kpiTeam='';
   c.innerHTML=`
@@ -14293,7 +14377,14 @@ function renderErrorReport(c){
   const allErrors=DB.errors;
   // Users see only their own errors; TL/Supervisors/Admin see all
   const _myNames=new Set([CU?.name,CU?.empName,CU?.username].filter(Boolean).map(n=>n.trim().toLowerCase()));
-  const visibleErrors=(canUpload||isTLRole)?allErrors:allErrors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase()));
+  // Client role: filter errors by their client number/name
+  const _isClientRole = CU?.role==='Client' || CU?.task==='Client';
+  const _clientNo = CU?.team||CU?.username||''; // Clients store their client No in team field
+  const visibleErrors = (canUpload||isTLRole)
+    ? allErrors
+    : _isClientRole
+      ? allErrors.filter(e=>String(e.client||'')===String(_clientNo)||String(e.clientName||'').toLowerCase()===String(CU?.name||'').toLowerCase())
+      : allErrors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase()));
   const today=todayDateStringET();
 
   const errTasks=['Release','LVS','Classifier','PARS Docs Clerk','Ocean Docs Clerk'];
@@ -14302,7 +14393,7 @@ function renderErrorReport(c){
 
   c.innerHTML=`
   <div class="ph">
-    <div><div class="pt">⚠️ Client Error Report</div><div class="ps">${canUpload?'Upload, manage and review all error records':isTLRole?'View all error records — add Team Lead comments':'Your personal error feedback records'}</div></div>
+    <div><div class="pt">⚠️ Client Error Report</div><div class="ps">${canUpload?'Upload, manage and review all error records':isTLRole?'View all error records — add Team Lead comments':_isClientRole?'Error records for your account':'Your personal error feedback records'}</div></div>
     ${canUpload?'<button class="btn-add" style="background:var(--rose)" onclick="openErrorPanel()">＋ Add Error Record</button>':''}
   </div>
 
