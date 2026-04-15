@@ -9447,6 +9447,7 @@ async function _proceedWithLogin(lu, u){
 }
 
 function doLogout(){
+  sessionStorage.removeItem('_bannerDismissed'); // reset so banner shows on next login
   if(CU) secLogEvent('LOGOUT', CU.username, 'User logged out');
   idleStop();
   // Clear single-session tracking
@@ -22472,6 +22473,7 @@ window.addEventListener('beforeunload', function(e){
   function _showLogoutReminderBanner(){
     if(!CU) return;                                   // not logged in
     if(document.getElementById('_logoutReminderBanner')) return; // already showing
+    if(sessionStorage.getItem('_bannerDismissed')) return; // already dismissed this session
 
     const banner = document.createElement('div');
     banner.id = '_logoutReminderBanner';
@@ -22503,7 +22505,7 @@ window.addEventListener('beforeunload', function(e){
                  font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">
           🔓 Logout Now
         </button>
-        <button onclick="document.getElementById('_logoutReminderBanner')?.remove()"
+        <button onclick="sessionStorage.setItem('_bannerDismissed','1');document.getElementById('_logoutReminderBanner')?.remove()"
           style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.4);
                  padding:8px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit">
           ✕ Dismiss
