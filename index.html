@@ -4691,9 +4691,9 @@ const PAGE_TABLE_MAP = {
   'b2entries':   ['b2_entries'],
   'errorreport': ['client_errors'],
   'loginusers':  ['login_users'],
-  'dashboard':   ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries'],
-  'reports':     ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries'],
-  'tatanalyzer': ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries'],
+  'dashboard':   [], // Realtime keeps data current — no fetch on nav, render from DB directly
+  'reports':     [], // Uses existing DB data — no fetch on nav
+  'tatanalyzer': [], // Uses existing DB data — no fetch on nav
   'audit':       ['audit'],
 };
 
