@@ -17596,7 +17596,7 @@ function renderRelease2(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${window._rlTrueCount??all.length}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
@@ -17709,7 +17709,8 @@ function renderRLRows(data){
   const _displayLen = _isFiltered ? _filtered.length : (_filtered?.length ?? data.length);
   if(cnt) cnt.textContent=_displayLen+' records';
   const _rlTotal=document.getElementById('rlTotalCard');
-  if(_rlTotal) _rlTotal.textContent = _isFiltered ? _displayLen : (window._rlTrueCount ?? _displayLen);
+  const _useTrue = !_isFiltered && isSuperLead() && window._rlTrueCount && window._rlTrueCount > (_filtered?.length ?? data.length);
+  if(_rlTotal) _rlTotal.textContent = _useTrue ? window._rlTrueCount : _displayLen;
 }
 
 function updateRLStatus(dbid){
