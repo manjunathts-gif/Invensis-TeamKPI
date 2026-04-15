@@ -3822,6 +3822,39 @@ async function dbLoadRelease(){
   return allRows;
 }
 
+// ── Fetch true DB counts for all task tables (HEAD requests, no row data) ──
+// Called once after initial load. Updates TotalCard elements with accurate counts.
+const _TRUE_COUNT_TABLES = [
+  {table:'lvs',        card:'lvsTotalCard'},
+  {table:'cls',        card:'clsTotalCard'},
+  {table:'comp',       card:'compTotalCard'},
+  {table:'pars_docs',  card:'pdTotalCard'},
+  {table:'ocean_docs', card:'odTotalCard'},
+  {table:'part_lot',   card:'plTotalCard'},
+  {table:'ocean_tt',   card:'ottTotalCard'},
+  {table:'b2_entries', card:'b2TotalCard'},
+];
+window._trueCounts = window._trueCounts || {};
+
+async function _fetchAllTrueCounts(){
+  if(!_supa) return;
+  // Fetch counts one at a time to avoid connection burst
+  for(const {table, card} of _TRUE_COUNT_TABLES){
+    try{
+      const {data, count, error} = await _supa.from(table).select('id',{count:'exact',head:true});
+      if(!error && count !== null){
+        window._trueCounts[table] = count;
+        // Update visible card if on screen
+        const el = document.getElementById(card);
+        if(el && !el.closest('[data-filtered]')){
+          el.textContent = count.toLocaleString();
+        }
+      }
+    }catch(e){}
+    await new Promise(r=>setTimeout(r,200)); // small delay between each
+  }
+}
+
 const SUPABASE_PAGE_SIZE=1000; // Supabase default max per request
 
 // Load only recent rows — last N days (keeps payload small for large teams)
@@ -4340,6 +4373,8 @@ async function loadAllFromSupabase(){
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
       showToast('✅ App ready — loading full history in background. Counts update shortly...');
+      // Fetch true total counts for all tables in background
+      setTimeout(_fetchAllTrueCounts, 1000);
 
       // ── PHASE 2: Load full 30-day history — SKIP if Realtime is active ──────
       // Realtime keeps data current via WebSocket push — no need to re-fetch everything
@@ -9834,7 +9869,7 @@ function renderLVS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${all.length}</div><div class="sf">All time</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
@@ -9994,7 +10029,7 @@ function renderLVSRows(data){
     </tr>`;
   }).join('');
   const cnt=document.getElementById('lvsCount');if(cnt)cnt.textContent=(_pgState['lvs']?.filtered?.length||data.length)+' records';
-  const _lvsTotal=document.getElementById('lvsTotalCard');if(_lvsTotal)_lvsTotal.textContent=_pgState['lvs']?.filtered?.length??data.length;
+  const _lvsTotal=document.getElementById('lvsTotalCard');if(_lvsTotal){const _lf=_pgState['lvs']?.filtered;const _lf2=_lf&&_lf.length<(DB.lvs||[]).length;_lvsTotal.textContent=_lf2?_lf.length:(window._trueCounts?.lvs?window._trueCounts.lvs.toLocaleString():(_lf?.length??data.length));}
 }
 
 function updateLVSStatus(rowIdx,dbIdx){
@@ -10372,7 +10407,7 @@ function renderCLS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${all.length}</div><div class="sf">All time</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
@@ -10444,7 +10479,7 @@ function renderCLSRows(data){
     </tr>`;
   }).join('');
   const cnt=document.getElementById('clsCount');if(cnt)cnt.textContent=(_pgState['cls']?.filtered?.length||data.length)+' records';
-  const _clsTotal=document.getElementById('clsTotalCard');if(_clsTotal)_clsTotal.textContent=_pgState['cls']?.filtered?.length??data.length;
+  const _clsTotal=document.getElementById('clsTotalCard');if(_clsTotal){const _cf=_pgState['cls']?.filtered;const _cf2=_cf&&_cf.length<(DB.cls||[]).length;_clsTotal.textContent=_cf2?_cf.length:(window._trueCounts?.cls?window._trueCounts.cls.toLocaleString():(_cf?.length??data.length));}
 }
 
 function updateCLSStatus(rowIdx,dbIdx){
@@ -11797,7 +11832,7 @@ const KPI_TABS=[
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
-  {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#200132',
+  {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#e0f7fa',
    db:()=>DB.oceanTT,   uf:'user',      ef:'complete',  tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:null,
@@ -12375,7 +12410,7 @@ function renderReports(c){
       <button class="btn-exp" style="background:var(--teal-bg);border-color:rgba(13,148,136,.3);color:var(--teal)" onclick="exportOceanDocs()">⬇️ Ocean Docs</button>
       <button class="btn-exp" style="background:var(--amber-bg);border-color:rgba(217,119,6,.3);color:var(--amber)" onclick="exportPartLot()">⬇️ Part Lot</button>
       <button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose)" onclick="exportRelease2()">⬇️ Release</button>
-      <button class="btn-exp" style="background:#200132;border-color:#0891b2;color:#0891b2" onclick="exportOTT()">⬇️ Ocean T&T</button>
+      <button class="btn-exp" style="background:#e0f7fa;border-color:#0891b2;color:#0891b2" onclick="exportOTT()">⬇️ Ocean T&T</button>
       <button class="btn-exp" style="background:var(--amber-bg);border-color:rgba(217,119,6,.3);color:var(--amber)" onclick="exportB2()">⬇️ B2 Entries</button>
     </div>
   </div>
@@ -16124,7 +16159,7 @@ function renderCOMP(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Total Records</div><div class="sv" id="compTotalCard">${all.length}</div><div class="sf">All time</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Total Records</div><div class="sv" id="compTotalCard">${window._trueCounts&&window._trueCounts['comp']?window._trueCounts['comp'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✔️</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div><div class="sf">Resolved</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
@@ -16230,7 +16265,7 @@ function renderCOMPRows(data){
     </tr>`;
   }).join('');
   const cnt=document.getElementById('compCount');if(cnt)cnt.textContent=(_pgState['comp']?.filtered?.length||data.length)+' records';
-  const _compTotal=document.getElementById('compTotalCard');if(_compTotal)_compTotal.textContent=_pgState['comp']?.filtered?.length??data.length;
+  const _compTotal=document.getElementById('compTotalCard');if(_compTotal){const _cpf=_pgState['comp']?.filtered;const _cpf2=_cpf&&_cpf.length<(DB.comp||[]).length;_compTotal.textContent=_cpf2?_cpf.length:(window._trueCounts?.comp?window._trueCounts.comp.toLocaleString():(_cpf?.length??data.length));}
 }
 
 function updateCOMPStatus(rowIdx,dbIdx){
@@ -16474,7 +16509,7 @@ function renderPARSDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${all.length}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
@@ -16542,7 +16577,7 @@ function renderPDRows(data){
     </td>
   </tr>`).join('');
   const cnt=document.getElementById('pdCount');if(cnt)cnt.textContent=(_pgState['pd']?.filtered?.length||data.length)+' records';
-  const _pdTotal=document.getElementById('pdTotalCard');if(_pdTotal)_pdTotal.textContent=_pgState['pd']?.filtered?.length??data.length;
+  const _pdTotal=document.getElementById('pdTotalCard');if(_pdTotal){const _pdf=_pgState['pd']?.filtered;const _pdf2=_pdf&&_pdf.length<(DB.parsDocs||[]).length;_pdTotal.textContent=_pdf2?_pdf.length:(window._trueCounts?.pars_docs?window._trueCounts.pars_docs.toLocaleString():(_pdf?.length??data.length));}
 }
 
 function applyPDFilter(){
@@ -16932,7 +16967,7 @@ function renderOceanDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${all.length}</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
@@ -16997,7 +17032,7 @@ function renderODRows(data){
     ${isAdmin()?`<td>${adminActionBtns('oceanDocs',r._dbid||r.id,r.txn||r.subject)}</td>`:''}
   </tr>`).join('');
   const cnt=document.getElementById('odCount');if(cnt)cnt.textContent=(_pgState['od']?.filtered?.length||data.length)+' records';
-  const _odTotal=document.getElementById('odTotalCard');if(_odTotal)_odTotal.textContent=_pgState['od']?.filtered?.length??data.length;
+  const _odTotal=document.getElementById('odTotalCard');if(_odTotal){const _odf=_pgState['od']?.filtered;const _odf2=_odf&&_odf.length<(DB.oceanDocs||[]).length;_odTotal.textContent=_odf2?_odf.length:(window._trueCounts?.ocean_docs?window._trueCounts.ocean_docs.toLocaleString():(_odf?.length??data.length));}
 }
 
 function applyODFilter(){
@@ -17206,7 +17241,7 @@ function renderPartLot(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${all.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
@@ -17257,7 +17292,7 @@ function renderPLRows(data){
     ${isAdmin()?`<td>${adminActionBtns('partLot',r._dbid||r.id,r.txn||r.parsno)}</td>`:''}
   </tr>`).join('');
   const cnt=document.getElementById('plCount');if(cnt)cnt.textContent=(_pgState['pl']?.filtered?.length||data.length)+' records';
-  const _plTotal=document.getElementById('plTotalCard');if(_plTotal)_plTotal.textContent=_pgState['pl']?.filtered?.length??data.length;
+  const _plTotal=document.getElementById('plTotalCard');if(_plTotal){const _plf=_pgState['pl']?.filtered;const _plf2=_plf&&_plf.length<(DB.partLot||[]).length;_plTotal.textContent=_plf2?_plf.length:(window._trueCounts?.part_lot?window._trueCounts.part_lot.toLocaleString():(_plf?.length??data.length));}
 }
 
 function applyPLFilter(){
@@ -21244,7 +21279,7 @@ function renderOceanTT(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc" style="background:#200132;border-color:#0891b2"><div class="sc-top" style="background:#0891b2"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard" style="color:#0891b2">${all.length}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard">${window._trueCounts&&window._trueCounts['ocean_tt']?window._trueCounts['ocean_tt'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv">${all.filter(r=>r.destination==='Toronto').length}</div></div>
@@ -21325,7 +21360,7 @@ function renderOTTRows(data){
     </tr>`;
   }).join('');
   const cnt=document.getElementById('ottCount');if(cnt)cnt.textContent=(_pgState['ott']?.filtered?.length||data.length)+' records';
-  const _ottTotal=document.getElementById('ottTotalCard');if(_ottTotal)_ottTotal.textContent=_pgState['ott']?.filtered?.length??data.length;
+  const _ottTotal=document.getElementById('ottTotalCard');if(_ottTotal){const _otf=_pgState['ott']?.filtered;const _otf2=_otf&&_otf.length<(DB.oceanTT||[]).length;_ottTotal.textContent=_otf2?_otf.length:(window._trueCounts?.ocean_tt?window._trueCounts.ocean_tt.toLocaleString():(_otf?.length??data.length));}
 }
 
 function applyOTTFilter(){
@@ -21468,7 +21503,7 @@ function renderB2Entries(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc" style="background:#fff8e1;border-color:#d97706"><div class="sc-top" style="background:#d97706"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard" style="color:#d97706">${all.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${all.filter(r=>r.tasktype==='Project').length}</div></div>
@@ -21552,7 +21587,7 @@ function renderB2Rows(data){
       ${isAdmin()?`<td>${adminActionBtns('b2entries',r._dbid||r.id,r.txn)}</td>`:''}</tr>`;
   }).join('');
   const cnt=document.getElementById('b2Count');if(cnt)cnt.textContent=(_pgState['b2']?.filtered?.length||data.length)+' records';
-  const _b2Total=document.getElementById('b2TotalCard');if(_b2Total)_b2Total.textContent=_pgState['b2']?.filtered?.length??data.length;
+  const _b2Total=document.getElementById('b2TotalCard');if(_b2Total){const _b2f=_pgState['b2']?.filtered;const _b2f2=_b2f&&_b2f.length<(DB.b2entries||[]).length;_b2Total.textContent=_b2f2?_b2f.length:(window._trueCounts?.b2_entries?window._trueCounts.b2_entries.toLocaleString():(_b2f?.length??data.length));}
 }
 
 function updateB2Status(rowIdx){
