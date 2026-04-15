@@ -1,7 +1,7 @@
 {
   "name": "Invensis KPI Tracker",
   "short_name": "KPI Tracker",
-  "description": "Custom Broker Daily Production Tracker",
+  "description": "Invensis Daily Production Tracker",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f6fb",
