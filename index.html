@@ -4272,6 +4272,7 @@ async function loadAllFromSupabase(){
       const bar=document.getElementById('loadingProgressBar');
       if(bar) bar.style.width='20%';
 
+      // Batch 1: essential auth/config tables (small, fast)
       const [users,loginUsers,clients,instructions] = await Promise.all([
         dbLoad('users'), dbLoad('login_users'), dbLoad('clients'), dbLoad('instructions')
       ]);
@@ -4280,14 +4281,25 @@ async function loadAllFromSupabase(){
       DB.clients      = clients.map(mapClient);
       DB.instructions = (instructions||[]).map(mapInstruction);
 
-      if(bar) bar.style.width='50%';
-      // Load last 2 days of task data first — user sees data instantly
-      const [lvsT,clsT,compT,parsT,oceanT,partT,relT,ottT,b2T,errT,auditT] = await Promise.all([
-        dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRecent('comp',2),
-        dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
-        dbLoadRecent('part_lot',2), dbLoadRelease(),
-        dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
-        dbLoadRecent('client_errors',2), dbLoadRecent('audit',2)
+      if(bar) bar.style.width='40%';
+      setDetail('⚡ Loading task data...');
+
+      // Batch 2: high-priority task tables (shown on dashboard first)
+      const [lvsT,clsT,relT,errT] = await Promise.all([
+        dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRelease(), dbLoadRecent('client_errors',2)
+      ]);
+      DB.lvs      = lvsT.map(mapLVS);   DB.lvs.forEach((r,i)=>r._idx=i);
+      DB.cls      = clsT.map(mapCLS);   DB.cls.forEach((r,i)=>r._idx=i);
+      DB.release2 = relT.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
+      DB.errors   = errT.map(mapError); DB.errors.forEach((r,i)=>r._idx=i);
+
+      if(bar) bar.style.width='65%';
+
+      // Batch 3: remaining task tables
+      const [compT,parsT,oceanT,partT,ottT,b2T,auditT] = await Promise.all([
+        dbLoadRecent('comp',2), dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
+        dbLoadRecent('part_lot',2), dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
+        dbLoadRecent('audit',2)
       ]);
       DB.lvs       = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls       = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4309,10 +4321,13 @@ async function loadAllFromSupabase(){
       // ── PHASE 2: Load full 30-day history silently in background ──────────
       setTimeout(async()=>{
         try{
-          const [lvsF,clsF,compF,parsF,oceanF,partF,relF,ottF,b2F,errF,auditF] = await Promise.all([
+          // Split into 2 batches — avoid connection burst on Nano plan
+          const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
-            dbLoadRecent('pars_docs',30), dbLoadRecent('ocean_docs',30),
-            dbLoadRecent('part_lot',30), dbLoadRelease(),
+            dbLoadRecent('pars_docs',30), dbLoadRelease()
+          ]);
+          const [oceanF,partF,ottF,b2F,errF,auditF] = await Promise.all([
+            dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
             dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
           ]);
@@ -8918,7 +8933,7 @@ async function doLogin(){
       try{
         await Promise.race([
           loadAllFromSupabase(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000)) // 15s for admin
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),25000)) // 25s for admin (batched load)
         ]);
       } catch(e){
         console.warn('Admin data load timed out or failed — booting with cached data:',e.message);
