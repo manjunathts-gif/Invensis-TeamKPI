@@ -4518,27 +4518,37 @@ async function loadAllFromSupabase(){
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
 
     } else if(CU.role==='Client'){
-      // Client: load ALL task tables (view-only) + errors + reports
-      setDetail('Loading client view data...');
-      const [lvs,cls,comp,pars,ocean,partLot,release,oceanTT,b2,errors,clients] = await Promise.all([
-        dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'),
-        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoadRelease(),
-        dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries'),
-        dbLoadRecent('client_errors'), dbLoad('clients')
+      // Client: load task tables in 3 batches to avoid connection burst
+      setDetail('Loading client view... (1/3)');
+      const [lvs,cls,comp,clients] = await Promise.all([
+        dbLoadRecent('lvs'), dbLoadRecent('cls'), dbLoadRecent('comp'), dbLoad('clients')
       ]);
       if(lvs) { DB.lvs=lvs.map(mapLVS); DB.lvs.forEach((r,i)=>r._idx=i); }
       if(cls) { DB.cls=cls.map(mapCLS); DB.cls.forEach((r,i)=>r._idx=i); }
       if(comp) { DB.comp=comp.map(mapCOMP); }
+      if(clients) DB.clients=clients.map(mapClient);
+      bootApp(); // Boot immediately with first batch — show app fast
+
+      setDetail('Loading client view... (2/3)');
+      const [pars,ocean,partLot,errors] = await Promise.all([
+        dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
+        dbLoadRecent('part_lot'), dbLoadRecent('client_errors')
+      ]);
       if(pars) { DB.parsDocs=pars.map(mapPARSDocs); }
       if(ocean) { DB.oceanDocs=ocean.map(mapOceanDocs); }
       if(partLot) { DB.partLot=partLot.map(mapPartLot); }
+      if(errors) { DB.errors=errors.map(mapError); DB.errors.forEach((r,i)=>r._idx=i); }
+
+      setDetail('Loading client view... (3/3)');
+      const [release,oceanTT,b2] = await Promise.all([
+        dbLoadRelease(), dbLoadRecent('ocean_tt'), dbLoadRecent('b2_entries')
+      ]);
       if(release) { DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i); }
       if(oceanTT) { DB.oceanTT=oceanTT.map(mapOceanTT); }
       if(b2) { DB.b2entries=b2.map(mapB2); }
-      if(errors) { DB.errors=errors.map(mapError); DB.errors.forEach((r,i)=>r._idx=i); }
-      if(clients) DB.clients=clients.map(mapClient);
       setDetail('✅ Client view loaded');
+      if(_currentPage) _silentRefreshPage(_currentPage);
+      return; // already booted above
     } else {
       // Regular user: own task table + errors + clients + login_users (for user dropdown autofill)
       const tbl=taskTableMap[userTask];
