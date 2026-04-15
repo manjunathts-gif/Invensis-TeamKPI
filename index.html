@@ -5713,6 +5713,7 @@ function isPanelOpen(){
 function openPanel(id){
   document.getElementById('overlay').classList.add('open');
   document.getElementById(id).classList.add('open');
+  _onFormOpen(); // reset form idle timer when any panel opens
   // Mask client fields for Client role
   setTimeout(_maskClientFormFields, 50);
 }
@@ -5884,6 +5885,12 @@ function _isFormPanelOpen(){
   return ['lvsPanel','clsPanel','compPanel','parsDocsPanel','oceanDocsPanel',
           'partLotPanel','release2Panel','ottPanel','b2Panel','clientPanel']
     .some(id=>{ const el=document.getElementById(id); return el&&el.classList.contains('open'); });
+}
+
+// Reset form activity timer when a form panel opens
+function _onFormOpen(){
+  window._lastFormAct = Date.now();
+  _lastAct = Date.now();
 }
 
 // Session expiry check — called every minute
@@ -7299,14 +7306,20 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // Only match actual today dates — do NOT include yesterday (causes ghost present)
   const _validTodayDates = new Set([today, todayET2].filter(Boolean));
   const todayRows   = rows.filter(r => _validTodayDates.has(String(r.date||'').slice(0,10)));
-  // For "present today": user present if they have at least 1 session today (either date)
+  // ACTIVE NOW: users with an OPEN session (no logout_time) — most accurate real-time count
+  const activeNowSet = new Set(
+    todayRows.filter(r => !r.logout_time || r.logout_time===null || r.logout_time==='null' || r.logout_time==='')
+             .map(r=>r.username)
+  );
+  // PRESENT TODAY: users who logged in at any point today (including already logged out)
   const presentUnameSet = new Set(todayRows.map(r=>r.username));
-  const presentToday = presentUnameSet.size;
-  const lateToday    = [...presentUnameSet].filter(u => {
+  const presentToday = activeNowSet.size; // show ACTIVE NOW as the main count
+  const presentTodayTotal = presentUnameSet.size; // total who logged in today
+  const lateToday    = [...presentUnameSet].filter(u => { // late = first login after 9:30 AM
     const s = todayRows.filter(r=>r.username===u).sort((a,b)=>(a.session_no||0)-(b.session_no||0))[0];
     return s && _attendanceCheckLate(s.login_time);
   }).length;
-  const absentToday = Math.max(0, allUsers.filter(u=>u.active!==false).length - presentToday);
+  const absentToday = Math.max(0, allUsers.filter(u=>u.active!==false).length - presentTodayTotal);
   // Avg active hours = total_minutes for users who have logged out today / count
   const completedToday = todayRows.filter(r=>r.total_minutes>0);
   const avgMins = completedToday.length ? Math.round(completedToday.reduce((s,r)=>s+(r.total_minutes||0),0)/completedToday.length) : 0;
@@ -7562,7 +7575,8 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
 
   <!-- Summary Cards -->
   <div class="sg" style="margin-bottom:16px">
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Present Today</div><div class="sv">${presentToday}</div><div class="sf">of ${allUsers.filter(u=>u.active!==false).length} active users</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">🟢</div><div class="sl">Active Now</div><div class="sv">${presentToday}</div><div class="sf">open sessions</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Logged In Today</div><div class="sv">${presentTodayTotal}</div><div class="sf">of ${allUsers.filter(u=>u.active!==false).length} users</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">❌</div><div class="sl">Absent Today</div><div class="sv">${absentToday}</div><div class="sf">not logged in</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏰</div><div class="sl">Late Today</div><div class="sv">${lateToday}</div><div class="sf">after 9:30 AM</div></div>
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">⏱️</div><div class="sl">Avg Active Hrs</div><div class="sv">${avgHrs}h ${String(avgMin2).padStart(2,'0')}m</div><div class="sf">sessions with logout</div></div>
@@ -22043,8 +22057,11 @@ if(!window.DB) window.DB = {};
 DB.idleLog = [];
 
 // ── Reset on any real user interaction ──
+window._lastFormAct = Date.now(); // tracks last activity specifically inside forms
 function _touch(){
   _lastAct = Date.now();
+  // If a form is open, also update the form-specific activity tracker
+  if(_isFormPanelOpen()) window._lastFormAct = Date.now();
   if(!_idleShown){
     const b = document.getElementById('idleTopBadge');
     if(b) b.classList.remove('show');
@@ -22052,6 +22069,16 @@ function _touch(){
 }
 ['mousedown','keydown','touchstart','click','input','change','scroll'].forEach(e=>{
   document.addEventListener(e, _touch, {passive:true});
+});
+
+// Form field interaction — more specific tracking for input/change events in forms
+['input','change','keydown'].forEach(e=>{
+  document.addEventListener(e, (ev)=>{
+    if(ev.target && (ev.target.closest('.sp-body,.sp-form,.fpg,.form-panel,.panel-body'))){
+      window._lastFormAct = Date.now();
+      _lastAct = Date.now(); // reset global idle too — user is genuinely working
+    }
+  }, {passive:true});
 });
 
 // ── Format ms → MM:SS ──
@@ -22065,8 +22092,18 @@ function _checkIdle(){
   if(!CU || _idleShown) return;
   // Skip idle tracking for Client role — view-only users
   if(CU.role==='Client' || CU.task==='Client') return;
-  // If any form panel is open the user is actively working — reset idle clock
-  if(_isFormPanelOpen()){ _lastAct = Date.now(); return; }
+  // Form panel open: only reset idle if user actually interacted with the form in last 15 min
+  // If form is open but untouched for 15+ min → still flag as idle
+  const FORM_IDLE_MS = 15 * 60 * 1000;
+  if(_isFormPanelOpen()){
+    const formGap = Date.now() - (window._lastFormAct || Date.now());
+    if(formGap < FORM_IDLE_MS){
+      _lastAct = Date.now(); // genuine form activity — reset idle
+      return;
+    }
+    // Form open but no interaction for 15+ min — fall through to idle check
+    // (but use formGap as the idle duration for accurate reporting)
+  }
   const gap = Date.now() - _lastAct;
   const badge = document.getElementById('idleTopBadge');
   const badgeTime = document.getElementById('idleTopTime');
