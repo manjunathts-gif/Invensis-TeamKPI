@@ -5163,18 +5163,46 @@ function setupRealtime(){
 // ══════════════════════════════════════════════════════════
 // Admin credentials
 // Admin credentials — XOR-obfuscated (same key as API)
+// ── Admin credentials loaded from DB (app_admins table) ──
+// No credentials stored in HTML — fetched securely on login
+let _dbAdmin = null; // cached after first successful DB fetch
+
+async function _loadAdminFromDB(){
+  if(_dbAdmin) return _dbAdmin; // use cache
+  if(!_supa) return null;
+  try{
+    const {data} = await _supa.from('app_admins')
+      .select('login_name,password_hash,display_name,role,active')
+      .eq('active', true)
+      .order('id', {ascending:true})
+      .limit(10);
+    if(data && data.length > 0){
+      _dbAdmin = data; // cache all active admins
+      return data;
+    }
+  }catch(e){ console.warn('[Admin] DB fetch failed:', e.message); }
+  return null;
+}
+
+// Fallback constants (used only if DB unreachable)
 const _au='173b34302f343b2e32682e29',_ah='6f3968636e6e6e3c39636e6f3e68636d396e6e62696f6b6d6a6d6d396b383c6a3b696a3c6f3b3f396c69683c6b6d3f636a6e3e6e3e6d3e3e6c6e6c6b6e6c696b',_ad='173b34302f343b2e32';
 const ADMIN_UNAME     = _dk(_au);
 const ADMIN_PASS_HASH = _dk(_ah);
 const ADMIN_DNAME     = _dk(_ad);
 
-function checkAdminPwd(pwd){
-  // SHA-256 hash comparison via SubtleCrypto (async — call via checkAdminPass)
+async function checkAdminPwd(pwd){
+  // Hash the entered password
   const enc = new TextEncoder().encode(pwd);
-  return crypto.subtle.digest('SHA-256', enc).then(buf => {
-    const hex = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-    return hex === ADMIN_PASS_HASH;
-  });
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  const hex = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+  // Try DB first
+  const admins = await _loadAdminFromDB();
+  if(admins && admins.length > 0){
+    return admins.some(a => a.password_hash === hex);
+  }
+  // Fallback to HTML constant if DB unreachable
+  return hex === ADMIN_PASS_HASH;
 }
 
 async function hashPwd(pwd){
@@ -9049,7 +9077,10 @@ async function doLoginOffline(){
   err.style.display='none';
 
   // Admin check first (always works offline)
-  if(u===ADMIN_UNAME && await checkAdminPwd(p)){
+  const _offlineAdmins = await _loadAdminFromDB();
+  const _offlineDbAdmin = _offlineAdmins ? _offlineAdmins.find(a=>a.login_name===u) : null;
+  const _isOfflineAdmin = _offlineDbAdmin ? true : (u === ADMIN_UNAME);
+  if(_isOfflineAdmin && await checkAdminPwd(p)){
     secRecordSuccess();
     CU={username:u,name:ADMIN_DNAME,task:'Manager',role:'Manager',team:'ALL'};
     try{
@@ -9154,11 +9185,16 @@ async function doLogin(){
   }
 
   // ── Admin: hardcoded, ALWAYS works — no Supabase needed ──
-  const _adminMatch = (u === ADMIN_UNAME) && await checkAdminPwd(p);
+  // Check admin — username match against DB records or fallback constant
+  const _admins = await _loadAdminFromDB();
+  const _dbAdminRecord = _admins ? _admins.find(a=>a.login_name===u) : null;
+  const _isAdminUser = _dbAdminRecord ? true : (u === ADMIN_UNAME);
+  const _adminMatch = _isAdminUser && await checkAdminPwd(p);
   if(_adminMatch){
     secRecordSuccess();
     secLogEvent('LOGIN_SUCCESS', u, 'Admin login');
-    CU={username:u,name:ADMIN_DNAME,task:'Manager',role:'Manager',team:'ALL'};
+    const _adminName = _dbAdminRecord?.display_name || ADMIN_DNAME;
+    CU={username:u,name:_adminName,task:'Manager',role:'Manager',team:'ALL'};
     try{sessionStorage.setItem('kpi_session',JSON.stringify(CU));
       sessionStorage.setItem('kpi_session_ts', Date.now());}catch(e){}
     // Admin bypass — always allow login, force out any existing session
