@@ -981,7 +981,6 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
   #hopeBreadcrumb{display:none!important;}
   #hopePageTitle{font-size:14px!important;}
   #lastUpdatedBadge{display:none!important;}
-  #pwaInstallBtn{display:none!important;}
   #globalRefreshBtn span:last-child{display:none;}
   #globalRefreshBtn{padding:5px 10px!important;font-size:11px!important;}
   #hopeTopHeader{gap:6px!important;}
@@ -22627,10 +22626,15 @@ window.addEventListener('beforeunload', function(e){
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
-  _pwaInstallPrompt = e;
-  // Show install button in navbar
-  const btn = document.getElementById('pwaInstallBtn');
-  if(btn) btn.style.display = 'flex';
+  window._pwaInstallPrompt = e;
+  // Show install button — try now and again after DOM settles
+  const _showBtn = () => {
+    const btn = document.getElementById('pwaInstallBtn');
+    if(btn){ btn.style.display='flex'; btn.style.removeProperty('display'); btn.style.cssText += ';display:flex!important'; }
+  };
+  _showBtn();
+  setTimeout(_showBtn, 1000);
+  setTimeout(_showBtn, 3000);
 });
 
 window.addEventListener('appinstalled', () => {
