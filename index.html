@@ -11254,6 +11254,11 @@ function renderDashboard(c){
     const _tc = _tcKey && window._trueCounts && window._trueCounts[_tcKey];
     const _rl = d.key==='release2' && window._rlTrueCount;
     const total = _rl ? window._rlTrueCount : (_tc || d.db.length);
+    // Extra: profile code stats for release in dashboard
+    if(d.key==='release2'){
+      stats._pcYes = d.db.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
+      stats._pcNo  = d.db.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
+    }
     stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
   });
 
@@ -11378,6 +11383,16 @@ function renderDashboard(c){
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📊 Total Records</div>
       <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${totalAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">all tasks combined</div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔖 Profile Code</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e">${(stats._pcYes||0).toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48">${(stats._pcNo||0).toLocaleString()} ❌ No</span></div>
+    </div>
+    <div class="dash-ed-panel" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✍️ Double Sign</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length.toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length.toLocaleString()} ❌ No</span></div>
     </div>
   </div>
 
@@ -15645,6 +15660,13 @@ function renderAudit(c){
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div></div>
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">⭐</div><div class="sl">Avg Score</div><div class="sv">${avgScore}${avgScore!=='—'?'%':''}</div></div>
+    ${(()=>{
+      const dsYes=DB.audit.filter(a=>teamTxnSet.has(String(a.txn))&&(a.doubleSign||'').toLowerCase()==='yes').length;
+      const dsNo=DB.audit.filter(a=>teamTxnSet.has(String(a.txn))&&(a.doubleSign||'').toLowerCase()==='no').length;
+      return`
+        <div class="sc c-te"><div class="sc-top"></div><div class="si">✍️</div><div class="sl">Double Sign ✅</div><div class="sv">${dsYes}</div><div class="sf">Yes</div></div>
+        <div class="sc c-ro"><div class="sc-top"></div><div class="si">✍️</div><div class="sl">Double Sign ❌</div><div class="sv">${dsNo}</div><div class="sf">No</div></div>`;
+    })()}
   </div>
 
   <!-- Mode-wise -->
@@ -17459,6 +17481,15 @@ function renderRelease2(c){
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
+    ${(()=>{
+      // Profile Code stats — visible to all Release roles
+      const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
+      const pcNo=all.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
+      const pcNone=all.filter(r=>!r.profileCode||r.profileCode==='—').length;
+      return`
+        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv">${pcYes}</div><div class="sf">Yes</div></div>
+        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv">${pcNo}</div><div class="sf">No</div></div>`;
+    })()}
     ${(()=>{
       if(!(CU&&CU.role==='Team Lead'&&CU.task==='Release'))return'';
       const _allTxnSet=new Set(all.map(r=>String(r.txn)));
@@ -21034,7 +21065,7 @@ async function exportRelease2(){
     _data = _filterByDateRange(DB.release2, d1, d2);
   }
   const headers=['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines',
-    'Doc Rcvd Date','Status','User','Start Time','Submitted Time','Duration','TAT',
+    'Doc Rcvd Date','Profile Code','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
     'Audit By','Error Type','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
   const rows=_data.map(r=>{
@@ -21046,7 +21077,7 @@ async function exportRelease2(){
       (combined.startsWith('[Truck TAT Analytics]')?combined:'');
     return[
       r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',
-      r.docrcvd||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',
+      r.docrcvd||'',r.profileCode||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',
       userCmt||'',analyticsCmt||'',(r._created||'').slice(0,10),
       ar?.auditor||'',ar?.errorType||'',ar?.score||'',ar?.doubleSign||'',
       ar?.comments||'',ar?.startTime||'',ar?.endTime||'',ar?.duration||''
