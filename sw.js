@@ -1,15 +1,9 @@
-// Invensis KPI Tracker — Service Worker
-const CACHE = 'kpi-v1';
+const CACHE = 'kpi-v2';
 
-// On install — cache the main page only
 self.addEventListener('install', e => {
   self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(['/']))
-  );
 });
 
-// On activate — clean old caches
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -19,22 +13,21 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Network first — always fetch fresh data, fall back to cache if offline
 self.addEventListener('fetch', e => {
-  // Only handle GET requests to our own origin
   if(e.request.method !== 'GET') return;
   if(!e.request.url.startsWith(self.location.origin)) return;
-  // Never cache Supabase API calls
   if(e.request.url.includes('supabase.co')) return;
+  if(e.request.url.includes('cdn.jsdelivr')) return;
+  if(e.request.url.includes('accounts.google')) return;
 
   e.respondWith(
-    fetch(e.request)
-      .then(res => {
-        // Cache the fresh response
+    fetch(e.request).then(res => {
+      // Only cache complete responses (status 200)
+      if(res.status === 200 && res.type !== 'opaque'){
         const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      })
-      .catch(() => caches.match(e.request))
+        caches.open(CACHE).then(c => c.put(e.request, clone)).catch(()=>{});
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
