@@ -8923,34 +8923,28 @@ async function doLogin(){
     _initSessionChannel();
     _registerSession(u);
     loadIdleLog();
-    if(btn){btn.textContent='⏳ Loading data...';btn.disabled=true;}
-    if(_supa){
-      const overlay=document.getElementById('loadingOverlay');
-      const msg=document.getElementById('loadingMsg');
-      if(overlay) overlay.style.display='flex';
-      if(msg) msg.textContent='Loading all data...';
-      // Load with timeout — if fails, boot anyway with cached/empty data
-      try{
-        await Promise.race([
-          loadAllFromSupabase(),
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),25000)) // 25s for admin (batched load)
-        ]);
-      } catch(e){
-        console.warn('Admin data load timed out or failed — booting with cached data:',e.message);
-        // Try restore from cache
-        try{
-          const cLU=localStorage.getItem('kpi_lu_cache');
-          const cU=localStorage.getItem('kpi_users_cache');
-          if(cLU) DB.loginUsers=_restoreFromCache(JSON.parse(cLU));
-          if(cU)  DB.users=JSON.parse(cU);
-        }catch(ce){}
-        showToast('⚠️ DB slow/unreachable — loaded from cache. Data may not be current.',true);
-      } finally{
-        if(overlay) overlay.style.display='none';
-      }
-    }
-    if(btn){btn.textContent='Sign In →';btn.disabled=false;}
+    if(btn){btn.textContent='⏳ Signing in...';btn.disabled=true;}
+    // ── Boot immediately from cache — no timeout, no blocking ──
+    // Restore cached task data so dashboard is usable instantly
+    try{
+      const cLU=localStorage.getItem('kpi_lu_cache');
+      const cU=localStorage.getItem('kpi_users_cache');
+      if(cLU) DB.loginUsers=_restoreFromCache(JSON.parse(cLU));
+      if(cU)  DB.users=JSON.parse(cU);
+      _restoreTaskCache();
+    }catch(ce){}
     bootApp();
+    // ── Load all fresh data in background after app is already running ──
+    if(_supa){
+      setTimeout(async()=>{
+        try{
+          await loadAllFromSupabase();
+        }catch(e){
+          console.warn('Admin background data load failed:',e.message);
+          showToast('⚠️ DB sync issue — some data may not be current.',true);
+        }
+      }, 300);
+    }
     return;
   }
 
