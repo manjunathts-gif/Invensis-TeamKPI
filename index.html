@@ -5026,6 +5026,11 @@ function setupRealtime(){
   _realtimeChannel = _supaRT
     .channel('kpi-live-all')
     .on('system', {}, (status)=>{
+      // Filter out non-critical RLS errors on DELETE (read-only Realtime still works)
+      if(status && status.status === 'error' && status.message && status.message.includes('DELETE')){
+        console.warn('[RT] DELETE subscription blocked by RLS (non-critical — inserts/updates still live)');
+        return;
+      }
       console.log('[RT] System status:', status);
     });
 
@@ -9097,6 +9102,9 @@ async function doLogin(){
       setTimeout(async()=>{
         try{
           await loadAllFromSupabase();
+          // Refresh page once data is loaded so counts show correctly
+          if(CU) refreshPage();
+          _updateLastRefreshed();
         }catch(e){
           console.warn('Admin background data load failed:',e.message);
           showToast('⚠️ DB sync issue — some data may not be current.',true);
