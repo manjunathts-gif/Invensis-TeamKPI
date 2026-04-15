@@ -4592,6 +4592,12 @@ function _silentRefreshPage(id){
   const c=document.getElementById('pc');
   if(!c) return showPage(id);
   const scrollY = c.scrollTop;
+  // For status page — refresh without resetting to tab 1
+  if(id==='status'){
+    renderStatus(c, window._statusActiveKey||undefined);
+    requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+    return;
+  }
   showPage(id);
   requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
 }
@@ -9712,7 +9718,9 @@ function showPage(id){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
   const b=document.getElementById('nb_'+id);if(b)b.classList.add('active');
   const c=document.getElementById('pc');
-  c.innerHTML='';
+  // Only clear content when navigating to a different page
+  if(!window._forceRefresh) c.innerHTML='';
+  window._forceRefresh = false;
   // Set tab background theme
   c.className='pc';
   const tabMap={lvs:'tab-lvs',classifier:'tab-classifier',compliance:'tab-compliance',
@@ -9737,7 +9745,7 @@ function showPage(id){
   if(id==='lvs') renderLVS(c);
   else if(id==='classifier') renderCLS(c);
   else if(id==='compliance') renderCOMP(c);
-  else if(id==='status') renderStatus(c);
+  else if(id==='status') renderStatus(c, window._statusActiveKey||undefined);
   else if(id==='dashboard') renderDashboard(c);
   else if(id==='users') renderUsers(c);
   else if(id==='clients') renderClients(c);
@@ -10767,7 +10775,10 @@ function renderStatus(c,activeTask){
   ];
   const visibleTasks = CU.task==='Manager'||isSuperLead() ? tasks :
     tasks.filter(t=>t.userTask===CU.task||(CU.task==='Ocean T&T'&&t.key==='oceantt')||(CU.task==='B2 Entries'&&t.key==='b2entries'));
-  const active=activeTask||(visibleTasks[0]?.key||'lvs');
+  // Preserve active tab across refreshes — store globally
+  if(activeTask) window._statusActiveKey = activeTask;
+  const active = activeTask || window._statusActiveKey || (visibleTasks[0]?.key||'lvs');
+  window._statusActiveKey = active; // always keep updated
   const at=visibleTasks.find(t=>t.key===active)||visibleTasks[0];
   if(!at){c.innerHTML='<div class="empty"><div class="empty-ico">📡</div><div class="empty-t">No status data</div></div>';return;}
   if(at._isAudit){ renderAuditStatusTab(c,active,visibleTasks); return; }
@@ -13710,6 +13721,19 @@ function renderGDrive(c){
 // ══════════════════════════════════════════════════════════
 function renderMyStatus(c){
   const isTL=CU.role==='Team Lead';
+  // Cache check — skip full re-render if data hasn't changed
+  const _myTaskDb = {
+    'LVS':DB.lvs,'Classifier':DB.cls,'Compliance':DB.comp,
+    'PARS Docs Clerk':DB.parsDocs,'Ocean Docs Clerk':DB.oceanDocs,
+    'Part Lot':DB.partLot,'Release':DB.release2,
+    'B2 Entries':DB.b2entries,'Ocean T&T':DB.oceanTT
+  }[CU.task];
+  const _myHash = (_myTaskDb||[]).length + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
+  if(window._myStatusHash === _myHash && c.children.length > 0){
+    return; // no change — skip re-render, prevents blink
+  }
+  window._myStatusHash = _myHash;
+
   const taskMap={
     'LVS':{db:DB.lvs,fld:'assignedTo',label:'LVS',icon:'📋'},
     'Classifier':{db:DB.cls,fld:'assignedTo',label:'Classifier',icon:'🗂️'},
