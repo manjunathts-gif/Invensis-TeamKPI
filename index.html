@@ -11306,7 +11306,7 @@ function renderDashboard(c){
   const isTL  = CU.role==='Team Lead';
   const isMgr = CU.task==='Manager'||CU.role==='Manager';
 
-  // Cache removed — heatmap deferral + O(n) algorithms are sufficient
+
 
   // ── Pre-compute all stats once using Maps for O(n) performance ──
   const todayStr = now.toDateString();
@@ -11328,29 +11328,34 @@ function renderDashboard(c){
     ? _taskDefs.filter(d=>d.key===tlKeyMap[CU.task])
     : _taskDefs;
 
-  // Single pass per array — compute today count + TAT stats
+  // Single pass per array — avoid parseAppDate on every record
+  // Use _created string slice (YYYY-MM-DD) for fast today comparison
+  const todayYMD = (()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  const _tcKeyMap = {lvs:'lvs',cls:'cls',comp:'comp',parsDocs:'pars_docs',
+    oceanDocs:'ocean_docs',partLot:'part_lot',release2:'release',
+    oceanTT:'ocean_tt',b2entries:'b2_entries'};
+
   const stats = {};
   visibleDefs.forEach(d=>{
-    let todayCnt=0, tatR=0, tatN=0, hold=0;
+    let todayCnt=0, tatR=0, tatN=0, hold=0, pcYes=0, pcNo=0;
     d.db.forEach(r=>{
-      if((parseAppDate(r._created)||new Date(0)).toDateString()===todayStr) todayCnt++;
+      // Fast date check: slice ISO string instead of full parseAppDate
+      const dateStr = String(r._created||'').slice(0,10);
+      if(dateStr===todayYMD) todayCnt++;
       const tv=(r.tat||'').toLowerCase();
       if(tv==='tat reached') tatR++;
       else if(tv.includes('not reached')||tv.includes('not-reached')) tatN++;
       if(r.status==='Hold') hold++;
+      if(d.key==='release2'){
+        const pc=(r.profileCode||'').toLowerCase();
+        if(pc==='yes') pcYes++; else if(pc==='no') pcNo++;
+      }
     });
-    // Map dashboard key → _trueCounts key
-    const _tcKey = {lvs:'lvs',cls:'cls',comp:'comp',parsDocs:'pars_docs',
-      oceanDocs:'ocean_docs',partLot:'part_lot',release2:'release',
-      oceanTT:'ocean_tt',b2entries:'b2_entries'}[d.key];
+    const _tcKey = _tcKeyMap[d.key];
     const _tc = _tcKey && window._trueCounts && window._trueCounts[_tcKey];
     const _rl = d.key==='release2' && window._rlTrueCount;
     const total = _rl ? window._rlTrueCount : (_tc || d.db.length);
-    // Extra: profile code stats for release in dashboard
-    if(d.key==='release2'){
-      stats._pcYes = d.db.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
-      stats._pcNo  = d.db.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
-    }
+    if(d.key==='release2'){ stats._pcYes=pcYes; stats._pcNo=pcNo; }
     stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
   });
 
@@ -11363,7 +11368,7 @@ function renderDashboard(c){
   const auditDone = DB.release2.filter(r=>auditedTxnSet.has(r.txn)).length;
   const auditPend = DB.release2.length - auditDone;
   const auditPct  = DB.release2.length ? Math.round(auditDone/DB.release2.length*100) : 0;
-  const todayAuditCnt = DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr).length;
+  const todayAuditCnt = DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD).length;
   const scoreArr  = DB.audit.map(a=>parseFloat(a.score)||0).filter(s=>s>0);
   const avgScore  = scoreArr.length ? (scoreArr.reduce((a,b)=>a+b,0)/scoreArr.length).toFixed(1) : '0';
 
@@ -11374,10 +11379,10 @@ function renderDashboard(c){
   const allTatPct = allTatT ? Math.round(allTatR/allTatT*100) : 0;
   const tatColor  = allTatPct>=90?'#17a00e':allTatPct>=75?'#f59e0b':'#e11d48';
 
-  // Active users today
+  // Active users today — fast string slice
   const todayUserSet = new Set();
   visibleDefs.forEach(d=>d.db.forEach(r=>{
-    if((parseAppDate(r._created)||new Date(0)).toDateString()===todayStr){
+    if(String(r._created||'').slice(0,10)===todayYMD){
       const u=r.user||r.user_name||r.assignedTo||'';
       if(u) todayUserSet.add(u);
     }
@@ -11411,7 +11416,24 @@ function renderDashboard(c){
     s.pct=s.total?Math.round(s.done/s.total*100):0;
   });
 
-  // ── BUILD HTML ──
+  // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
+  const _existingDash = c.querySelector('.dash-ed');
+  if(_existingDash && !window._forceRefresh){
+    // Just update the KPI numbers in place — no DOM rebuild
+    visibleDefs.forEach(d=>{
+      const s=stats[d.key];
+      const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
+      if(kpiEl){
+        const numEl=kpiEl.querySelector('.dash-ed-kpi-num');
+        const footEl=kpiEl.querySelector('.dash-ed-kpi-foot');
+        if(numEl) numEl.textContent=s.total.toLocaleString();
+        if(footEl) footEl.textContent='Today: '+s.todayCnt;
+      }
+    });
+    return;
+  }
+
+  // ── FULL BUILD HTML (first render only) ──
   c.innerHTML = `
   <div class="dash-ed">
 
@@ -11430,7 +11452,7 @@ function renderDashboard(c){
   <!-- KPI CARDS -->
   <div class="dash-ed-kpi-grid">
     ${visibleDefs.map(d=>`
-      <div class="dash-ed-kpi" style="background:linear-gradient(135deg,${d.grad})">
+      <div class="dash-ed-kpi" data-kpi="${d.key}" style="background:linear-gradient(135deg,${d.grad})">
         <div class="dash-ed-kpi-ico">${d.ico}</div>
         <div class="dash-ed-kpi-lbl">${d.label}</div>
         <div class="dash-ed-kpi-num">${stats[d.key].total.toLocaleString()}</div>
