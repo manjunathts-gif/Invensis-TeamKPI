@@ -9113,107 +9113,178 @@ async function hdLoadUserView(c){
 }
 
 function _checkErrorAcknowledgment(){
-  // Show mandatory error acknowledgment if user has unacknowledged errors
   if(!CU || CU.role==='Manager' || CU.role==='Client') return;
   const _myNames=new Set([CU?.name,CU?.empName,CU?.username].filter(Boolean).map(n=>n.trim().toLowerCase()));
-  const myUnacked = (DB.errors||[]).filter(e=>{
-    const isMyError = _myNames.has((e.userName||'').trim().toLowerCase());
-    const notAcked = !e.acknowledgedAt;
-    return isMyError && notAcked;
-  });
+  const myUnacked = (DB.errors||[]).filter(e=>
+    _myNames.has((e.userName||'').trim().toLowerCase()) && !e.acknowledgedAt
+  );
   if(!myUnacked.length) return;
 
-  // Block screen with mandatory acknowledgment modal
   const overlay = document.createElement('div');
   overlay.id = 'errAckOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
 
   const modal = document.createElement('div');
-  modal.style.cssText = 'background:var(--surface);border-radius:16px;padding:28px;max-width:560px;width:100%;border:2px solid rgba(225,29,72,.4);box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:80vh;overflow-y:auto';
+  modal.style.cssText = 'background:var(--surface);border-radius:16px;padding:24px;max-width:600px;width:100%;border:2px solid rgba(225,29,72,.5);box-shadow:0 24px 64px rgba(0,0,0,.5);max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;gap:0';
 
-  const errorRows = myUnacked.slice(0,10).map(e=>`
-    <div style="border:1px solid rgba(225,29,72,.2);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:rgba(225,29,72,.04)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div>
-          <div style="font-size:13px;font-weight:700;color:var(--rose)">${e.errorType||'Error'}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">
-            Txn: ${e.txn||'—'} · Client: ${e.clientName||e.client||'—'} · ${e.date||String(e._created||'').slice(0,10)}
+  // Build each error card with its own comment textarea
+  const errorCards = myUnacked.map((e,i)=>`
+    <div id="errCard_${i}" style="border:1.5px solid rgba(225,29,72,.25);border-radius:10px;padding:14px;margin-bottom:12px;background:rgba(225,29,72,.03)">
+
+      <!-- Error header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:800;color:var(--rose)">${e.errorType||'Error'}</span>
+            <span style="background:rgba(245,158,11,.15);color:#b45309;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${e.mode||'—'}</span>
+            <span style="font-size:11px;color:var(--text3)">Txn: <b>${e.txn||'—'}</b></span>
           </div>
-          ${e.clientComments?`<div style="font-size:12px;color:var(--text);margin-top:5px;padding:6px 8px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--rose)">
-            <span style="font-size:10px;font-weight:700;color:var(--rose);display:block;margin-bottom:2px">CLIENT FEEDBACK:</span>${e.clientComments}</div>`:''}
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">
+            Client: ${e.clientName||e.client||'—'} &nbsp;·&nbsp; Date: ${e.date||String(e._created||'').slice(0,10)}
+            ${e.percentage?`&nbsp;·&nbsp; <span style="color:var(--rose);font-weight:700">${e.percentage}%</span>`:''} 
+          </div>
         </div>
-        <span style="background:rgba(245,158,11,.15);color:#b45309;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">${e.mode||'—'}</span>
+        <span style="font-size:20px;flex-shrink:0">⚠️</span>
+      </div>
+
+      <!-- Client feedback if exists -->
+      ${e.clientComments?`
+      <div style="background:rgba(225,29,72,.06);border-left:3px solid var(--rose);border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:var(--rose);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Client Feedback</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5">${e.clientComments}</div>
+      </div>`:''}
+
+      <!-- Source of error if exists -->
+      ${e.sourceOfError?`
+      <div style="background:rgba(245,158,11,.06);border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:800;color:#b45309;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Source of Error</div>
+        <div style="font-size:12px;color:var(--text)">${e.sourceOfError}</div>
+      </div>`:''}
+
+      <!-- User comment — required -->
+      <div>
+        <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">
+          ✏️ Your Comments <span style="color:var(--rose)">*</span>
+          <span style="font-weight:400;color:var(--text3)">&nbsp;— explain what happened and how you will prevent recurrence</span>
+        </label>
+        <textarea
+          id="errComment_${i}"
+          data-errid="${e._dbid||e.id}"
+          oninput="_checkErrAckReady()"
+          placeholder="Describe what caused this error and the steps you will take to prevent it..."
+          style="width:100%;min-height:72px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:var(--font);background:var(--surface2);color:var(--text);resize:vertical;box-sizing:border-box;transition:border .2s"
+          onfocus="this.style.borderColor='var(--primary)'"
+          onblur="this.style.borderColor=this.value.trim().length>=10?'var(--emerald)':'var(--border)'"
+        >${e.userComments||''}</textarea>
+        <div id="errCommentErr_${i}" style="font-size:10px;color:var(--rose);margin-top:3px;display:none">Please enter at least 10 characters</div>
       </div>
     </div>`).join('');
 
   modal.innerHTML = `
-    <div style="text-align:center;margin-bottom:16px">
-      <div style="font-size:36px">⚠️</div>
-      <div style="font-size:18px;font-weight:900;color:var(--rose);margin:6px 0">Action Required Before You Start</div>
-      <div style="font-size:13px;color:var(--text2)">You have <strong style="color:var(--rose)">${myUnacked.length} unacknowledged error record${myUnacked.length>1?'s':''}</strong> that require your review</div>
+    <!-- Header -->
+    <div style="text-align:center;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px">
+      <div style="font-size:32px;margin-bottom:6px">⚠️</div>
+      <div style="font-size:17px;font-weight:900;color:var(--rose)">Action Required — Error Review</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">
+        You have <strong style="color:var(--rose)">${myUnacked.length} unacknowledged error${myUnacked.length>1?'s':''}</strong>.
+        Review each error, add your comments, then acknowledge to start working.
+      </div>
     </div>
-    <div style="margin-bottom:16px">${errorRows}</div>
-    ${myUnacked.length>10?`<div style="text-align:center;font-size:12px;color:var(--text3);margin-bottom:12px">...and ${myUnacked.length-10} more error${myUnacked.length-10>1?'s':''}. Visit Error Report to see all.</div>`:''}
-    <div style="background:rgba(245,158,11,.08);border:1.5px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:16px">
+
+    <!-- Error cards -->
+    <div style="margin-bottom:4px">${errorCards}</div>
+
+    ${myUnacked.length>10?`<div style="text-align:center;font-size:12px;color:var(--text3);margin-bottom:12px;padding:8px;background:var(--surface2);border-radius:8px">
+      Showing first 10 of ${myUnacked.length} errors. Visit Error Report to see all.</div>`:''}
+
+    <!-- Acknowledgment checkbox -->
+    <div style="background:rgba(245,158,11,.07);border:1.5px solid rgba(245,158,11,.35);border-radius:10px;padding:14px;margin-bottom:14px">
       <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
-        <input type="checkbox" id="errAckCheck" style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:pointer">
-        <span style="font-size:12px;font-weight:600;color:var(--text);line-height:1.5">I have read and understood all error records above. I acknowledge these errors and will ensure they do not recur.</span>
+        <input type="checkbox" id="errAckCheck" oninput="_checkErrAckReady()" style="margin-top:2px;width:17px;height:17px;flex-shrink:0;cursor:pointer;accent-color:#059669">
+        <span style="font-size:12px;font-weight:600;color:var(--text);line-height:1.6">
+          I have read and understood all error records above, added my comments for each, and acknowledge these errors.
+          I commit to taking corrective action to prevent recurrence.
+        </span>
       </label>
     </div>
+
+    <!-- Validation message -->
+    <div id="errAckValidMsg" style="font-size:12px;color:var(--rose);text-align:center;margin-bottom:10px;display:none;padding:8px;background:rgba(225,29,72,.07);border-radius:8px">
+      ⚠️ Please fill in your comments for all errors (minimum 10 characters each) and tick the checkbox
+    </div>
+
+    <!-- Submit button -->
     <button id="errAckBtn" onclick="_submitErrorAck()" disabled
-      style="width:100%;padding:14px;background:#ccc;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:not-allowed;transition:all .2s">
+      style="width:100%;padding:14px;background:#ccc;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:not-allowed;transition:all .3s;letter-spacing:.3px">
       ✅ I Acknowledge — Start Working
     </button>
     <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text3)">
-      This acknowledgment is recorded with timestamp in the system
+      Your comments and acknowledgment timestamp are recorded in the system
     </div>`;
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
-
-  // Enable button only when checkbox is checked
-  document.getElementById('errAckCheck').addEventListener('change', function(){
-    const btn = document.getElementById('errAckBtn');
-    if(this.checked){
-      btn.disabled=false;
-      btn.style.cssText='width:100%;padding:14px;background:linear-gradient(135deg,#059669,#34d399);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;transition:all .2s';
-    } else {
-      btn.disabled=true;
-      btn.style.cssText='width:100%;padding:14px;background:#ccc;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:not-allowed;transition:all .2s';
-    }
-  });
-
   window._errAckIds = myUnacked.map(e=>e._dbid||e.id);
+  window._errAckCount = myUnacked.length;
+}
+
+function _checkErrAckReady(){
+  const btn = document.getElementById('errAckBtn');
+  const checked = document.getElementById('errAckCheck')?.checked;
+  const count = window._errAckCount || 0;
+  const limit = Math.min(count, 10);
+
+  // All comment fields must have ≥10 chars
+  let allFilled = true;
+  for(let i=0; i<limit; i++){
+    const ta = document.getElementById('errComment_'+i);
+    const errEl = document.getElementById('errCommentErr_'+i);
+    if(!ta) continue;
+    const ok = ta.value.trim().length >= 10;
+    if(!ok) allFilled = false;
+    if(errEl) errEl.style.display = (!ok && ta.value.trim().length>0) ? 'block' : 'none';
+  }
+
+  const ready = checked && allFilled;
+  const validMsg = document.getElementById('errAckValidMsg');
+  if(validMsg) validMsg.style.display = (!ready && (checked||!allFilled)) ? 'block' : 'none';
+
+  if(btn){
+    btn.disabled = !ready;
+    btn.style.cssText = `width:100%;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:.3px;transition:all .3s;cursor:${ready?'pointer':'not-allowed'};background:${ready?'linear-gradient(135deg,#059669,#10b981)':'#ccc'};color:#fff`;
+  }
 }
 
 async function _submitErrorAck(){
   const btn=document.getElementById('errAckBtn');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Recording...';}
+  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
   const nowStr2=new Date().toISOString();
   const uname=CU.username||CU.name;
-  // Save acknowledgment to DB
+  const count=Math.min(window._errAckCount||0,10);
+
   if(_supa && window._errAckIds?.length){
     try{
-      for(const id of window._errAckIds){
+      for(let i=0;i<count;i++){
+        const id=window._errAckIds[i];
+        const comment=document.getElementById('errComment_'+i)?.value.trim()||'';
         await _supa.from('client_errors').update({
           acknowledged_at: nowStr2,
           acknowledged_by: uname,
-          tl_comments: (document.getElementById('errAckCheck')?.checked?'Acknowledged by user on '+nowStr2.slice(0,10):'')
+          user_comments:   comment,
         }).eq('id', id);
+        // Update local DB record
+        const rec=(DB.errors||[]).find(e=>(e._dbid||e.id)===id);
+        if(rec){rec.acknowledgedAt=nowStr2;rec.acknowledgedBy=uname;rec.userComments=comment;}
       }
-      // Update local DB
-      (DB.errors||[]).forEach(e=>{
-        if(window._errAckIds.includes(e._dbid||e.id)){
-          e.acknowledgedAt=nowStr2;
-          e.acknowledgedBy=uname;
-        }
-      });
     }catch(err){console.warn('Ack save failed',err);}
   }
-  // Remove overlay
   const ov=document.getElementById('errAckOverlay');
-  if(ov) ov.remove();
-  showToast('✅ Errors acknowledged — recorded at '+nowStr2.slice(0,10));
+  if(ov){
+    ov.style.transition='opacity .3s';
+    ov.style.opacity='0';
+    setTimeout(()=>ov.remove(),300);
+  }
+  showToast('✅ '+count+' error'+(count>1?'s':'')+' acknowledged with your comments — thank you');
 }
 
 function bootApp(){
@@ -12906,37 +12977,39 @@ function kpiShowTab(id){
   // ── Per-tab smooth trend line chart ──
   const _trendPeriod = window._kpiTrendPeriod || 'daily';
 
-  // Parse any date string → YYYY-MM-DD bucket key
+  // Parse any date value → YYYY-MM-DD bucket key
   function _bucketKey(raw, period){
     if(!raw) return null;
-    const s=String(raw).trim();
-    let y,m,d;
-    // ISO: YYYY-MM-DD...
-    const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if(iso){y=+iso[1];m=+iso[2]-1;d=+iso[3];}
-    else{
-      // DD-MM-YYYY HH:MM:SS
-      const dmy=s.match(/^(\d{2})-(\d{2})-(\d{4})/);
-      if(dmy){d=+dmy[1];m=+dmy[2]-1;y=+dmy[3];}
-      else return null;
+    let y,mo,d;
+    if(raw instanceof Date && !isNaN(raw)){
+      y=raw.getFullYear(); mo=raw.getMonth(); d=raw.getDate();
+    } else {
+      const s=String(raw).trim();
+      const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if(iso){y=+iso[1];mo=+iso[2]-1;d=+iso[3];}
+      else{
+        const dmy=s.match(/^(\d{2})-(\d{2})-(\d{4})/);
+        if(dmy){d=+dmy[1];mo=+dmy[2]-1;y=+dmy[3];}
+        else return null;
+      }
     }
-    if(isNaN(y)||isNaN(m)||isNaN(d)||y<2020||y>2030) return null;
-    const isoDate=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    if(!y||isNaN(y)||isNaN(mo)||isNaN(d)||y<2020||y>2030) return null;
+    const isoDate=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     if(period==='daily') return isoDate;
     if(period==='weekly'){
-      const dt=new Date(y,m,d); const dow=dt.getDay()||7;
-      const mon=new Date(dt); mon.setDate(d-(dow-1));
+      const dt=new Date(y,mo,d); const dow=dt.getDay()||7;
+      const mon=new Date(y,mo,d-(dow-1));
       return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
     }
     if(period==='monthly') return isoDate.slice(0,7);
     return null;
   }
 
-  // Build bucket for THIS tab's data only
-  // Use _submitRaw (raw ISO timestamp) as primary — most reliable across all task types
+  // Build bucket — try _submitRaw (Date obj), then _created string, then ef field
   const tabBucket={};
   data.forEach(r=>{
-    const raw = r._submitRaw || r._created || String(r[tab.ef]||'');
+    const raw = (r._submitRaw instanceof Date && !isNaN(r._submitRaw)) ? r._submitRaw
+              : r._created || String(r[tab.ef]||'');
     const bk=_bucketKey(raw,_trendPeriod);
     if(!bk) return;
     tabBucket[bk]=(tabBucket[bk]||0)+1;
@@ -16325,6 +16398,21 @@ function renderAudit(c){
     <div style="padding:14px;display:flex;gap:12px;flex-wrap:wrap">${modeCards||'<div style="color:var(--text3);padding:10px">No records</div>'}</div>
   </div>
 
+  <!-- Double Sign summary + Team × Date table -->
+  <div class="tw" style="margin-bottom:14px" id="dsTableWrap">
+    <div class="th2" style="align-items:center">
+      <div class="tt">✍️ Double Sign — Team × Date</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="ds_d1" class="fi2" style="font-size:11px" onchange="_renderDSTable()"/>
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="ds_d2" class="fi2" style="font-size:11px" onchange="_renderDSTable()"/>
+        <button class="btn-f" onclick="_renderDSTable()">Apply</button>
+        <button class="btn-cl" onclick="document.getElementById('ds_d1').value='';document.getElementById('ds_d2').value='';_renderDSTable()">Clear</button>
+      </div>
+    </div>
+    <div id="dsTableBody" style="overflow-x:auto;padding:4px 0"></div>
+  </div>
+
   <!-- Hourly auditor activity -->
   <div class="tw" style="margin-bottom:14px">
     <div class="th2"><div class="tt">⏰ Hourly Audit Activity — Auditor Wise (Today)</div></div>
@@ -16376,7 +16464,7 @@ function renderAudit(c){
   // Defer table — skeleton shows instantly, data fills after paint
   const _atc=document.getElementById('auditTabContent');
   if(_atc) _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
-  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); },0); });
+  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); setTimeout(_renderDSTable,100); },0); });
 }
 
 function switchAuditTab(tab){
@@ -16403,6 +16491,153 @@ const AUDIT_PAGE_SIZE=50;
 window._auditPageNum=window._auditPageNum||1;
 
 function pgGoAudit(p){ window._auditPageNum=p; renderAuditTab(window._auditActiveTab||'pending'); }
+
+function _renderDSTable(){
+  const cont = document.getElementById('dsTableBody');
+  if(!cont) return;
+  const d1 = document.getElementById('ds_d1')?.value;
+  const d2 = document.getElementById('ds_d2')?.value;
+  const auditMap = window._auditByTxn || new Map();
+  const allRecs = window._auditTeamRecords || [];
+
+  // Filter audit records by date
+  let audits = DB.audit.filter(a=>{
+    const teamTxns = new Set(allRecs.map(r=>String(r.txn)));
+    if(!teamTxns.has(String(a.txn))) return false;
+    if(!d1 && !d2) return true;
+    const dateStr = String(a._created||'').slice(0,10);
+    if(d1 && dateStr < d1) return false;
+    if(d2 && dateStr > d2) return false;
+    return true;
+  });
+
+  if(!audits.length){
+    cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">No audit records in selected range</div>';
+    return;
+  }
+
+  // Get unique dates and teams
+  const dates = [...new Set(audits.map(a=>String(a._created||'').slice(0,10)))].filter(Boolean).sort().slice(-30);
+  const teams = [...new Set(audits.map(a=>a.team||'—'))].sort();
+
+  // Build matrix: team → date → {yes,no,total}
+  const matrix = {};
+  teams.forEach(t=>{ matrix[t]={}; dates.forEach(d=>{ matrix[t][d]={yes:0,no:0,total:0}; }); });
+  audits.forEach(a=>{
+    const t=a.team||'—'; const d=String(a._created||'').slice(0,10);
+    if(!matrix[t]||!matrix[t][d]) return;
+    matrix[t][d].total++;
+    const ds=(a.doubleSign||'').toLowerCase();
+    if(ds==='yes') matrix[t][d].yes++;
+    else if(ds==='no') matrix[t][d].no++;
+  });
+
+  // Totals per team
+  const teamTotals = {};
+  teams.forEach(t=>{
+    const yes=dates.reduce((s,d)=>s+(matrix[t][d]?.yes||0),0);
+    const no=dates.reduce((s,d)=>s+(matrix[t][d]?.no||0),0);
+    const total=dates.reduce((s,d)=>s+(matrix[t][d]?.total||0),0);
+    teamTotals[t]={yes,no,total};
+  });
+
+  // Totals per date
+  const dateTotals = {};
+  dates.forEach(d=>{
+    const yes=teams.reduce((s,t)=>s+(matrix[t][d]?.yes||0),0);
+    const no=teams.reduce((s,t)=>s+(matrix[t][d]?.no||0),0);
+    const total=teams.reduce((s,t)=>s+(matrix[t][d]?.total||0),0);
+    dateTotals[d]={yes,no,total};
+  });
+
+  const grandYes=audits.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length;
+  const grandNo=audits.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length;
+
+  // Show date range shortened label
+  const dateLbl = d=>{
+    const parts=d.split('-'); return parts[2]+'/'+parts[1]; // DD/MM
+  };
+
+  const thCols = dates.map(d=>`
+    <th style="min-width:70px;text-align:center;font-size:11px;white-space:nowrap">
+      ${dateLbl(d)}
+    </th>`).join('');
+
+  const bodyRows = teams.map(t=>{
+    const cells = dates.map(d=>{
+      const cell=matrix[t][d];
+      if(!cell||cell.total===0) return '<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
+      const pct=Math.round(cell.yes/cell.total*100);
+      const bg=pct===100?'#dcfce7':pct>=80?'#fef9c3':pct>0?'#fff7ed':'#fff1f2';
+      const col=pct===100?'#166534':pct>=80?'#92400e':pct>0?'#b45309':'#991b1b';
+      return `<td style="text-align:center;background:${bg};padding:4px 2px">
+        <div style="font-size:12px;font-weight:800;color:${col}">${cell.yes}✅</div>
+        <div style="font-size:10px;color:#991b1b">${cell.no>0?cell.no+'❌':''}</div>
+      </td>`;
+    }).join('');
+    const tot=teamTotals[t];
+    const totPct=tot.total?Math.round(tot.yes/tot.total*100):0;
+    return `<tr>
+      <td style="font-weight:700;font-size:12px;padding:6px 12px;white-space:nowrap">${t}</td>
+      ${cells}
+      <td style="text-align:center;padding:6px 8px;border-left:2px solid var(--border)">
+        <div style="font-size:13px;font-weight:900;color:${totPct>=80?'#166534':'#991b1b'}">${tot.yes}</div>
+        <div style="font-size:10px;color:var(--text3)">${totPct}% signed</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const totalRow = `<tr style="background:var(--surface2);border-top:2px solid var(--border);font-weight:800">
+    <td style="padding:6px 12px;font-size:12px">TOTAL</td>
+    ${dates.map(d=>{
+      const dt=dateTotals[d];
+      if(!dt||dt.total===0) return '<td style="text-align:center;font-size:11px;color:var(--text3)">—</td>';
+      const pct=Math.round(dt.yes/dt.total*100);
+      return `<td style="text-align:center;padding:4px 2px">
+        <div style="font-size:12px;font-weight:900;color:${pct>=80?'#166534':'#991b1b'}">${dt.yes}✅</div>
+        <div style="font-size:10px;color:#991b1b">${dt.no>0?dt.no+'❌':''}</div>
+      </td>`;
+    }).join('')}
+    <td style="text-align:center;border-left:2px solid var(--border)">
+      <div style="font-size:14px;font-weight:900;color:${grandYes/(grandYes+grandNo||1)>=0.8?'#166534':'#991b1b'}">${grandYes}</div>
+      <div style="font-size:10px;color:var(--text3)">${grandYes+grandNo?Math.round(grandYes/(grandYes+grandNo)*100):0}% total</div>
+    </td>
+  </tr>`;
+
+  cont.innerHTML=`
+    <!-- Summary bar -->
+    <div style="display:flex;gap:12px;padding:10px 14px;flex-wrap:wrap">
+      <div style="background:#dcfce7;border-radius:8px;padding:8px 16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#166534">${grandYes}</div>
+        <div style="font-size:11px;color:#166534;font-weight:700">✅ Double Signed</div>
+      </div>
+      <div style="background:#fee2e2;border-radius:8px;padding:8px 16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:#991b1b">${grandNo}</div>
+        <div style="font-size:11px;color:#991b1b;font-weight:700">❌ Not Signed</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:8px 16px;text-align:center">
+        <div style="font-size:22px;font-weight:900;color:var(--primary)">${grandYes+grandNo>0?Math.round(grandYes/(grandYes+grandNo)*100):0}%</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:700">Compliance Rate</div>
+      </div>
+    </div>
+    <table class="dt" style="font-size:12px;min-width:600px">
+      <thead><tr>
+        <th style="min-width:100px">Team</th>
+        ${thCols}
+        <th style="text-align:center;min-width:80px;border-left:2px solid var(--border)">Total</th>
+      </tr></thead>
+      <tbody>${bodyRows}${totalRow}</tbody>
+    </table>`;
+
+  // Set default date range to last 7 days if empty
+  if(!d1&&!d2){
+    const today=new Date(); const week=new Date(today); week.setDate(today.getDate()-6);
+    const fmt=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const d1El=document.getElementById('ds_d1'); const d2El=document.getElementById('ds_d2');
+    if(d1El&&!d1El.value) d1El.value=fmt(week);
+    if(d2El&&!d2El.value) d2El.value=fmt(today);
+  }
+}
 
 function renderAuditTab(tab){
   const q=(document.getElementById('audit_search')?.value||'').toLowerCase();
