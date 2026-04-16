@@ -4440,43 +4440,55 @@ async function loadAllFromSupabase(){
       // Only run Phase 2 if Realtime failed to connect (fallback poll mode)
       setTimeout(async()=>{
         if(typeof _rtConnected !== 'undefined' && _rtConnected){
-          // Realtime is live — just save cache and done
-          _saveTaskCache();
-          if(CU) refreshPage();
-
+          // Realtime is live — cache silently, NO page refresh (user may be working)
+          setTimeout(_saveTaskCache, 3000);
           return;
         }
         // Realtime not connected — run full 30-day load for poll mode
         try{
-          const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
-            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
-            dbLoadRecent('pars_docs',30), dbLoadRelease()
-          ]);
-          const [oceanF,partF,ottF,b2F,errF,auditF] = await Promise.all([
-            dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
-            dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoad('client_errors'), dbLoadRecent('audit',30)
-          ]);
-          // Yield between large map operations — prevents 3-4s UI freeze
+          // ── Yield helper — gives browser a frame to handle user input ──
           const _y = ()=>new Promise(r=>setTimeout(r,0));
-          DB.lvs      = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
-          await _y();
-          DB.cls      = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
-          DB.comp     = compF.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
-          await _y();
-          DB.parsDocs  = parsF.map(mapPARSDocs);
-          DB.oceanDocs = oceanF.map(mapOceanDocs);
-          DB.partLot   = partF.map(mapPartLot);
-          await _y();
-          DB.release2  = relF.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
-          await _y();
-          DB.oceanTT   = ottF.map(mapOceanTT);
-          DB.b2entries = b2F.map(mapB2);
-          DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
-          DB.audit     = auditF.map(mapAudit);
+
+          // Load in 3 sequential batches — smaller batches = shorter individual freezes
+          // Batch A: high-traffic tables
+          const [lvsF,clsF,relF] = await Promise.all([
+            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRelease()
+          ]);
+          DB.lvs     = lvsF.map(mapLVS);    DB.lvs.forEach((r,i)=>r._idx=i);
+          DB.cls     = clsF.map(mapCLS);    DB.cls.forEach((r,i)=>r._idx=i);
+          DB.release2= relF.map(mapRelease);DB.release2.forEach((r,i)=>r._idx=i);
+          await _y(); // yield — user can click tabs here
+
+          // Batch B: medium tables
+          const [compF,parsF,oceanF,errF] = await Promise.all([
+            dbLoadRecent('comp',30), dbLoadRecent('pars_docs',30),
+            dbLoadRecent('ocean_docs',30), dbLoad('client_errors')
+          ]);
+          DB.comp     = compF.map(mapCOMP);
+          DB.parsDocs = parsF.map(mapPARSDocs);
+          DB.oceanDocs= oceanF.map(mapOceanDocs);
+          DB.errors   = errF.map(mapError); DB.errors.forEach((r,i)=>r._idx=i);
+          await _y(); // yield — user can click tabs here
+
+          // Batch C: smaller tables
+          const [partF,ottF,b2F,auditF] = await Promise.all([
+            dbLoadRecent('part_lot',30), dbLoadRecent('ocean_tt',30),
+            dbLoadRecent('b2_entries',30), dbLoadRecent('audit',30)
+          ]);
+          DB.partLot  = partF.map(mapPartLot);
+          DB.oceanTT  = ottF.map(mapOceanTT);
+          DB.b2entries= b2F.map(mapB2);
+          DB.audit    = auditF.map(mapAudit);
           _rebuildAuditMap();
-          _saveTaskCache();
-          if(CU) refreshPage();
+          await _y();
+
+          // Save cache silently — defer so it doesn't block
+          setTimeout(_saveTaskCache, 500);
+
+          // Only refresh current page if user is still on dashboard
+          // Don't interrupt if they've navigated elsewhere
+          if(_currentPage==='dashboard') _silentRefreshPage('dashboard');
+          else window._forceRefresh=false; // mark data ready but don't interrupt
           showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
 
         }catch(bg){ console.warn('Background history load error:', bg.message); }
