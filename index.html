@@ -4430,6 +4430,7 @@ async function loadAllFromSupabase(){
       if(bar) bar.style.width='100%';
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
+      window._dbLoaded = true;
       showToast('✅ App ready — loading full history in background. Counts update shortly...');
       // Fetch true total counts for all tables in background
       setTimeout(_fetchAllTrueCounts, 1000);
@@ -4456,17 +4457,24 @@ async function loadAllFromSupabase(){
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
             dbLoad('client_errors'), dbLoadRecent('audit',30)
           ]);
-          DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
-          DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
-          DB.comp      = compF.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
+          // Yield between large map operations — prevents 3-4s UI freeze
+          const _y = ()=>new Promise(r=>setTimeout(r,0));
+          DB.lvs      = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
+          await _y();
+          DB.cls      = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
+          DB.comp     = compF.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
+          await _y();
           DB.parsDocs  = parsF.map(mapPARSDocs);
           DB.oceanDocs = oceanF.map(mapOceanDocs);
           DB.partLot   = partF.map(mapPartLot);
+          await _y();
           DB.release2  = relF.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
+          await _y();
           DB.oceanTT   = ottF.map(mapOceanTT);
           DB.b2entries = b2F.map(mapB2);
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
           DB.audit     = auditF.map(mapAudit);
+          _rebuildAuditMap();
           _saveTaskCache();
           if(CU) refreshPage();
           showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
@@ -17329,7 +17337,7 @@ function renderPARSDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -22386,9 +22394,18 @@ function renderB2Entries(c){
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
-    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${all.filter(r=>r.tasktype==='Project').length}</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv">${all.filter(r=>r.tasktype==='Individual').length}</div></div>
+    ${(()=>{
+      let ready=0,hold=0,proj=0,indiv=0;
+      all.forEach(r=>{
+        if(r.status==='Ready to Submit') ready++;
+        else if(r.status==='Hold'||r.status==='Waiting for Info') hold++;
+        if(r.tasktype==='Project') proj++;
+        else if(r.tasktype==='Individual') indiv++;
+      });
+      return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>
+      <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${proj}</div></div>
+      <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv">${indiv}</div></div>`;
+    })()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
