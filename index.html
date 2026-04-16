@@ -12906,25 +12906,37 @@ function kpiShowTab(id){
   // ── Per-tab smooth trend line chart ──
   const _trendPeriod = window._kpiTrendPeriod || 'daily';
 
-  function _bucketKey(dateStr, period){
-    // dateStr expected as YYYY-MM-DD
-    if(!dateStr||dateStr.length<10) return null;
-    const y=+dateStr.slice(0,4), m=+dateStr.slice(5,7)-1, d=+dateStr.slice(8,10);
+  // Parse any date string → YYYY-MM-DD bucket key
+  function _bucketKey(raw, period){
+    if(!raw) return null;
+    const s=String(raw).trim();
+    let y,m,d;
+    // ISO: YYYY-MM-DD...
+    const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(iso){y=+iso[1];m=+iso[2]-1;d=+iso[3];}
+    else{
+      // DD-MM-YYYY HH:MM:SS
+      const dmy=s.match(/^(\d{2})-(\d{2})-(\d{4})/);
+      if(dmy){d=+dmy[1];m=+dmy[2]-1;y=+dmy[3];}
+      else return null;
+    }
     if(isNaN(y)||isNaN(m)||isNaN(d)||y<2020||y>2030) return null;
-    if(period==='daily') return dateStr.slice(0,10);
+    const isoDate=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    if(period==='daily') return isoDate;
     if(period==='weekly'){
       const dt=new Date(y,m,d); const dow=dt.getDay()||7;
-      const mon=new Date(dt); mon.setDate(d-dow+1);
+      const mon=new Date(dt); mon.setDate(d-(dow-1));
       return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
     }
-    if(period==='monthly') return dateStr.slice(0,7);
+    if(period==='monthly') return isoDate.slice(0,7);
     return null;
   }
 
   // Build bucket for THIS tab's data only
+  // Use _submitRaw (raw ISO timestamp) as primary — most reliable across all task types
   const tabBucket={};
   data.forEach(r=>{
-    const raw=String(r._created||r[tab.ef]||'').slice(0,10);
+    const raw = r._submitRaw || r._created || String(r[tab.ef]||'');
     const bk=_bucketKey(raw,_trendPeriod);
     if(!bk) return;
     tabBucket[bk]=(tabBucket[bk]||0)+1;
@@ -13012,18 +13024,15 @@ function kpiShowTab(id){
     </div>
   </div>`;
 
-  // Release tab: no Client×Hour (too large), use trend chart instead
-  const _showClientHour = tab.id !== 'release';
-
+  // Trend goes at bottom; Client×Hour removed from all tabs (replaced by trend)
   c2.innerHTML=`
     <div class="sg" style="margin-bottom:20px">${statCards}</div>
-    ${trendSection}
     ${mailEtaSection}
     ${modeSection}
     ${teamSection}
     ${clientSection}
     ${teamHourSection}
-    ${_showClientHour ? clientHourSection : ''}
+    ${trendSection}
   `;
 }
 
