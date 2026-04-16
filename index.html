@@ -12563,7 +12563,8 @@ function kpiShowTab(id){
   const tf=tab.tf; const sf=tab.sf;
   const done = sf ? data.filter(r=>tab.doneVals.some(v=>(r[sf]||'').toLowerCase().includes(v))).length : 0;
   const hold = sf ? data.filter(r=>(r[sf]||'')===tab.holdVal).length : 0;
-  const pending = sf ? total-done-hold : 0;
+  // pending computed from loaded data (not inflated total) to avoid negative numbers
+  const pending = sf ? Math.max(0, data.length-done-hold) : 0;
   const tatReached = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat reached').length : null;
   const tatMissed  = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat not reached').length : null;
   const tatTotal = (tatReached||0) + (tatMissed||0);
@@ -12902,137 +12903,117 @@ function kpiShowTab(id){
   }
 
   // ── Render all sections ──
-  // ── Daily / Weekly / Monthly Trend Line (all tasks) ──
+  // ── Per-tab smooth trend line chart ──
   const _trendPeriod = window._kpiTrendPeriod || 'daily';
 
-  // Build date buckets
-  function _bucketKey(dateObj, period){
-    if(!dateObj||isNaN(dateObj)) return null;
-    const y=dateObj.getFullYear(), m=dateObj.getMonth(), d=dateObj.getDate();
-    if(period==='daily') return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  function _bucketKey(dateStr, period){
+    // dateStr expected as YYYY-MM-DD
+    if(!dateStr||dateStr.length<10) return null;
+    const y=+dateStr.slice(0,4), m=+dateStr.slice(5,7)-1, d=+dateStr.slice(8,10);
+    if(isNaN(y)||isNaN(m)||isNaN(d)||y<2020||y>2030) return null;
+    if(period==='daily') return dateStr.slice(0,10);
     if(period==='weekly'){
-      // ISO week start (Monday)
-      const day=dateObj.getDay()||7;
-      const mon=new Date(dateObj); mon.setDate(d-day+1);
+      const dt=new Date(y,m,d); const dow=dt.getDay()||7;
+      const mon=new Date(dt); mon.setDate(d-dow+1);
       return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
     }
-    if(period==='monthly') return y+'-'+String(m+1).padStart(2,'0');
+    if(period==='monthly') return dateStr.slice(0,7);
     return null;
   }
 
-  const trendBucket={};
-  const _allTaskDefs2=[
-    {key:'lvs',db:DB.lvs,color:'#3b82f6',label:'LVS'},
-    {key:'cls',db:DB.cls,color:'#0d9488',label:'Classifier'},
-    {key:'comp',db:DB.comp,color:'#4f46e5',label:'Compliance'},
-    {key:'parsDocs',db:DB.parsDocs,color:'#0284c7',label:'PARS'},
-    {key:'oceanDocs',db:DB.oceanDocs,color:'#059669',label:'Ocean Docs'},
-    {key:'partLot',db:DB.partLot,color:'#d97706',label:'Part Lot'},
-    {key:'release2',db:DB.release2,color:'#e11d48',label:'Release'},
-    {key:'oceanTT',db:DB.oceanTT,color:'#0891b2',label:'Ocean T&T'},
-    {key:'b2entries',db:DB.b2entries,color:'#b45309',label:'B2'},
-  ];
-  _allTaskDefs2.forEach(t=>{
-    t.db.forEach(r=>{
-      const raw=String(r._created||'').slice(0,10);
-      if(!raw||raw==='undefined') return;
-      const d=new Date(raw);
-      const bk=_bucketKey(d,_trendPeriod);
-      if(!bk) return;
-      if(!trendBucket[bk]) trendBucket[bk]={};
-      trendBucket[bk][t.key]=(trendBucket[bk][t.key]||0)+1;
-    });
+  // Build bucket for THIS tab's data only
+  const tabBucket={};
+  data.forEach(r=>{
+    const raw=String(r._created||r[tab.ef]||'').slice(0,10);
+    const bk=_bucketKey(raw,_trendPeriod);
+    if(!bk) return;
+    tabBucket[bk]=(tabBucket[bk]||0)+1;
   });
 
-  const allBuckets=Object.keys(trendBucket).sort();
+  const allBuckets=Object.keys(tabBucket).sort();
   const last=_trendPeriod==='daily'?30:_trendPeriod==='weekly'?16:12;
   const visibleBuckets=allBuckets.slice(-last);
+  const bucketVals=visibleBuckets.map(b=>tabBucket[b]||0);
 
-  // SVG line chart
-  const svgW=680, svgH=220, padL=40, padR=20, padT=20, padB=50;
+  // Smooth SVG path using cubic bezier
+  function _smoothPath(xs, ys){
+    if(xs.length<2) return xs.length===1?`M${xs[0]},${ys[0]}`:'';
+    let d=`M${xs[0]},${ys[0]}`;
+    for(let i=1;i<xs.length;i++){
+      const cpx=(xs[i-1]+xs[i])/2;
+      d+=` C${cpx},${ys[i-1]} ${cpx},${ys[i]} ${xs[i]},${ys[i]}`;
+    }
+    return d;
+  }
+
+  const svgW=680, svgH=220, padL=46, padR=20, padT=20, padB=44;
   const chartW=svgW-padL-padR, chartH=svgH-padT-padB;
-  const maxVal=Math.max(1,...visibleBuckets.map(b=>_allTaskDefs2.reduce((s,t)=>s+(trendBucket[b]?.[t.key]||0),0)));
+  const maxVal=Math.max(1,...bucketVals);
+  const xPos=visibleBuckets.map((_,i)=>padL+Math.round(i/(Math.max(visibleBuckets.length-1,1))*chartW));
+  const yPos=bucketVals.map(v=>padT+chartH-Math.round(v/maxVal*chartH));
 
-  function _xPos(i){ return padL + Math.round(i/(Math.max(visibleBuckets.length-1,1))*chartW); }
-  function _yPos(v){ return padT + chartH - Math.round(v/maxVal*chartH); }
+  const smoothD=_smoothPath(xPos,yPos);
+  // Fill area under line
+  const fillD=smoothD+(xPos.length?` L${xPos[xPos.length-1]},${padT+chartH} L${xPos[0]},${padT+chartH} Z`:'');
 
-  // X axis labels (show every Nth)
   const step=Math.ceil(visibleBuckets.length/8);
   const xLabels=visibleBuckets.map((b,i)=>{
     if(i%step!==0&&i!==visibleBuckets.length-1) return '';
     const lbl=_trendPeriod==='monthly'?b.slice(0,7):b.slice(5);
-    return `<text x="${_xPos(i)}" y="${svgH-10}" text-anchor="middle" style="font-size:10px;fill:var(--text3)">${lbl}</text>`;
+    return `<text x="${xPos[i]}" y="${svgH-8}" text-anchor="middle" style="font-size:10px;fill:var(--text3)">${lbl}</text>`;
   }).join('');
 
-  // Total line (all tasks combined)
-  const totalLine=visibleBuckets.map((b,i)=>{
-    const v=_allTaskDefs2.reduce((s,t)=>s+(trendBucket[b]?.[t.key]||0),0);
-    return `${i===0?'M':'L'}${_xPos(i)},${_yPos(v)}`;
-  }).join(' ');
-
-  // Per-task lines
-  const taskLines=_allTaskDefs2.map(t=>{
-    const pts=visibleBuckets.map((b,i)=>{
-      const v=trendBucket[b]?.[t.key]||0;
-      return `${i===0?'M':'L'}${_xPos(i)},${_yPos(v)}`;
-    }).join(' ');
-    return `<path d="${pts}" fill="none" stroke="${t.color}" stroke-width="1.5" opacity="0.7" stroke-linejoin="round"/>`;
+  const yStep=Math.max(1,Math.ceil(maxVal/4));
+  const yLabels=[0,1,2,3,4].map(i=>{
+    const v=Math.round(i*yStep); if(v>maxVal) return '';
+    const y2=padT+chartH-Math.round(v/maxVal*chartH);
+    return `<text x="${padL-5}" y="${y2+4}" text-anchor="end" style="font-size:10px;fill:var(--text3)">${v}</text>
+    <line x1="${padL}" y1="${y2}" x2="${svgW-padR}" y2="${y2}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>`;
   }).join('');
 
-  // Data points + tooltips on total line
-  const dots=visibleBuckets.map((b,i)=>{
-    const v=_allTaskDefs2.reduce((s,t)=>s+(trendBucket[b]?.[t.key]||0),0);
-    const tip=_allTaskDefs2.map(t=>`${t.label}:${trendBucket[b]?.[t.key]||0}`).join(' | ');
-    return `<circle cx="${_xPos(i)}" cy="${_yPos(v)}" r="3" fill="#4d79ff" stroke="#fff" stroke-width="1.5"><title>${b}: ${v} total
-${tip}</title></circle>`;
-  }).join('');
-
-  // Y axis labels
-  const yStep=Math.ceil(maxVal/5);
-  const yLabels=[0,1,2,3,4,5].map(i=>{
-    const v=Math.round(i*yStep);
-    if(v>maxVal) return '';
-    return `<text x="${padL-5}" y="${_yPos(v)+4}" text-anchor="end" style="font-size:10px;fill:var(--text3)">${v}</text>
-    <line x1="${padL}" y1="${_yPos(v)}" x2="${svgW-padR}" y2="${_yPos(v)}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>`;
-  }).join('');
-
-  // Legend
-  const legend=_allTaskDefs2.map(t=>`
-    <span style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px 3px 0;font-size:11px">
-      <span style="width:14px;height:3px;border-radius:2px;background:${t.color};display:inline-block"></span>
-      <span style="color:var(--text2)">${t.label}</span>
-    </span>`).join('');
+  const dots2=visibleBuckets.map((b,i)=>
+    `<circle cx="${xPos[i]}" cy="${yPos[i]}" r="4" fill="${tab.color}" stroke="#fff" stroke-width="2">
+      <title>${b}: ${bucketVals[i]} records</title></circle>`).join('');
 
   const trendSection=`
   <div class="tw" style="margin-bottom:20px">
     <div class="th2" style="align-items:center">
-      <div class="tt">📈 All Tasks — Volume Trend</div>
+      <div class="tt">📈 ${tab.label} — Volume Trend</div>
       <div style="display:flex;gap:6px">
         ${['daily','weekly','monthly'].map(p=>`
           <button onclick="window._kpiTrendPeriod='${p}';kpiShowTab(_kpiActiveTab)"
-            style="padding:4px 12px;font-size:11px;font-weight:700;border-radius:20px;border:1.5px solid ${_trendPeriod===p?'#4d79ff':'var(--border)'};background:${_trendPeriod===p?'#4d79ff':'transparent'};color:${_trendPeriod===p?'#fff':'var(--text2)'};cursor:pointer">
+            style="padding:4px 12px;font-size:11px;font-weight:700;border-radius:20px;cursor:pointer;
+            border:1.5px solid ${_trendPeriod===p?tab.color:'var(--border)'};
+            background:${_trendPeriod===p?tab.color:'transparent'};
+            color:${_trendPeriod===p?'#fff':'var(--text2)'}">
             ${p.charAt(0).toUpperCase()+p.slice(1)}
           </button>`).join('')}
       </div>
     </div>
     <div style="padding:12px 16px">
-      <div style="flex-wrap:wrap;display:flex;margin-bottom:10px">${legend}</div>
-      <div style="overflow-x:auto">
-        <svg viewBox="0 0 ${svgW} ${svgH}" style="width:100%;min-width:400px">
+      ${visibleBuckets.length===0?'<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px">No data in selected period</div>':''}
+      ${visibleBuckets.length>0?`<div style="overflow-x:auto">
+        <svg viewBox="0 0 ${svgW} ${svgH}" style="width:100%;min-width:360px">
           ${yLabels}
-          ${taskLines}
-          <path d="${totalLine}" fill="none" stroke="#4d79ff" stroke-width="2.5" stroke-linejoin="round"/>
-          ${dots}
+          <defs>
+            <linearGradient id="trendFill_${tab.id}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
+              <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.03"/>
+            </linearGradient>
+          </defs>
+          <path d="${fillD}" fill="url(#trendFill_${tab.id})"/>
+          <path d="${smoothD}" fill="none" stroke="${tab.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+          ${dots2}
           ${xLabels}
           <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+chartH}" stroke="var(--border)" stroke-width="1"/>
           <line x1="${padL}" y1="${padT+chartH}" x2="${svgW-padR}" y2="${padT+chartH}" stroke="var(--border)" stroke-width="1"/>
         </svg>
-      </div>
-      <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:4px">
-        Thick blue = all tasks combined · Coloured lines = individual tasks · Hover dots for detail
-      </div>
+      </div>`:''}
     </div>
   </div>`;
+
+  // Release tab: no Client×Hour (too large), use trend chart instead
+  const _showClientHour = tab.id !== 'release';
 
   c2.innerHTML=`
     <div class="sg" style="margin-bottom:20px">${statCards}</div>
@@ -13042,7 +13023,7 @@ ${tip}</title></circle>`;
     ${teamSection}
     ${clientSection}
     ${teamHourSection}
-    ${clientHourSection}
+    ${_showClientHour ? clientHourSection : ''}
   `;
 }
 
