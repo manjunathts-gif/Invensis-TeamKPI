@@ -3662,6 +3662,10 @@ function _makeSupaClient(){
   try{
     const saved   = sessionStorage.getItem('kpi_session');
     const savedTs = sessionStorage.getItem('kpi_session_ts');
+    // Security: expire session after 8 hours
+    if(saved && savedTs && (Date.now()-parseInt(savedTs||0))>8*60*60*1000){
+      sessionStorage.removeItem('kpi_session'); sessionStorage.removeItem('kpi_session_ts');
+    }
     if(!saved) return;
     const cu = JSON.parse(saved);
     if(!cu || !cu.username) return;
@@ -4162,6 +4166,7 @@ async function dbUpdateAdmin(table,id,patch){
 }
 
 async function dbDeleteAdmin(table, id){
+  if(!isAdmin()) throw new Error('Delete not permitted — admin only');
   if(!_supa) throw new Error('Not connected to database');
   if(!id || String(id) === 'undefined') throw new Error('Invalid ID — record not synced to DB yet');
 
@@ -4211,6 +4216,7 @@ async function dbUpdate(table,id,patch){
   return data;
 }
 async function dbDelete(table,id){
+  if(!isAdmin()){ console.warn('dbDelete blocked — not admin'); return; }
   if(!_supa) return;
   const {error}=await _supa.from(table).delete().eq('id',id);
   if(error) console.error('Delete '+table,error);
@@ -5920,8 +5926,7 @@ window.debugLogin = function(){
   console.log('SEC.lockedUntil:', SEC.lockedUntil, SEC.lockedUntil>Date.now()?'(LOCKED)':'(ok)');
   console.log('Supabase connected:', !!_supa);
   console.log('DB.loginUsers loaded:', DB.loginUsers.length);
-  console.log('Admin username:', ADMIN_UNAME);
-  console.log('To verify admin pwd hash: hashPwd("Manju@2026").then(h=>console.log(h))');
+  // Admin debug logging removed for security
 };
 // Auto-clear lockout if it seems stuck (paranoia guard — expired lockout that wasn't cleared)
 (function autoFixStuckLockout(){
@@ -6611,6 +6616,7 @@ async function _archiveStep2(){
 
       // Delete from Supabase using dateCol
       // Use _supa client (goes through Cloudflare proxy correctly)
+      if(!isAdmin()){ console.warn('Archive delete blocked - not admin'); continue; }
       const {error: delErr} = await _supa.from(t.table).delete().lte(t.dateCol, cutoffISO);
       const res = {ok: !delErr};
 
@@ -7997,7 +8003,7 @@ async function searchHistorical(pageId){
       release2:'applyReleaseFilter', oceantt:'applyOTTFilter', b2entries:'applyB2Filter'
     }[pageId];
     if(typeof window[applyFn]==='function') window[applyFn]();
-    else{ pgSetData(cfg.pgKey, mapped); eval(cfg.renderFn+'(pgSlice("'+cfg.pgKey+'"))'); pgRender(cfg.pgKey, cfg.pgContainer, cfg.pgCb); }
+    else{ pgSetData(cfg.pgKey, mapped); if(typeof window[cfg.renderFn]==='function') window[cfg.renderFn](pgSlice(cfg.pgKey)); pgRender(cfg.pgKey, cfg.pgContainer, cfg.pgCb); }
 
     showToast('✅ Found '+data.length+' historical records');
   }catch(e){
@@ -12298,7 +12304,7 @@ async function deleteClient(id, name){
   if(!confirm('Delete client: '+name+' (ID: '+id+')? This cannot be undone.')) return;
   if(_supaAdmin){
     const {error} = await _supaAdmin.from('clients').delete().eq('id', id);
-    if(error){ showToast('❌ Delete failed: '+error.message, true); return; }
+    if(error){ showToast('❌ Delete failed — please try again or contact admin', true); console.error('Delete error:',error.message); return; }
   }
   DB.clients = DB.clients.filter(c => c.id !== id);
   showToast('🗑️ Client deleted');
@@ -13954,6 +13960,7 @@ function editLoginUser(idx){
 }
 
 function deleteLoginUser(idx){
+  if(!isAdmin()){showToast('❌ Not permitted',true);return;}
   const u=DB.loginUsers[idx];if(!u)return;
   if(!confirm('Permanently delete user "'+u.name+'" ('+u.username+')? Cannot be undone.')) return;
   DB.loginUsers.splice(idx,1);
@@ -15544,6 +15551,7 @@ function saveUserComment(idx){
 }
 
 function deleteErrorRecord(idx){
+  if(!canUploadErrors()&&!isAdmin()){showToast('❌ Not permitted',true);return;}
   if(!confirm('Delete this error record?'))return;
   DB.errors.splice(idx,1);
   DB.errors.forEach((e,i)=>e._idx=i);
