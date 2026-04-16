@@ -5189,6 +5189,7 @@ function setupRealtime(){
 
     if(status==='SUBSCRIBED'){
       _rtConnected=true;
+      window._rtReconnectCount=0; // reset backoff on success
       clearTimeout(_rtFallbackTimer);
       stopBgPoll(); // WebSocket is live — stop polling to save IO
       _setRTIndicator('live');
@@ -5202,7 +5203,10 @@ function setupRealtime(){
       _setRTIndicator('polling');
       // bgPoll already running — just ensure it's active
       if(!_bgPollInterval) startBgPoll();
-      // Try to reconnect after 30s
+      // Try to reconnect — exponential backoff: 15s, 30s, 60s, 120s
+      if(!window._rtReconnectCount) window._rtReconnectCount = 0;
+      window._rtReconnectCount++;
+      const _delay = Math.min(15000 * Math.pow(2, window._rtReconnectCount - 1), 120000);
       setTimeout(()=>{
         if(!_rtConnected && _supaRT){
           if(_realtimeChannel && _supaRT){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} }
@@ -5210,10 +5214,23 @@ function setupRealtime(){
           window._realtimeShownToast=false;
           setupRealtime();
         }
-      }, 30000);
+      }, _delay);
     }
   });
 }
+
+// ── Realtime keepalive — ping every 4 min to prevent idle disconnect ──
+setInterval(()=>{
+  if(_rtConnected && _realtimeChannel && _supaRT){
+    try{
+      // Send a lightweight HEAD request to keep the connection warm
+      fetch(SUPA_URL+'/rest/v1/login_users?select=id&limit=1', {
+        method:'HEAD',
+        headers:{'apikey':_dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4)}
+      }).catch(()=>{});
+    }catch(e){}
+  }
+}, 4 * 60 * 1000);
 
 // ── ETA Monitor removed — all polls and DB writes eliminated ──
 
@@ -9937,22 +9954,26 @@ function showPage(id){
   const crumbEl=document.getElementById('hopeBreadcrumb');
   if(titleEl) titleEl.textContent=pageTitles[id]||'Overview';
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
-  if(id==='lvs') renderLVS(c);
-  else if(id==='classifier') renderCLS(c);
+  // Track render time for performance monitor
+  _perfTrackRender(id);
+  const _perfDone = () => _perfTrackRenderEnd(id);
+
+  if(id==='lvs'){ renderLVS(c); _perfDone(); }
+  else if(id==='classifier'){ renderCLS(c); _perfDone(); }
   else if(id==='compliance') renderCOMP(c);
-  else if(id==='status') renderStatus(c, window._statusActiveKey||undefined);
-  else if(id==='dashboard') renderDashboard(c);
+  else if(id==='status'){ renderStatus(c, window._statusActiveKey||undefined); _perfDone(); }
+  else if(id==='dashboard'){ renderDashboard(c); _perfDone(); }
   else if(id==='users') renderUsers(c);
   else if(id==='clients') renderClients(c);
-  else if(id==='reports') renderReports(c);
+  else if(id==='reports'){ renderReports(c); _perfDone(); }
   else if(id==='kpidashboard') renderKPIDashboard(c);
   else if(id==='clientdashboard') renderClientDashboard(c);
-  else if(id==='parsdocs') renderPARSDocs(c);
-  else if(id==='oceandocs') renderOceanDocs(c);
+  else if(id==='parsdocs'){ renderPARSDocs(c); _perfDone(); }
+  else if(id==='oceandocs'){ renderOceanDocs(c); _perfDone(); }
   else if(id==='partlot') renderPartLot(c);
-  else if(id==='release2') renderRelease2(c);
-  else if(id==='oceantt') renderOceanTT(c);
-  else if(id==='b2entries') renderB2Entries(c);
+  else if(id==='release2'){ renderRelease2(c); _perfDone(); }
+  else if(id==='oceantt'){ renderOceanTT(c); _perfDone(); }
+  else if(id==='b2entries'){ renderB2Entries(c); _perfDone(); }
   else if(id==='productivity') renderProductivity(c);
   else if(id==='loginusers'){
     if(_supa){
@@ -9966,7 +9987,7 @@ function showPage(id){
   else if(id==='mystatus') renderMyStatus(c);
   else if(id==='errorreport') renderErrorReport(c);
   else if(id==='perfmon') renderPerfMonitor(c);
-  else if(id==='audit') renderAudit(c);
+  else if(id==='audit'){ renderAudit(c); _perfDone(); }
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
   else if(id==='tatissue') renderTATIssue(c);
@@ -11611,10 +11632,11 @@ function renderPerfMonitor(c){
     memColor = memPct>70?'#e11d48':memPct>50?'#f59e0b':'#17a00e';
   }
 
-  // Record counts
-  const recTotal = (DB.lvs||[]).length+(DB.cls||[]).length+(DB.comp||[]).length+
-    (DB.parsDocs||[]).length+(DB.oceanDocs||[]).length+(DB.partLot||[]).length+
-    (DB.release2||[]).length+(DB.oceanTT||[]).length+(DB.b2entries||[]).length+
+  // Record counts — use _trueCounts (real DB totals) when available
+  const _tc = window._trueCounts || {};
+  const recTotal = (_tc.lvs||DB.lvs.length)+(_tc.cls||DB.cls.length)+(_tc.comp||DB.comp.length)+
+    (_tc.pars_docs||DB.parsDocs.length)+(_tc.ocean_docs||DB.oceanDocs.length)+(_tc.part_lot||DB.partLot.length)+
+    (window._rlTrueCount||DB.release2.length)+(_tc.ocean_tt||DB.oceanTT.length)+(_tc.b2_entries||DB.b2entries.length)+
     (DB.audit||[]).length;
 
   // Last render
@@ -11693,15 +11715,34 @@ function renderPerfMonitor(c){
     <div class="th2"><div class="tt">📦 Memory — Records per task (30-day window)</div></div>
     <div style="padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
       ${[
-        {l:'LVS',db:DB.lvs,c:'#3b82f6'},{l:'Classifier',db:DB.cls,c:'#0d9488'},
-        {l:'Compliance',db:DB.comp,c:'#4f46e5'},{l:'PARS Docs',db:DB.parsDocs,c:'#0284c7'},
-        {l:'Ocean Docs',db:DB.oceanDocs,c:'#059669'},{l:'Part Lot',db:DB.partLot,c:'#d97706'},
-        {l:'Release',db:DB.release2,c:'#e11d48'},{l:'Ocean T&T',db:DB.oceanTT,c:'#0891b2'},
-        {l:'B2 Entries',db:DB.b2entries,c:'#b45309'},{l:'Audit',db:DB.audit,c:'#7c3aed'},
-      ].map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface2);border-radius:8px;border-left:3px solid ${t.c}">
-        <span style="font-size:12px;font-weight:600;color:var(--text)">${t.l}</span>
-        <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:${t.c}">${(t.db||[]).length.toLocaleString()}</span>
-      </div>`).join('')}
+        {l:'LVS',        db:DB.lvs,       c:'#3b82f6', tc:_tc.lvs},
+        {l:'Classifier', db:DB.cls,       c:'#0d9488', tc:_tc.cls},
+        {l:'Compliance', db:DB.comp,      c:'#4f46e5', tc:_tc.comp},
+        {l:'PARS Docs',  db:DB.parsDocs,  c:'#0284c7', tc:_tc.pars_docs},
+        {l:'Ocean Docs', db:DB.oceanDocs, c:'#059669', tc:_tc.ocean_docs},
+        {l:'Part Lot',   db:DB.partLot,   c:'#d97706', tc:_tc.part_lot},
+        {l:'Release',    db:DB.release2,  c:'#e11d48', tc:window._rlTrueCount},
+        {l:'Ocean T&T',  db:DB.oceanTT,   c:'#0891b2', tc:_tc.ocean_tt},
+        {l:'B2 Entries', db:DB.b2entries, c:'#b45309', tc:_tc.b2_entries},
+        {l:'Audit',      db:DB.audit,     c:'#7c3aed', tc:null},
+      ].map(t=>{
+        const loaded = (t.db||[]).length;
+        const total  = t.tc || loaded;
+        const pct    = total ? Math.round(loaded/total*100) : 100;
+        const diff   = total > loaded;
+        return `<div style="padding:7px 10px;background:var(--surface2);border-radius:8px;border-left:3px solid ${t.c}">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:12px;font-weight:600;color:var(--text)">${t.l}</span>
+            <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:${t.c}">${total.toLocaleString()}</span>
+          </div>
+          ${diff?`<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+            <div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${t.c};border-radius:2px"></div>
+            </div>
+            <span style="font-size:10px;color:var(--text3)">${loaded.toLocaleString()} loaded (${pct}%)</span>
+          </div>`:''}
+        </div>`;
+      }).join('')}
     </div>
   </div>
 
