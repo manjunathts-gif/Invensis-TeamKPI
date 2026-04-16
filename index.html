@@ -3534,6 +3534,7 @@ function _makeSupaClient(){
   };
 
   async function _req(method, path, body, extraHeaders, _retryCount){
+    if(!_retryCount) window._perf && window._perf.dbCalls++;
     const hdrs = Object.assign({}, H, extraHeaders||{});
     const opts = {method, headers:hdrs};
     if(body !== undefined) opts.body = JSON.stringify(body);
@@ -3852,6 +3853,18 @@ const _TRUE_COUNT_TABLES = [
   {table:'b2_entries', card:'b2TotalCard'},
 ];
 window._trueCounts = window._trueCounts || {};
+
+// ── Performance Monitor tracking ──
+window._perf = window._perf || {
+  dbCalls: 0,        // count of DB requests made
+  rtEvents: 0,       // Realtime events received
+  renders: [],       // [{page, ms, ts}] last 20 page renders
+  loginTime: Date.now(),
+  lastRenderMs: 0
+};
+
+// Wrap showPage to track render times
+const _origShowPage = null; // patched after DOM ready
 
 // ── Global audit lookup Map — rebuilt whenever DB.audit changes ──
 // Eliminates O(n²) window._auditByTxn.get(String(r.txn)) across all render functions
@@ -4674,6 +4687,21 @@ function _sortAllTaskArrays(){
 // Debounce timers per page — batch rapid Realtime events into one render
 const _silentRefreshTimers = {};
 
+// Track page render performance
+const _perfRenderStart = {};
+function _perfTrackRender(id){
+  _perfRenderStart[id] = performance.now();
+}
+function _perfTrackRenderEnd(id){
+  if(_perfRenderStart[id]){
+    const ms = Math.round(performance.now() - _perfRenderStart[id]);
+    window._perf.lastRenderMs = ms;
+    window._perf.renders.unshift({page:id, ms, ts:new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})});
+    if(window._perf.renders.length > 20) window._perf.renders.pop();
+    delete _perfRenderStart[id];
+  }
+}
+
 function _silentRefreshPage(id){
   // Debounce: if multiple events arrive within 1.5s, only render once
   if(_silentRefreshTimers[id]) clearTimeout(_silentRefreshTimers[id]);
@@ -5075,6 +5103,7 @@ function _applyRealtimeRow(table, row, eventType){
       if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
         if(window._rlTrueCount) window._rlTrueCount++; }
   if(table==='audit') _rebuildAuditMap();
+  window._perf && window._perf.rtEvents++;
     }
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
@@ -9610,6 +9639,7 @@ function buildNav(){
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'huddle',l:'👥 Daily Huddle',g:'main'},
       {id:'archive',l:'🗄️ Archive & Cleanup',g:'admin'},
+      {id:'perfmon',l:'⚡ Performance Monitor',g:'admin'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
     ];
   } else if(isSup){
@@ -9901,7 +9931,7 @@ function showPage(id){
     release2:'Release',dashboard:'Dashboard',reports:'Reports',
     status:'Team Status',users:'Users',clients:'Clients',
     oceantt:'Ocean T&T',b2entries:'B2 Entries',audit:'Audit',
-    mystatus:'My Status',errorreport:'Error Report',loginusers:'Login Users',gdrive:'Google Drive',
+    mystatus:'My Status',errorreport:'Error Report',perfmon:'Performance Monitor',loginusers:'Login Users',gdrive:'Google Drive',
     tatanalyzer:'📊 TAT Analyzer',tatreasons:'TAT Reasons',instructions:'📋 Instruction Followup',idlelog:'⏸️ Idle Log',tatissue:'🚨 TAT Issue'};
   const titleEl=document.getElementById('hopePageTitle');
   const crumbEl=document.getElementById('hopeBreadcrumb');
@@ -9935,6 +9965,7 @@ function showPage(id){
   else if(id==='gdrive') renderGDrive(c);
   else if(id==='mystatus') renderMyStatus(c);
   else if(id==='errorreport') renderErrorReport(c);
+  else if(id==='perfmon') renderPerfMonitor(c);
   else if(id==='audit') renderAudit(c);
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
@@ -11559,6 +11590,141 @@ function renderDashboard(c){
 }
 
 function renderDashboardAnalytics(allDB, today, todayAll){ /* merged into renderDashboard */ }
+
+
+// ══════════════════════════════════════════════════════════
+// PERFORMANCE MONITOR PAGE (Admin only)
+// ══════════════════════════════════════════════════════════
+function renderPerfMonitor(c){
+  const p = window._perf || {};
+  const upMs = Date.now() - (p.loginTime||Date.now());
+  const upSec = Math.floor(upMs/1000);
+  const upH = Math.floor(upSec/3600), upM = Math.floor((upSec%3600)/60), upS = upSec%60;
+  const uptimeStr = String(upH).padStart(2,'0')+':'+String(upM).padStart(2,'0')+':'+String(upS).padStart(2,'0');
+
+  // Memory
+  let memUsed = '—', memPct = 0, memColor = '#17a00e';
+  if(performance.memory){
+    memUsed = Math.round(performance.memory.usedJSHeapSize/1048576);
+    const memTotal = Math.round(performance.memory.jsHeapSizeLimit/1048576);
+    memPct = Math.min(100, Math.round(memUsed/memTotal*100));
+    memColor = memPct>70?'#e11d48':memPct>50?'#f59e0b':'#17a00e';
+  }
+
+  // Record counts
+  const recTotal = (DB.lvs||[]).length+(DB.cls||[]).length+(DB.comp||[]).length+
+    (DB.parsDocs||[]).length+(DB.oceanDocs||[]).length+(DB.partLot||[]).length+
+    (DB.release2||[]).length+(DB.oceanTT||[]).length+(DB.b2entries||[]).length+
+    (DB.audit||[]).length;
+
+  // Last render
+  const lastMs = p.lastRenderMs||0;
+  const renderColor = lastMs<100?'#17a00e':lastMs<400?'#f59e0b':'#e11d48';
+  const renderLabel = lastMs<100?'Fast':lastMs<400?'OK':'Slow';
+
+  // RT status
+  const rtOn = window._rtConnected;
+
+  function colorMs(ms){ return ms<100?'#17a00e':ms<400?'#f59e0b':'#e11d48'; }
+  function fmtBar(pct, color){ return `<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-top:6px"><div style="height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s"></div></div>`; }
+
+  const renderRows = (p.renders||[]).map(r=>`
+    <tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:6px 10px">${r.ts}</td>
+      <td style="font-size:12px;font-weight:600;padding:6px 10px">${r.page}</td>
+      <td style="text-align:right;padding:6px 10px">
+        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:${colorMs(r.ms)}">${r.ms}ms</span>
+        <span style="font-size:10px;color:${colorMs(r.ms)};margin-left:5px">${r.ms<100?'⚡ Fast':r.ms<400?'✅ OK':'⚠️ Slow'}</span>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;padding:16px;color:var(--text3);font-size:12px">No page renders recorded yet — navigate around the app</td></tr>';
+
+  c.innerHTML = `
+  <div class="ph">
+    <div><div class="pt">⚡ Performance Monitor</div>
+    <div class="ps">Live app speed and memory metrics — admin only</div></div>
+    <button class="btn-add" onclick="_silentRefreshPage('perfmon')" style="background:var(--primary)">🔄 Refresh</button>
+  </div>
+
+  <!-- Status row -->
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${rtOn?'rgba(23,160,14,.07)':'rgba(245,158,11,.07)'};border:1px solid ${rtOn?'rgba(23,160,14,.2)':'rgba(245,158,11,.2)'};border-radius:10px;margin-bottom:14px">
+    <span style="width:10px;height:10px;border-radius:50%;background:${rtOn?'#17a00e':'#f59e0b'};flex-shrink:0"></span>
+    <span style="font-size:13px;font-weight:700;color:${rtOn?'#17a00e':'#f59e0b'}">${rtOn?'⚡ Realtime WebSocket Active':'🔄 Polling Mode'}</span>
+    <span style="font-size:12px;color:var(--text3);margin-left:8px">Session uptime: ${uptimeStr}</span>
+  </div>
+
+  <!-- Metric cards -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Last Render</div>
+      <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:${renderColor}">${lastMs||'—'}${lastMs?'ms':''}</div>
+      <div style="font-size:11px;color:${renderColor};margin-top:3px">${lastMs?renderLabel:'No renders yet'}</div>
+      ${lastMs?fmtBar(Math.min(lastMs/500*100,100),renderColor):''}
+    </div>
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Memory Used</div>
+      <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:${memColor}">${memUsed}${memUsed!=='—'?'MB':''}</div>
+      <div style="font-size:11px;color:${memColor};margin-top:3px">${memPct?memPct+'% of heap':'N/A in this browser'}</div>
+      ${memPct?fmtBar(memPct,memColor):''}
+    </div>
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Records in Memory</div>
+      <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--primary)">${recTotal.toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">across all task arrays</div>
+    </div>
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">DB Requests</div>
+      <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:var(--primary)">${(p.dbCalls||0).toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">since login</div>
+    </div>
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Realtime Events</div>
+      <div style="font-size:26px;font-weight:900;font-family:var(--mono);color:${rtOn?'#17a00e':'#f59e0b'}">${(p.rtEvents||0).toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">inserts received live</div>
+    </div>
+    <div class="tw" style="padding:14px 16px">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Session Uptime</div>
+      <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--primary)">${uptimeStr}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">hh:mm:ss</div>
+    </div>
+  </div>
+
+  <!-- DB array sizes -->
+  <div class="tw" style="margin-bottom:14px">
+    <div class="th2"><div class="tt">📦 Memory — Records per task (30-day window)</div></div>
+    <div style="padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+      ${[
+        {l:'LVS',db:DB.lvs,c:'#3b82f6'},{l:'Classifier',db:DB.cls,c:'#0d9488'},
+        {l:'Compliance',db:DB.comp,c:'#4f46e5'},{l:'PARS Docs',db:DB.parsDocs,c:'#0284c7'},
+        {l:'Ocean Docs',db:DB.oceanDocs,c:'#059669'},{l:'Part Lot',db:DB.partLot,c:'#d97706'},
+        {l:'Release',db:DB.release2,c:'#e11d48'},{l:'Ocean T&T',db:DB.oceanTT,c:'#0891b2'},
+        {l:'B2 Entries',db:DB.b2entries,c:'#b45309'},{l:'Audit',db:DB.audit,c:'#7c3aed'},
+      ].map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface2);border-radius:8px;border-left:3px solid ${t.c}">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">${t.l}</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:800;color:${t.c}">${(t.db||[]).length.toLocaleString()}</span>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- Render history -->
+  <div class="tw">
+    <div class="th2"><div class="tt">⏱ Page Render History (last 20)</div><div class="tc">${(p.renders||[]).length} recorded</div></div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr><th>Time</th><th>Page</th><th style="text-align:right">Render Time</th></tr></thead>
+      <tbody>${renderRows}</tbody>
+    </table></div>
+  </div>
+
+  <div style="margin-top:10px;padding:10px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--text3)">
+    💡 <strong>Target:</strong> Page renders under 100ms = fast. 100–400ms = acceptable. Over 400ms = needs investigation.
+    Memory: Chrome shows heap usage. Under 200MB is healthy for this app size.
+  </div>`;
+
+  // Auto-refresh every 5 seconds while on this page
+  clearTimeout(window._perfRefreshTimer);
+  window._perfRefreshTimer = setTimeout(()=>{
+    if(_currentPage==='perfmon') _silentRefreshPage('perfmon');
+  }, 5000);
+}
 
 function renderIdleLogPage(c){
   if(!isAdmin()&&CU.role!=='Supervisor'&&CU.role!=='Team Lead'){
