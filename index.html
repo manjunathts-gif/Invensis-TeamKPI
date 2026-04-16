@@ -4703,22 +4703,47 @@ function _perfTrackRenderEnd(id){
 }
 
 function _silentRefreshPage(id){
-  // Debounce: if multiple events arrive within 1.5s, only render once
   if(_silentRefreshTimers[id]) clearTimeout(_silentRefreshTimers[id]);
   _silentRefreshTimers[id] = setTimeout(()=>{
     delete _silentRefreshTimers[id];
-    window._forceRefresh = true;
     const c=document.getElementById('pc');
-    if(!c) return showPage(id);
+    if(!c) return;
     const scrollY = c.scrollTop;
+
+    // For these pages: update in-place without clearing content = no flicker
     if(id==='status'){
       renderStatus(c, window._statusActiveKey||undefined);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
+    if(id==='dashboard'){
+      renderDashboard(c); // dashboard has smart re-render built in
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='release2' && document.getElementById('rlTbody')){
+      // Only refresh the table rows — no full page rebuild
+      const _d=_scopeByUser(DB.release2,'user');
+      pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
+      // Update stat cards
+      const _all=_scopeByUser(DB.release2,'user');
+      const _today=todayDateStringET();
+      const _rlTotal=document.getElementById('rlTotalCard');
+      if(_rlTotal) _rlTotal.textContent=(window._rlTrueCount||_all.length).toLocaleString();
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='audit' && document.querySelector('.dash-ed')){
+      renderAuditTab(window._auditActiveTab||'pending');
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+
+    // Full page refresh for other pages
+    window._forceRefresh = true;
     showPage(id);
     requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-  }, 1500); // batch events within 1.5s window
+  }, 1500);
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -15928,6 +15953,12 @@ function exportTruckTATChallenges(){
 function normTeam(t){ return (t||'').toLowerCase().replace(/^team[-\s]*/,'').trim(); }
 
 function renderAudit(c){
+  // Smart re-render: if already on audit page, just refresh the tab content
+  if(c.querySelector('#auditTabContent') && !window._forceRefresh){
+    _rebuildAuditMap();
+    renderAuditTab(window._auditActiveTab||'pending');
+    return;
+  }
   // ── Team scope ──
   const rawTeam=(()=>{
     if(CU.team) return CU.team;
@@ -17836,6 +17867,16 @@ function saveTLReleaseEdit(){
 
 
 function renderRelease2(c){
+  // Smart re-render: if already on this page, only refresh the table rows
+  if(c.querySelector('#rlTbody') && !window._forceRefresh){
+    const pc=document.getElementById('pc');
+    const _sy=pc?pc.scrollTop:0;
+    const _d=_scopeByUser(DB.release2,'user');
+    pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
+    if(_restoreFilter('rl')) applyRLFilter();
+    requestAnimationFrame(()=>{ if(pc) pc.scrollTop=_sy; });
+    return;
+  }
   const _rawAll=DB.release2;
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.user===CU.name)
@@ -17919,11 +17960,15 @@ function renderRelease2(c){
 function renderRLRows(data){
   const tbody=document.getElementById('rlTbody');
   if(!tbody)return;
+  // Preserve scroll position during silent refresh
+  const pc=document.getElementById('pc');
+  const _scrollY=pc?pc.scrollTop:0;
   const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
   const rlStOpts=(cur)=>['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'].map(o=>`<option ${cur===o?'selected':''}>${o}</option>`).join('');
+  // Build rows using DocumentFragment for faster DOM insertion
   tbody.innerHTML=data.map((r,i)=>{
     const ar=window._auditByTxn.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
