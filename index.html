@@ -15966,7 +15966,8 @@ function renderAudit(c){
     return u?.team||'';
   })();
   const myTeamNorm=normTeam(rawTeam);
-  const _raw=DB.release2.map((r,i)=>({...r,_idx:i}));
+  // Avoid spread operator — use index reference instead of copying objects
+  const _raw=DB.release2; // no copy needed — _idx already set during load
   const teamRecords=(!myTeamNorm||rawTeam==='ALL')
     ?_raw
     :(()=>{const f=_raw.filter(r=>normTeam(r.team||'')===myTeamNorm);return f.length?f:_raw;})();
@@ -15978,7 +15979,8 @@ function renderAudit(c){
   const done       = teamRecords.filter(r=>auditedSet.has(r.txn));
   const todayStr   = new Date().toDateString();
   const teamTxnSet = new Set(teamRecords.map(r=>String(r.txn)));
-  const todayDone  = DB.audit.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr&&teamTxnSet.has(String(a.txn))).length;
+  const todayYMD2  = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+  const todayDone  = DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD2&&teamTxnSet.has(String(a.txn))).length;
   const pct        = teamRecords.length?Math.round(done.length/teamRecords.length*100):0;
   const scores     = done.map(r=>parseFloat(auditMap.get(String(r.txn))?.score)||0).filter(s=>s>0);
   const avgScore   = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
@@ -15995,15 +15997,27 @@ function renderAudit(c){
   // ── Mode-wise stats (pre-computed, no nested loops) ──
   const modes=['Truck','Ocean','Air','Rail'];
   const modeCfg={Truck:{c:'#f97316',bg:'#fff7ed',bd:'#fed7aa',tx:'#92400e',ico:'🚛'},Ocean:{c:'#0891b2',bg:'#f0f9ff',bd:'#bae6fd',tx:'#075985',ico:'🌊'},Air:{c:'#7c3aed',bg:'#f5f3ff',bd:'#ddd6fe',tx:'#5b21b6',ico:'✈️'},Rail:{c:'#16a34a',bg:'#f0fdf4',bd:'#bbf7d0',tx:'#166534',ico:'🚂'}};
+  // Single pass through teamRecords to build all mode stats
+  const _modeBuckets={}; modes.forEach(m=>{_modeBuckets[m]={total:0,done:0,scoreSum:0,scoreCnt:0};});
+  teamRecords.forEach(r=>{
+    const m=modes.find(x=>x.toLowerCase()===(r.mode||'').toLowerCase());
+    if(!m) return;
+    _modeBuckets[m].total++;
+    if(auditedSet.has(r.txn)){
+      _modeBuckets[m].done++;
+      const sc=parseFloat(auditMap.get(String(r.txn))?.score)||0;
+      if(sc>0){_modeBuckets[m].scoreSum+=sc;_modeBuckets[m].scoreCnt++;}
+    }
+  });
   const modeCards = modes.map(m=>{
     const cfg=modeCfg[m]||{c:'#6366f1',bg:'#f8fafc',bd:'#e2e8f0',tx:'#475569',ico:'📦'};
-    const recs=teamRecords.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
-    if(!recs.length) return '';
-    const mdDone=recs.filter(r=>auditedSet.has(r.txn));
-    const mdPend=recs.length-mdDone.length;
-    const mdScores=mdDone.map(r=>parseFloat(auditMap.get(String(r.txn))?.score)||0).filter(s=>s>0);
-    const mdAvg=mdScores.length?(mdScores.reduce((a,b)=>a+b,0)/mdScores.length).toFixed(1):'—';
-    const mPct=recs.length?Math.round(mdDone.length/recs.length*100):0;
+    const bk=_modeBuckets[m];
+    if(!bk.total) return '';
+    const recs={length:bk.total}; // keep variable name for template below
+    const mdDone={length:bk.done};
+    const mdPend=bk.total-bk.done;
+    const mdAvg=bk.scoreCnt?(bk.scoreSum/bk.scoreCnt).toFixed(1):'—';
+    const mPct=bk.total?Math.round(bk.done/bk.total*100):0;
     return`<div style="background:${cfg.bg};border:1.5px solid ${cfg.bd};border-radius:12px;padding:14px 16px;min-width:180px;flex:1">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-size:20px">${cfg.ico}</span>
@@ -16125,7 +16139,10 @@ function renderAudit(c){
   window._auditDone=done;
   window._auditActiveTab='pending';
   window._auditPageNum=1;
-  renderAuditTab('pending');
+  // Defer table — skeleton shows instantly, data fills after paint
+  const _atc=document.getElementById('auditTabContent');
+  if(_atc) _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
+  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); },0); });
 }
 
 function switchAuditTab(tab){
@@ -17953,8 +17970,16 @@ function renderRelease2(c){
     </table></div>
   </div>
 <div id="pg_rl"></div>`;
-  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
-  if(_restoreFilter('rl')) applyRLFilter();
+  // Defer table rows — page skeleton shows instantly, rows fill after paint
+  const tbody2=document.getElementById('rlTbody');
+  if(tbody2) tbody2.innerHTML='<tr><td colspan="20" style="text-align:center;padding:24px;color:var(--text3);font-size:12px">⏳ Loading...</td></tr>';
+  requestAnimationFrame(()=>{
+    setTimeout(()=>{
+      const _d=_scopeByUser(DB.release2,'user');
+      pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+      if(_restoreFilter('rl')) applyRLFilter();
+    },0);
+  });
 }
 
 function renderRLRows(data){
@@ -17965,12 +17990,19 @@ function renderRLRows(data){
   const _scrollY=pc?pc.scrollTop:0;
   const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
+  const _auditMap = window._auditByTxn || new Map();
+  const _canEdit = canEditData();
+  const _isAdm = isAdmin();
+  const _isTLRel = CU&&CU.role==='Team Lead'&&CU.task==='Release'&&_canEdit;
   const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
-  const rlStOpts=(cur)=>['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'].map(o=>`<option ${cur===o?'selected':''}>${o}</option>`).join('');
+  // Pre-cache all 7 status option combos once
+  const _RL_ST=['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'];
+  const _rlOC={}; _RL_ST.forEach(s=>{_rlOC[s]=_RL_ST.map(o=>`<option${o===s?' selected':''}>${o}</option>`).join('');});
+  const rlStOpts=(cur)=>_rlOC[cur]||_rlOC['Submitted'];
   // Build rows using DocumentFragment for faster DOM insertion
   tbody.innerHTML=data.map((r,i)=>{
-    const ar=window._auditByTxn.get(String(r.txn));
+    const ar=_auditMap.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
     const qCell=(()=>{
       if(sc==null||isNaN(sc))return'<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
@@ -17998,7 +18030,7 @@ function renderRLRows(data){
     <td>
       <div style="display:flex;align-items:center;gap:5px">
         <select class="status-sel" id="rlst_${r._dbid||r.id||i}" data-dbid="${r._dbid||r.id||''}">${rlStOpts(r.status)}</select>
-        ${canEditData()?`<button class="btn-upd" style="background:var(--rose)" onclick="updateRLStatus('${r._dbid||r.id||i}')">Update</button>`:''}
+        ${_canEdit?`<button class="btn-upd" style="background:var(--rose)" onclick="updateRLStatus('${r._dbid||r.id||i}')">Update</button>`:''}
       </div>
     </td>
     <td style="font-weight:600">${r.user||'—'}</td>
@@ -18009,8 +18041,8 @@ function renderRLRows(data){
     <td style="font-size:12px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.comments||'—'}</td>
     ${qCell}
     ${auditCell}
-    ${isAdmin()?`<td>${adminActionBtns('release2',r._dbid||r.id,r.txn)}</td>`:''}
-    ${(CU&&CU.role==='Team Lead'&&CU.task==='Release'&&canEditData())?`<td><button class="btn-upd" style="background:var(--primary);font-size:11px;padding:4px 9px" onclick="openTLReleaseEdit(${r._idx!==undefined?r._idx:i})" title="Edit Status / Comments">✏️ Edit</button></td>`:''}
+    ${_isAdm?`<td>${adminActionBtns('release2',r._dbid||r.id,r.txn)}</td>`:''}
+    ${_isTLRel?`<td><button class="btn-upd" style="background:var(--primary);font-size:11px;padding:4px 9px" onclick="openTLReleaseEdit(${r._idx!==undefined?r._idx:i})" title="Edit Status / Comments">✏️ Edit</button></td>`:''}
   </tr>`;
   }).join('');
   const cnt=document.getElementById('rlCount');
