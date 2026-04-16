@@ -11239,7 +11239,6 @@ function heatClass(n){return n===0?'h0':n===1?'h1':n===2?'h2':n===3?'h3':'h4';}
 // ── Task × Hourly heatmap builder (used by dashboard + date filter) ──
 function buildTaskHeatRows(allDB, hours, dateStr){
   const targetDate = new Date(dateStr).toDateString();
-  // Try multiple timestamp fields to find the submission hour
   const getHour = r => {
     const candidates = [r._submitRaw, r.submittedTime, r.submitted, r.created, r._created];
     for(const t of candidates){
@@ -11250,14 +11249,18 @@ function buildTaskHeatRows(allDB, hours, dateStr){
     return -1;
   };
   const rows = Object.entries(allDB).map(([key, t])=>{
-    // Filter records belonging to the selected date
-    const dayRecs = t.db.filter(r=>{
-      const d = parseAppDate(r._created||r.created||'') || new Date(0);
-      return !isNaN(d) && d.toDateString()===targetDate;
+    // Single pass: filter today's records AND bucket by hour simultaneously
+    const hourBucket = {};
+    let total = 0;
+    t.db.forEach(r=>{
+      const d = parseAppDate(r._created||r.created||'');
+      if(!d || isNaN(d) || d.toDateString()!==targetDate) return;
+      total++;
+      const h = pad(getHour(r));
+      if(h!=='-1') hourBucket[h] = (hourBucket[h]||0)+1;
     });
-    const total = dayRecs.length;
     const cells = hours.map(h=>{
-      const cnt = dayRecs.filter(r => pad(getHour(r))===h).length;
+      const cnt = hourBucket[h]||0;
       const cls = cnt>=10?'h4':cnt>=6?'h3':cnt>=3?'h2':cnt>=1?'h1':'';
       return `<td class="dash-heat-cell ${cls}" style="text-align:center;min-width:30px;font-family:var(--mono);font-weight:700;font-size:12px;padding:6px 2px">${cnt||'·'}</td>`;
     }).join('');
@@ -11302,6 +11305,15 @@ function renderDashboard(c){
   const now   = nowET();
   const isTL  = CU.role==='Team Lead';
   const isMgr = CU.task==='Manager'||CU.role==='Manager';
+
+  // ── Cache key — skip recompute if data unchanged ──
+  const _dashHash = visibleDefs.map(d=>d.db.length).join(',')+DB.audit.length;
+  if(window._dashCache && window._dashCache.hash===_dashHash && c.children.length>0){
+    // Just update time display and return — data hasn't changed
+    const _tw=document.querySelector('.dash-ed-pill-time');
+    if(_tw) _tw.textContent=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    return;
+  }
 
   // ── Pre-compute all stats once using Maps for O(n) performance ──
   const todayStr = now.toDateString();
@@ -11386,14 +11398,24 @@ function renderDashboard(c){
     'Air':  {color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',icon:'✈️'},
     'Rail': {color:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',icon:'🚂'},
   };
+  // Build modeStats in single pass through release2
   const modeStats = {};
+  modes.forEach(m=>{ modeStats[m]={total:0,done:0,scoreSum:0,scoreCount:0}; });
+  DB.release2.forEach(r=>{
+    const m = modes.find(x=>x.toLowerCase()===(r.mode||'').toLowerCase());
+    if(!m) return;
+    modeStats[m].total++;
+    if(auditedTxnSet.has(r.txn)){
+      modeStats[m].done++;
+      const sc=parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0;
+      if(sc>0){ modeStats[m].scoreSum+=sc; modeStats[m].scoreCount++; }
+    }
+  });
   modes.forEach(m=>{
-    const recs = DB.release2.filter(r=>(r.mode||'').toLowerCase()===m.toLowerCase());
-    const done = recs.filter(r=>auditedTxnSet.has(r.txn));
-    const scores = done.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0).filter(s=>s>0);
-    const avg = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
-    const pct = recs.length?Math.round(done.length/recs.length*100):0;
-    modeStats[m]={total:recs.length,done:done.length,pend:recs.length-done.length,avg,pct};
+    const s=modeStats[m];
+    s.pend=s.total-s.done;
+    s.avg=s.scoreCount?(s.scoreSum/s.scoreCount).toFixed(1):'—';
+    s.pct=s.total?Math.round(s.done/s.total*100):0;
   });
 
   // ── BUILD HTML ──
@@ -11604,10 +11626,16 @@ function renderDashboard(c){
   </div>`;
 
   // Populate heatmap after render
-  const _heatAllDB = {};
-  visibleDefs.forEach(d=>{ _heatAllDB[d.key]={db:d.db,label:d.label,color:d.color}; });
-  const _heatBody = document.getElementById('taskHeatBody');
-  if(_heatBody) _heatBody.innerHTML = buildTaskHeatRows(_heatAllDB,['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'],today);
+  // Store cache hash so next render can skip if data unchanged
+  window._dashCache = { hash: _dashHash };
+
+  // Defer heatmap — build after page renders to avoid blocking main thread
+  setTimeout(()=>{
+    const _heatAllDB = {};
+    visibleDefs.forEach(d=>{ _heatAllDB[d.key]={db:d.db,label:d.label,color:d.color}; });
+    const _heatBody = document.getElementById('taskHeatBody');
+    if(_heatBody) _heatBody.innerHTML = buildTaskHeatRows(_heatAllDB,['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'],today);
+  }, 200);
 }
 
 function renderDashboardAnalytics(allDB, today, todayAll){ /* merged into renderDashboard */ }
