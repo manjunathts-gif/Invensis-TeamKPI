@@ -11306,15 +11306,7 @@ function renderDashboard(c){
   const isTL  = CU.role==='Team Lead';
   const isMgr = CU.task==='Manager'||CU.role==='Manager';
 
-  // ── Cache key — skip recompute if data unchanged ──
-  const _dashHash = visibleDefs.map(d=>d.db.length).join(',')+DB.audit.length;
-  // Only use cache if the dashboard is already rendered on screen
-  const _dashAlreadyRendered = c.querySelector('.dash-ed') !== null;
-  if(window._dashCache && window._dashCache.hash===_dashHash && _dashAlreadyRendered){
-    const _tw=document.querySelector('.dash-ed-pill-time');
-    if(_tw) _tw.textContent=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-    return;
-  }
+  // Cache removed — heatmap deferral + O(n) algorithms are sufficient
 
   // ── Pre-compute all stats once using Maps for O(n) performance ──
   const todayStr = now.toDateString();
@@ -11627,9 +11619,6 @@ function renderDashboard(c){
   </div>`;
 
   // Populate heatmap after render
-  // Store cache hash so next render can skip if data unchanged
-  window._dashCache = { hash: _dashHash };
-
   // Defer heatmap — build after page renders to avoid blocking main thread
   setTimeout(()=>{
     const _heatAllDB = {};
