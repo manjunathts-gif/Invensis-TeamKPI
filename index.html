@@ -11308,8 +11308,9 @@ function renderDashboard(c){
 
   // ── Cache key — skip recompute if data unchanged ──
   const _dashHash = visibleDefs.map(d=>d.db.length).join(',')+DB.audit.length;
-  if(window._dashCache && window._dashCache.hash===_dashHash && c.children.length>0){
-    // Just update time display and return — data hasn't changed
+  // Only use cache if the dashboard is already rendered on screen
+  const _dashAlreadyRendered = c.querySelector('.dash-ed') !== null;
+  if(window._dashCache && window._dashCache.hash===_dashHash && _dashAlreadyRendered){
     const _tw=document.querySelector('.dash-ed-pill-time');
     if(_tw) _tw.textContent=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
     return;
