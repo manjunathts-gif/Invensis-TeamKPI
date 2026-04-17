@@ -3866,6 +3866,16 @@ const _TRUE_COUNT_TABLES = [
 window._trueCounts = window._trueCounts || {};
 
 // ── Performance Monitor tracking ──
+// ── Submit → DB → RT → Render timing tracker ──
+window._submitTiming = window._submitTiming || {
+  lastSubmitMs: 0,       // when user clicked submit
+  lastSubmitTable: '',   // which table
+  lastDBWriteMs: 0,      // when DB confirmed write
+  lastRTReceivedMs: 0,   // when RT event arrived
+  lastRenderMs: 0,       // when screen updated
+  history: [],           // last 10 full round-trips
+};
+
 window._perf = window._perf || {
   dbCalls: 0,        // count of DB requests made
   rtEvents: 0,       // Realtime events received
@@ -4106,6 +4116,9 @@ WHERE tat IS NULL OR tat = '';`
 }
 async function dbInsert(table,row){
   if(!_supa) return null;
+  // Track submit timing
+  window._submitTiming.lastSubmitTable = table;
+  window._submitTiming.lastSubmitMs = Date.now();
   // REST client insert already returns representation via Prefer header — no .select() needed
   const {data,error}=await _supa.from(table).insert([row]);
   if(error){
@@ -4134,8 +4147,8 @@ async function dbInsert(table,row){
   }
   // data is always an array [{...}] — return first row for single inserts
   const result = Array.isArray(data)?data[0]??data:data;
-  // Log successful saves so user can verify in DevTools
-
+  // Track DB write time
+  if(result) window._submitTiming.lastDBWriteMs = Date.now();
   return result;
 }
 
@@ -4201,6 +4214,8 @@ async function dbDeleteAdmin(table, id){
 }
 async function dbUpdate(table,id,patch){
   if(!_supa) return null;
+  window._submitTiming.lastSubmitTable = table;
+  window._submitTiming.lastSubmitMs = Date.now();
   // Strip system columns that Supabase rejects
   const safePatch={...patch};
   delete safePatch.created_at;
@@ -5162,6 +5177,22 @@ function _applyRealtimeRow(table, row, eventType){
         if(window._rlTrueCount) window._rlTrueCount++; }
   if(table==='audit') _rebuildAuditMap();
   window._perf && window._perf.rtEvents++;
+  // Track RT timing if this matches the last submitted table
+  if(table===window._submitTiming.lastSubmitTable && window._submitTiming.lastSubmitMs>0){
+    const t = window._submitTiming;
+    t.lastRTReceivedMs = Date.now();
+    const dbDelay   = t.lastDBWriteMs   ? t.lastDBWriteMs   - t.lastSubmitMs : null;
+    const rtDelay   = t.lastRTReceivedMs - (t.lastDBWriteMs||t.lastSubmitMs);
+    const totalDelay = t.lastRTReceivedMs - t.lastSubmitMs;
+    const entry = {
+      table, time: new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+      dbMs: dbDelay, rtMs: rtDelay, totalMs: totalDelay
+    };
+    t.history.unshift(entry);
+    if(t.history.length > 10) t.history.pop();
+    console.log(`[TIMING] ${table} | Submit→DB: ${dbDelay||'?'}ms | DB→RT: ${rtDelay}ms | Total: ${totalDelay}ms`);
+    t.lastSubmitMs = 0; // reset
+  }
     }
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
@@ -12021,6 +12052,19 @@ function renderPerfMonitor(c){
     </div>
   </div>
 
+  <!-- Submit → DB → RT → Screen timing -->
+  <div class="tw" style="margin-bottom:14px">
+    <div class="th2">
+      <div class="tt">⚡ Submit → Screen Round-Trip Timing</div>
+      <div class="tc" id="rtTimingCount">0 recorded</div>
+    </div>
+    <div id="rtTimingBody" style="padding:12px 16px">
+      <div style="color:var(--text3);font-size:12px;padding:10px 0;text-align:center">
+        No submissions yet — add or update any record to measure timing
+      </div>
+    </div>
+  </div>
+
   <!-- Render history -->
   <div class="tw">
     <div class="th2"><div class="tt">⏱ Page Render History (last 20)</div><div class="tc">${(p.renders||[]).length} recorded</div></div>
@@ -12034,6 +12078,40 @@ function renderPerfMonitor(c){
     💡 <strong>Target:</strong> Page renders under 100ms = fast. 100–400ms = acceptable. Over 400ms = needs investigation.
     Memory: Chrome shows heap usage. Under 200MB is healthy for this app size.
   </div>`;
+
+  // Populate round-trip timing
+  const _rt = window._submitTiming || {};
+  const _rtHistory = _rt.history || [];
+  const _rtCount = document.getElementById('rtTimingCount');
+  const _rtBody = document.getElementById('rtTimingBody');
+  if(_rtCount) _rtCount.textContent = _rtHistory.length + ' recorded';
+  if(_rtBody && _rtHistory.length > 0){
+    function _colorMs(ms){ return ms===null?'var(--text3)':ms<500?'#17a00e':ms<2000?'#f59e0b':'#e11d48'; }
+    function _fmtMs(ms){ return ms===null?'—':ms+'ms'; }
+    _rtBody.innerHTML = `
+    <div style="overflow-x:auto">
+    <table class="dt" style="font-size:12px">
+      <thead><tr>
+        <th>Time</th><th>Table</th>
+        <th style="text-align:right">Submit→DB</th>
+        <th style="text-align:right">DB→RT Event</th>
+        <th style="text-align:right;font-weight:800">Total</th>
+      </tr></thead>
+      <tbody>
+        ${_rtHistory.map(r=>`<tr>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${r.time}</td>
+          <td style="font-weight:600">${r.table}</td>
+          <td style="text-align:right;font-family:var(--mono);color:${_colorMs(r.dbMs)}">${_fmtMs(r.dbMs)}</td>
+          <td style="text-align:right;font-family:var(--mono);color:${_colorMs(r.rtMs)}">${_fmtMs(r.rtMs)}</td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:800;color:${_colorMs(r.totalMs)}">${_fmtMs(r.totalMs)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text3)">
+      Target: Submit→DB under 500ms · DB→RT under 1000ms · Total under 2000ms
+    </div>`;
+  }
 
   // Auto-refresh every 5 seconds while on this page
   clearTimeout(window._perfRefreshTimer);
