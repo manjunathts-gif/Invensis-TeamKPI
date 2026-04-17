@@ -5322,6 +5322,9 @@ function _applyRealtimeRow(table, row, eventType){
   if(!row && eventType!=='DELETE') return;
 
   // ── Audit notification: show popup to target user on INSERT ──
+  // NOTE: audit_notifications must NOT be blocked by isPanelOpen() —
+  // the audit panel IS open when TL submits, but the popup targets a
+  // different user's session, so we must always process these events.
   if(table==='audit_notifications' && eventType==='INSERT' && row){
     DB.auditNotifications = DB.auditNotifications||[];
     const already = DB.auditNotifications.some(n=>n.id===row.id);
@@ -5356,6 +5359,7 @@ function _applyRealtimeRow(table, row, eventType){
   if(!rtEntry) return;
 
   // Skip if panel open — don't interrupt active form entry
+  // (audit_notifications are already handled above and never reach here)
   if(isPanelOpen()){ window._pendingPageRefresh = _currentPage; return; }
 
   const arr = rtEntry.arr();
@@ -14840,22 +14844,37 @@ function renderMyStatus(c){
   const today=todayDateStringET();
   const now=new Date();
   const myName=CU.name||CU.empName||CU.username||'';
-  const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
-  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
-  const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
+  // ── PERF: pre-parse _created dates once per record — avoids O(n*filters)
+  //    repeated parseAppDate() calls (each spawns Intl.DateTimeFormat) across
+  //    5000+ Release rows caused 10-15s delay on My Status open. Cache once. ──
+  const _nowDS=now.toDateString();
+  const _nowY=now.getFullYear(); const _nowM=now.getMonth();
+  const _allRecs=tm.db||[];
+  // Single pass: parse date + compute flags for every record
+  const _parsed=_allRecs.map(r=>{
+    const d=parseAppDate(r._created)||new Date(0);
+    return{r,d,ds:d.toDateString(),isMe:r[tm.fld]===myName,
+      isToday:d.toDateString()===_nowDS,
+      isMonth:d.getFullYear()===_nowY&&d.getMonth()===_nowM,
+      tat:(r.tat||'').toLowerCase(),status:(r.status||'').toLowerCase()};
+  });
+  const myParsed=_parsed.filter(p=>p.isMe);
+  const myRecs=myParsed.map(p=>p.r);
+  const todayRecs=myParsed.filter(p=>p.isToday).map(p=>p.r);
+  const monthRecs=myParsed.filter(p=>p.isMonth).map(p=>p.r);
+  const holdRecs=myParsed.filter(p=>p.status==='hold').map(p=>p.r);
+  const tatOkArr=myParsed.filter(p=>p.tat==='tat reached').map(p=>p.r);
+  const tatMissArr=myParsed.filter(p=>p.tat==='tat not reached').map(p=>p.r);
   const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
   // Team data (TL only)
-  const teamRecs=tm.db||[];
-  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
-  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
+  const teamRecs=_allRecs;
+  const teamTodayRecs=_parsed.filter(p=>p.isToday).map(p=>p.r);
+  const teamMonthRecs=_parsed.filter(p=>p.isMonth).map(p=>p.r);
+  const teamHold=_parsed.filter(p=>p.status==='hold').map(p=>p.r);
+  const teamTatOk=_parsed.filter(p=>p.tat==='tat reached').map(p=>p.r);
+  const teamTatMiss=_parsed.filter(p=>p.tat==='tat not reached').map(p=>p.r);
   const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
@@ -14863,7 +14882,7 @@ function renderMyStatus(c){
   // Hourly heatmap (today)
   const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
   const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
-  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
+  myParsed.filter(p=>p.isToday).forEach(p=>{const h=String(p.d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
   const nowH=String(now.getHours()).padStart(2,'0');
   const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
   const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
@@ -14872,7 +14891,7 @@ function renderMyStatus(c){
   const dailyRows=[];
   for(let d=0;d<7;d++){
     const dd=new Date(now);dd.setDate(dd.getDate()-d);
-    const cnt=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===dd.toDateString()).length;
+    const _dds=dd.toDateString(); const cnt=myParsed.filter(p=>p.ds===_dds).length;
     if(cnt>0||d<3){
       dailyRows.push(`<tr><td style="padding:8px 14px;font-weight:${d===0?800:600};font-size:12px;color:${d===0?'var(--text1)':'var(--text2)'}">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${cnt}</td><td style="padding:8px 14px;min-width:80px"><div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/Math.max(todayRecs.length,1)*100):0)}%"></div></td></tr>`);
     }
@@ -14891,16 +14910,16 @@ function renderMyStatus(c){
 
   // Team member stats (TL only)
   const memberStats=usersArr.map((u,ui)=>{
-    const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
-    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
-    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
-    const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
-    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
-    const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+    const uParsed=_parsed.filter(p=>p.r[tm.fld]===u);
+    const uToday=uParsed.filter(p=>p.isToday).length;
+    const uMonth=uParsed.filter(p=>p.isMonth).length;
+    const uHold=uParsed.filter(p=>p.status==='hold').length;
+    const uTatOk=uParsed.filter(p=>p.tat==='tat reached').length;
+    const uTatMiss=uParsed.filter(p=>p.tat==='tat not reached').length;
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
+    const maxT=Math.max(...usersArr.map(x=>_parsed.filter(p=>p.r[tm.fld]===x&&p.isToday).length),1);
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -16502,7 +16521,8 @@ function renderAudit(c){
   const teamTxnSet = new Set(teamRecords.map(r=>String(r.txn)));
   const todayYMD2  = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
   const todayDone  = DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD2&&teamTxnSet.has(String(a.txn))).length;
-  const pct        = teamRecords.length?Math.round(done.length/teamRecords.length*100):0;
+  const _totalForPct = (window._rlTrueCount&&window._rlTrueCount>teamRecords.length)?window._rlTrueCount:teamRecords.length;
+  const pct        = _totalForPct?Math.round(done.length/_totalForPct*100):0;
   const scores     = done.map(r=>parseFloat(auditMap.get(String(r.txn))?.score)||0).filter(s=>s>0);
   const avgScore   = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
 
@@ -16586,13 +16606,13 @@ function renderAudit(c){
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🔍 Audit — Release Shipments</div>
-    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${teamRecords.length} txns · ${CU.name}</div></div>
+    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${(window._rlTrueCount&&window._rlTrueCount>teamRecords.length?window._rlTrueCount:teamRecords.length).toLocaleString()} txns · ${CU.name}</div></div>
     <button class="btn-add" style="background:var(--emerald)" onclick="exportAuditCSV()">📥 Export CSV</button>
   </div>
 
   <!-- Summary cards -->
   <div class="sg" style="margin-bottom:14px">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Txns</div><div class="sv">${teamRecords.length}</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Txns</div><div class="sv">${(window._rlTrueCount&&window._rlTrueCount>teamRecords.length?window._rlTrueCount:teamRecords.length).toLocaleString()}</div><div class="sf">All time DB</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audited</div><div class="sv">${done.length}</div><div class="sf">${pct}%</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div></div>
