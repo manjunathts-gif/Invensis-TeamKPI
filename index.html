@@ -5178,7 +5178,18 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 60000); // Poll every 60s — balanced sync vs DB IO budget
+  // If bgPoll running for >60s and RT not connected — try reconnecting RT
+  if(!_rtConnected && _supaRT && !window._rtReconnecting){
+    const _uptime = Date.now() - (window._sessionStart||Date.now());
+    if(_uptime > 60000 && !(window._rtLastAttempt && Date.now()-window._rtLastAttempt < 30000)){
+      window._rtLastAttempt = Date.now();
+      console.log('[RT] bgPoll trigger: attempting RT reconnect...');
+      if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
+      window._realtimeShownToast=false;
+      setTimeout(setupRealtime, 1000);
+    }
+  }
+  }, 15000); // Poll every 15s in polling mode — fast sync when RT unavailable
 
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -5194,6 +5205,15 @@ function stopKeepAlive(){
 
 function stopBgPoll(){
   if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null; }
+}
+
+// Adjust poll speed based on RT status — fast when RT down, stop when RT up
+function _adjustPollSpeed(){
+  if(_rtConnected){
+    stopBgPoll(); // RT handles sync — no polling needed
+  } else if(!_bgPollInterval){
+    startBgPoll(); // RT down — start fast polling
+  }
 }
 
 // ── Realtime state ──
@@ -9443,6 +9463,7 @@ async function _submitErrorAck(){
 }
 
 function bootApp(){
+  window._sessionStart = Date.now();
   // Set mobile task page based on user's role
   const _taskPageMap2 = {
     'LVS':'lvs','Classifier':'classifier','Compliance':'compliance',
@@ -9501,8 +9522,8 @@ function bootApp(){
   if(hopeUname) hopeUname.textContent=CU.name;
   buildNav();
   restoreSidebarState();
-  // ── Start Realtime WebSocket — falls back to bgPoll automatically if WS unavailable ──
-  if(_supa) setupRealtime();
+  // ── Start Realtime WebSocket — start immediately, don't wait for data load ──
+  if(_supa) setTimeout(setupRealtime, 100); // small delay to let UI render first
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
