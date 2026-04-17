@@ -31,7 +31,7 @@ if(location.protocol === 'file:'){
   });
 }
 </script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com https://vnibbqgpdtzamztmhheu.supabase.co https://cloudflareinsights.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; frame-src https://accounts.google.com https://apis.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com https://cloudflareinsights.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net; frame-src https://accounts.google.com https://apis.google.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -41,7 +41,7 @@ if(location.protocol === 'file:'){
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
@@ -3486,7 +3486,7 @@ body.style-modern .fs2:focus{
 // ╔══════════════════════════════════════════════════════╗
 // ║  SUPABASE CREDENTIALS                                ║
 // ╚══════════════════════════════════════════════════════╝
-const SUPA_URL = 'https://vnibbqgpdtzamztmhheu.supabase.co';
+const SUPA_URL = 'https://invensis.myteamkpi.com/db';
 // API key — assembled at runtime
 const _k1='3f231032381d3933153310130f20136b143313291334086f3919136c13312a020c191063743f23102a39691733153310203e0218',_k2='3203371c2000091329133410360033136c1334002f3b0d1033390d3e2d0012086c030d6b6c3e1d6b353b1d0c6b13332d33393763',_k3='290009136c13371c2f38686e331619102a03020b3315301f6914200b6f150e0f68170e0f2913370c6e3919136c17301b6f171e0f',_k4='69170e032214026a7400181e3c20220d0c6c056a6e2a171e693e0f2e3f14021d6d11341b1e0a3911393c1935180a28103c2a6b62';
 const _xk=0x5A;
@@ -3535,7 +3535,6 @@ function _makeSupaClient(){
 
   async function _req(method, path, body, extraHeaders, _retryCount){
     if(!_retryCount) window._perf && window._perf.dbCalls++;
-    const _maxRetry = 3;
     const hdrs = Object.assign({}, H, extraHeaders||{});
     const opts = {method, headers:hdrs};
     if(body !== undefined) opts.body = JSON.stringify(body);
@@ -3543,22 +3542,11 @@ function _makeSupaClient(){
     try {
       const r = await fetch(BASE + path, opts);
       const txt = await r.text();
-      // Suppress 530/1016 errors during retry attempts — they're expected
-      if(!r.ok && !(r.status===530||r.status===502) ){
-        console.error('❌ REST ERROR', method, path, r.status, txt.substring(0,200));
-      } else if(!r.ok && _retryCount===0){
-        console.warn('[KPI] Transient', r.status, '— retrying...', path.split('?')[0]);
-      }
+      if(!r.ok) console.error('❌ REST ERROR', method, path, r.status, txt.substring(0,200));
       let data = null;
       try { data = JSON.parse(txt); } catch(e){}
       const cr = r.headers.get('Content-Range');
       const count = cr ? (parseInt(cr.split('/')[1])||null) : null;
-      // Auto-retry on 502/530 (Cloudflare 1016 error) and 503
-      const _retry = _retryCount||0;
-      if((r.status===502||r.status===530||r.status===503) && _retry < 3){
-        await new Promise(res=>setTimeout(res, (_retry+1)*400));
-        return _req(method, path, body, extraHeaders, _retry+1);
-      }
       return {data: r.ok ? data : null, error: r.ok ? null : {message: txt}, count};
     } catch(e) {
       // Classify network/IO errors and auto-retry up to 2x for GET requests
@@ -3674,10 +3662,6 @@ function _makeSupaClient(){
   try{
     const saved   = sessionStorage.getItem('kpi_session');
     const savedTs = sessionStorage.getItem('kpi_session_ts');
-    // Security: expire session after 8 hours
-    if(saved && savedTs && (Date.now()-parseInt(savedTs||0))>8*60*60*1000){
-      sessionStorage.removeItem('kpi_session'); sessionStorage.removeItem('kpi_session_ts');
-    }
     if(!saved) return;
     const cu = JSON.parse(saved);
     if(!cu || !cu.username) return;
@@ -3767,18 +3751,6 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 // Separate from the custom REST client (_supa) which handles reads/writes.
 // This client is ONLY used for Realtime channel subscriptions.
 let _supaRT = null;
-// ── Suppress only the WebSocket URL line that contains the API key ──
-(function(){
-  const _origErr = console.error.bind(console);
-  // Only suppress the browser's built-in "WebSocket connection to wss://...apikey=..." error
-  // Do NOT suppress other Supabase/RT messages — needed for debugging
-  console.error = function(...args){
-    const s = String(args[0]||'');
-    if(s.includes('WebSocket connection to') && s.includes('apikey=')) return;
-    _origErr(...args);
-  };
-})();
-
 function _initSupaRT(){
   try{
     if(typeof window.supabase === 'undefined'){ console.warn('[RT] supabase-js not loaded'); return; }
@@ -3791,13 +3763,8 @@ function _initSupaRT(){
     }catch(je){}
     if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase project URL'); return; }
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
-      realtime: {
-        params: { eventsPerSecond: 10 },
-        timeout: 20000,
-        heartbeatIntervalMs: 15000,
-      },
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers: { 'X-Client-Info': 'kpi-tracker/1.0' } }
+      realtime: { params: { eventsPerSecond: 10 } },
+      auth: { persistSession: false, autoRefreshToken: false }
     });
     console.log('[RT] Supabase Realtime client ready');
   }catch(e){ console.warn('[RT] Failed to init realtime client:', e.message); _supaRT = null; }
@@ -3888,16 +3855,6 @@ const _TRUE_COUNT_TABLES = [
 window._trueCounts = window._trueCounts || {};
 
 // ── Performance Monitor tracking ──
-// ── Submit → DB → RT → Render timing tracker ──
-window._submitTiming = window._submitTiming || {
-  lastSubmitMs: 0,       // when user clicked submit
-  lastSubmitTable: '',   // which table
-  lastDBWriteMs: 0,      // when DB confirmed write
-  lastRTReceivedMs: 0,   // when RT event arrived
-  lastRenderMs: 0,       // when screen updated
-  history: [],           // last 10 full round-trips
-};
-
 window._perf = window._perf || {
   dbCalls: 0,        // count of DB requests made
   rtEvents: 0,       // Realtime events received
@@ -4032,21 +3989,6 @@ const _missingTableWarned={};
 
 async function dbLoad(table){
   if(!_supa) return [];
-  // Cache rarely-changing tables in sessionStorage to survive 1016 retries
-  const _SESSION_CACHE_TABLES = {
-    'users': 15*60*1000,       // 15 min
-    'login_users': 15*60*1000, // 15 min
-    'instructions': 30*60*1000,// 30 min
-  };
-  if(_SESSION_CACHE_TABLES[table]){
-    try{
-      const ck = 'kpi_sc_'+table;
-      const cached = JSON.parse(sessionStorage.getItem(ck)||'null');
-      if(cached && cached.ts && (Date.now()-cached.ts) < _SESSION_CACHE_TABLES[table] && cached.data?.length>0){
-        return cached.data;
-      }
-    }catch(e){}
-  }
   // SPEED FIX: clients table rarely changes — cache in localStorage for 1 hour
   if(table === 'clients'){
     try{
@@ -4094,11 +4036,6 @@ async function dbLoad(table){
   // Cache clients table for 1 hour
   if(table === 'clients' && allRows.length > 0){
     try{ localStorage.setItem('kpi_clients_cache_v2', JSON.stringify({ts:Date.now(),data:allRows})); }catch(e){}
-  }
-  // Cache users/login_users/instructions in sessionStorage — survives 1016 retries
-  const _scTables = {'users':1,'login_users':1,'instructions':1};
-  if(_scTables[table] && allRows.length > 0){
-    try{ sessionStorage.setItem('kpi_sc_'+table, JSON.stringify({ts:Date.now(),data:allRows})); }catch(e){}
   }
   return allRows;
 }
@@ -4158,9 +4095,6 @@ WHERE tat IS NULL OR tat = '';`
 }
 async function dbInsert(table,row){
   if(!_supa) return null;
-  // Track submit timing
-  window._submitTiming.lastSubmitTable = table;
-  window._submitTiming.lastSubmitMs = Date.now();
   // REST client insert already returns representation via Prefer header — no .select() needed
   const {data,error}=await _supa.from(table).insert([row]);
   if(error){
@@ -4189,8 +4123,8 @@ async function dbInsert(table,row){
   }
   // data is always an array [{...}] — return first row for single inserts
   const result = Array.isArray(data)?data[0]??data:data;
-  // Track DB write time
-  if(result) window._submitTiming.lastDBWriteMs = Date.now();
+  // Log successful saves so user can verify in DevTools
+
   return result;
 }
 
@@ -4228,7 +4162,6 @@ async function dbUpdateAdmin(table,id,patch){
 }
 
 async function dbDeleteAdmin(table, id){
-  if(!isAdmin()) throw new Error('Delete not permitted — admin only');
   if(!_supa) throw new Error('Not connected to database');
   if(!id || String(id) === 'undefined') throw new Error('Invalid ID — record not synced to DB yet');
 
@@ -4256,8 +4189,6 @@ async function dbDeleteAdmin(table, id){
 }
 async function dbUpdate(table,id,patch){
   if(!_supa) return null;
-  window._submitTiming.lastSubmitTable = table;
-  window._submitTiming.lastSubmitMs = Date.now();
   // Strip system columns that Supabase rejects
   const safePatch={...patch};
   delete safePatch.created_at;
@@ -4280,7 +4211,6 @@ async function dbUpdate(table,id,patch){
   return data;
 }
 async function dbDelete(table,id){
-  if(!isAdmin()){ console.warn('dbDelete blocked — not admin'); return; }
   if(!_supa) return;
   const {error}=await _supa.from(table).delete().eq('id',id);
   if(error) console.error('Delete '+table,error);
@@ -4463,7 +4393,7 @@ async function loadAllFromSupabase(){
 
       // Batch 2: high-priority task tables (shown on dashboard first)
       const [lvsT,clsT,relT,errT] = await Promise.all([
-        dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRelease(), dbLoad('client_errors')
+        dbLoadRecent('lvs',2), dbLoadRecent('cls',2), dbLoadRelease(), dbLoadRecent('client_errors',2)
       ]);
       DB.lvs      = lvsT.map(mapLVS);   DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls      = clsT.map(mapCLS);   DB.cls.forEach((r,i)=>r._idx=i);
@@ -4494,7 +4424,6 @@ async function loadAllFromSupabase(){
       if(bar) bar.style.width='100%';
       setDetail('✅ Today loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
       if(CU) refreshPage();
-      window._dbLoaded = true;
       showToast('✅ App ready — loading full history in background. Counts update shortly...');
       // Fetch true total counts for all tables in background
       setTimeout(_fetchAllTrueCounts, 1000);
@@ -4504,55 +4433,36 @@ async function loadAllFromSupabase(){
       // Only run Phase 2 if Realtime failed to connect (fallback poll mode)
       setTimeout(async()=>{
         if(typeof _rtConnected !== 'undefined' && _rtConnected){
-          // Realtime is live — cache silently, NO page refresh (user may be working)
-          setTimeout(_saveTaskCache, 3000);
+          // Realtime is live — just save cache and done
+          _saveTaskCache();
+          if(CU) refreshPage();
+
           return;
         }
         // Realtime not connected — run full 30-day load for poll mode
         try{
-          // ── Yield helper — gives browser a frame to handle user input ──
-          const _y = ()=>new Promise(r=>setTimeout(r,0));
-
-          // Load in 3 sequential batches — smaller batches = shorter individual freezes
-          // Batch A: high-traffic tables
-          const [lvsF,clsF,relF] = await Promise.all([
-            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRelease()
+          const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
+            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
+            dbLoadRecent('pars_docs',30), dbLoadRelease()
           ]);
-          DB.lvs     = lvsF.map(mapLVS);    DB.lvs.forEach((r,i)=>r._idx=i);
-          DB.cls     = clsF.map(mapCLS);    DB.cls.forEach((r,i)=>r._idx=i);
-          DB.release2= relF.map(mapRelease);DB.release2.forEach((r,i)=>r._idx=i);
-          await _y(); // yield — user can click tabs here
-
-          // Batch B: medium tables
-          const [compF,parsF,oceanF,errF] = await Promise.all([
-            dbLoadRecent('comp',30), dbLoadRecent('pars_docs',30),
-            dbLoadRecent('ocean_docs',30), dbLoad('client_errors')
+          const [oceanF,partF,ottF,b2F,errF,auditF] = await Promise.all([
+            dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
+            dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
+            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
           ]);
-          DB.comp     = compF.map(mapCOMP);
-          DB.parsDocs = parsF.map(mapPARSDocs);
-          DB.oceanDocs= oceanF.map(mapOceanDocs);
-          DB.errors   = errF.map(mapError); DB.errors.forEach((r,i)=>r._idx=i);
-          await _y(); // yield — user can click tabs here
-
-          // Batch C: smaller tables
-          const [partF,ottF,b2F,auditF] = await Promise.all([
-            dbLoadRecent('part_lot',30), dbLoadRecent('ocean_tt',30),
-            dbLoadRecent('b2_entries',30), dbLoadRecent('audit',30)
-          ]);
-          DB.partLot  = partF.map(mapPartLot);
-          DB.oceanTT  = ottF.map(mapOceanTT);
-          DB.b2entries= b2F.map(mapB2);
-          DB.audit    = auditF.map(mapAudit);
-          _rebuildAuditMap();
-          await _y();
-
-          // Save cache silently — defer so it doesn't block
-          setTimeout(_saveTaskCache, 500);
-
-          // Only refresh current page if user is still on dashboard
-          // Don't interrupt if they've navigated elsewhere
-          if(_currentPage==='dashboard') _silentRefreshPage('dashboard');
-          else window._forceRefresh=false; // mark data ready but don't interrupt
+          DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
+          DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
+          DB.comp      = compF.map(mapCOMP);    DB.comp.forEach((r,i)=>r._idx=i);
+          DB.parsDocs  = parsF.map(mapPARSDocs);
+          DB.oceanDocs = oceanF.map(mapOceanDocs);
+          DB.partLot   = partF.map(mapPartLot);
+          DB.release2  = relF.map(mapRelease);  DB.release2.forEach((r,i)=>r._idx=i);
+          DB.oceanTT   = ottF.map(mapOceanTT);
+          DB.b2entries = b2F.map(mapB2);
+          DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
+          DB.audit     = auditF.map(mapAudit);
+          _saveTaskCache();
+          if(CU) refreshPage();
           showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
 
         }catch(bg){ console.warn('Background history load error:', bg.message); }
@@ -4563,7 +4473,7 @@ async function loadAllFromSupabase(){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
       const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoadRelease(), dbLoadRecent('audit'), dbLoad('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
+        dbLoadRelease(), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4583,7 +4493,7 @@ async function loadAllFromSupabase(){
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
         dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRelease(),
-        dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoad('client_errors'),
+        dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
         dbLoadRecent('audit'),dbLoad('instructions')
       ]);
       DB.users=users.map(mapUser);
@@ -4608,8 +4518,8 @@ async function loadAllFromSupabase(){
       const tbl=taskTableMap[userTask];
       setDetail('Loading '+(userTask||'your')+' team data...');
       const fetches=tbl
-        ? [dbLoadRecent(tbl,30), dbLoad('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')]
-        : [dbLoad('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')];
+        ? [dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')]
+        : [dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoad('login_users')];
       const results=await Promise.all(fetches);
       const off=tbl?1:0;
       if(tbl&&results[0]) _applyTaskData(tbl,results[0]);
@@ -4635,7 +4545,7 @@ async function loadAllFromSupabase(){
       setDetail('Loading client view... (2/3)');
       const [pars,ocean,partLot,errors] = await Promise.all([
         dbLoadRecent('pars_docs'), dbLoadRecent('ocean_docs'),
-        dbLoadRecent('part_lot'), dbLoad('client_errors')
+        dbLoadRecent('part_lot'), dbLoadRecent('client_errors')
       ]);
       if(pars) { DB.parsDocs=pars.map(mapPARSDocs); }
       if(ocean) { DB.oceanDocs=ocean.map(mapOceanDocs); }
@@ -4658,8 +4568,8 @@ async function loadAllFromSupabase(){
       setDetail('Loading your '+(userTask||'task')+' data...');
       // Load clients first in array so it resolves quickly for fillClient
       const fetches=tbl
-        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoad('client_errors'), dbLoad('login_users'), dbLoad('instructions')]
-        : [dbLoad('clients'), dbLoad('client_errors'), dbLoad('login_users'), dbLoad('instructions')];
+        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')]
+        : [dbLoad('clients'), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')];
       const results=await Promise.all(fetches);
       // clients is index 0, task table is index 1, etc.
       if(results[0]) DB.clients=results[0].map(mapClient); // clients FIRST — needed for autofill
@@ -4941,40 +4851,6 @@ const PAGE_TABLE_MAP = {
   'audit':       ['audit'],
 };
 
-// ── Universal stat card updater — called after every RT event ──
-function _updateStatCards(){
-  const today = todayDateStringET();
-  const setEl = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
-  const _tc = window._trueCounts || {};
-  const cards = [
-    {prefix:'lvs',     db:DB.lvs,       key:'lvs'},
-    {prefix:'cls',     db:DB.cls,       key:'cls'},
-    {prefix:'comp',    db:DB.comp,      key:'comp'},
-    {prefix:'pars',    db:DB.parsDocs,  key:'pars_docs'},
-    {prefix:'oceanDocs',db:DB.oceanDocs,key:'ocean_docs'},
-    {prefix:'partLot', db:DB.partLot,   key:'part_lot'},
-    {prefix:'ott',     db:DB.oceanTT,   key:'ocean_tt'},
-    {prefix:'b2',      db:DB.b2entries, key:'b2_entries'},
-  ];
-  cards.forEach(({prefix, db, key}) => {
-    if(!document.getElementById(prefix+'TodayCard')) return;
-    const all = db || [];
-    let tc=0,tr=0,tn=0,th=0;
-    all.forEach(r => {
-      if(String(r._created||'').slice(0,10)===today) tc++;
-      const tv=(r.tat||'').toLowerCase();
-      if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'))) tr++;
-      else if(tv.includes('not reached')) tn++;
-      if((r.status||'')==='Hold') th++;
-    });
-    setEl(prefix+'TodayCard', tc);
-    setEl(prefix+'TatReachedCard', tr);
-    setEl(prefix+'TatNotCard', tn);
-    setEl(prefix+'HoldCard', th);
-    setEl(prefix+'TotalCard', (_tc[key]||all.length));
-  });
-}
-
 function _updateLastRefreshed(pingMs){
   const badge = document.getElementById('lastUpdatedBadge');
   if(!badge) return;
@@ -5183,18 +5059,7 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  // If bgPoll running for >60s and RT not connected — try reconnecting RT
-  if(!_rtConnected && _supaRT && !window._rtReconnecting){
-    const _uptime = Date.now() - (window._sessionStart||Date.now());
-    if(_uptime > 60000 && !(window._rtLastAttempt && Date.now()-window._rtLastAttempt < 30000)){
-      window._rtLastAttempt = Date.now();
-      console.log('[RT] bgPoll trigger: attempting RT reconnect...');
-      if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
-      window._realtimeShownToast=false;
-      setTimeout(setupRealtime, 1000);
-    }
-  }
-  }, 15000); // Poll every 15s in polling mode — fast sync when RT unavailable
+  }, 60000); // Poll every 60s — balanced sync vs DB IO budget
 
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -5212,27 +5077,8 @@ function stopBgPoll(){
   if(_bgPollInterval){ clearInterval(_bgPollInterval); _bgPollInterval=null; }
 }
 
-// Adjust poll speed based on RT status — fast when RT down, stop when RT up
-function _adjustPollSpeed(){
-  if(_rtConnected){
-    stopBgPoll(); // RT handles sync — no polling needed
-  } else if(!_bgPollInterval){
-    startBgPoll(); // RT down — start fast polling
-  }
-}
-
 // ── Realtime state ──
 let _rtConnected = false;
-// Fix indicator if it shows wrong state — check every 5s
-setInterval(()=>{
-  const ind = document.getElementById('realtimeIndicator');
-  if(!ind) return;
-  if(_rtConnected && ind.textContent.includes('SYNC')){
-    _setRTIndicator('live');
-  } else if(!_rtConnected && ind.textContent.includes('LIVE')){
-    _setRTIndicator('polling');
-  }
-}, 5000);
 let _rtFallbackTimer = null;
 const RT_FALLBACK_MS = 20000; // if no WS connection in 20s → fall back to bgPoll
 
@@ -5283,22 +5129,6 @@ function _applyRealtimeRow(table, row, eventType){
         if(window._rlTrueCount) window._rlTrueCount++; }
   if(table==='audit') _rebuildAuditMap();
   window._perf && window._perf.rtEvents++;
-  // Track RT timing if this matches the last submitted table
-  if(table===window._submitTiming.lastSubmitTable && window._submitTiming.lastSubmitMs>0){
-    const t = window._submitTiming;
-    t.lastRTReceivedMs = Date.now();
-    const dbDelay   = t.lastDBWriteMs   ? t.lastDBWriteMs   - t.lastSubmitMs : null;
-    const rtDelay   = t.lastRTReceivedMs - (t.lastDBWriteMs||t.lastSubmitMs);
-    const totalDelay = t.lastRTReceivedMs - t.lastSubmitMs;
-    const entry = {
-      table, time: new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
-      dbMs: dbDelay, rtMs: rtDelay, totalMs: totalDelay
-    };
-    t.history.unshift(entry);
-    if(t.history.length > 10) t.history.pop();
-    console.log(`[TIMING] ${table} | Submit→DB: ${dbDelay||'?'}ms | DB→RT: ${rtDelay}ms | Total: ${totalDelay}ms`);
-    t.lastSubmitMs = 0; // reset
-  }
     }
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
@@ -5320,15 +5150,7 @@ function _applyRealtimeRow(table, row, eventType){
   // Refresh visible pages using TABLE_TO_PAGES map
   const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
-
-  // Always update dashboard KPI cards if dashboard is rendered (even when on another page)
-  if(_currentPage !== 'dashboard' && pages.includes('dashboard')){
-    const _dc = document.querySelector('[data-kpi]');
-    if(_dc) _silentRefreshPage('dashboard');
-  }
-
   _updateLastRefreshed(0);
-  _updateStatCards();
 }
 
 function setupRealtime(){
@@ -5401,11 +5223,9 @@ function setupRealtime(){
         showToast('⚡ Realtime sync active — all users see changes instantly');
       }
       console.log('[RT] ✅ WebSocket connected — bgPoll stopped');
-      console.log('[RT] Project:', 'vnibbqgpdtzamztmhheu', '| Tables:', tables.length);
     } else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       _rtConnected=false;
       _setRTIndicator('polling');
-      console.warn('[RT] Connection lost — status:', status, err?.message||'');
       // bgPoll already running — just ensure it's active
       if(!_bgPollInterval) startBgPoll();
       // Try to reconnect — exponential backoff: 15s, 30s, 60s, 120s
@@ -5424,25 +5244,18 @@ function setupRealtime(){
   });
 }
 
-// ── Realtime keepalive — ping every 2 min to prevent idle disconnect ──
+// ── Realtime keepalive — ping every 4 min to prevent idle disconnect ──
 setInterval(()=>{
   if(_rtConnected && _realtimeChannel && _supaRT){
     try{
+      // Send a lightweight HEAD request to keep the connection warm
       fetch(SUPA_URL+'/rest/v1/login_users?select=id&limit=1', {
         method:'HEAD',
         headers:{'apikey':_dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4)}
       }).catch(()=>{});
     }catch(e){}
   }
-  // If RT disconnected for >2 min — force reconnect
-  if(!_rtConnected && _supaRT && !window._rtReconnecting){
-    window._rtReconnecting = true;
-    setTimeout(()=>{ window._rtReconnecting=false; }, 30000);
-    if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
-    window._realtimeShownToast=false;
-    setupRealtime();
-  }
-}, 2 * 60 * 1000);
+}, 4 * 60 * 1000);
 
 // ── ETA Monitor removed — all polls and DB writes eliminated ──
 
@@ -6107,7 +5920,8 @@ window.debugLogin = function(){
   console.log('SEC.lockedUntil:', SEC.lockedUntil, SEC.lockedUntil>Date.now()?'(LOCKED)':'(ok)');
   console.log('Supabase connected:', !!_supa);
   console.log('DB.loginUsers loaded:', DB.loginUsers.length);
-  // Admin debug logging removed for security
+  console.log('Admin username:', ADMIN_UNAME);
+  console.log('To verify admin pwd hash: hashPwd("Manju@2026").then(h=>console.log(h))');
 };
 // Auto-clear lockout if it seems stuck (paranoia guard — expired lockout that wasn't cleared)
 (function autoFixStuckLockout(){
@@ -6797,7 +6611,6 @@ async function _archiveStep2(){
 
       // Delete from Supabase using dateCol
       // Use _supa client (goes through Cloudflare proxy correctly)
-      if(!isAdmin()){ console.warn('Archive delete blocked - not admin'); continue; }
       const {error: delErr} = await _supa.from(t.table).delete().lte(t.dateCol, cutoffISO);
       const res = {ok: !delErr};
 
@@ -8184,7 +7997,7 @@ async function searchHistorical(pageId){
       release2:'applyReleaseFilter', oceantt:'applyOTTFilter', b2entries:'applyB2Filter'
     }[pageId];
     if(typeof window[applyFn]==='function') window[applyFn]();
-    else{ pgSetData(cfg.pgKey, mapped); if(typeof window[cfg.renderFn]==='function') window[cfg.renderFn](pgSlice(cfg.pgKey)); pgRender(cfg.pgKey, cfg.pgContainer, cfg.pgCb); }
+    else{ pgSetData(cfg.pgKey, mapped); eval(cfg.renderFn+'(pgSlice("'+cfg.pgKey+'"))'); pgRender(cfg.pgKey, cfg.pgContainer, cfg.pgCb); }
 
     showToast('✅ Found '+data.length+' historical records');
   }catch(e){
@@ -9299,183 +9112,7 @@ async function hdLoadUserView(c){
   }catch(e){ console.warn('[Huddle] user view failed',e); }
 }
 
-function _checkErrorAcknowledgment(){
-  if(!CU || CU.role==='Manager' || CU.role==='Client') return;
-  const _myNames=new Set([CU?.name,CU?.empName,CU?.username].filter(Boolean).map(n=>n.trim().toLowerCase()));
-  const myUnacked = (DB.errors||[]).filter(e=>
-    _myNames.has((e.userName||'').trim().toLowerCase()) && !e.acknowledgedAt
-  );
-  if(!myUnacked.length) return;
-
-  const overlay = document.createElement('div');
-  overlay.id = 'errAckOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
-
-  const modal = document.createElement('div');
-  modal.style.cssText = 'background:var(--surface);border-radius:16px;padding:24px;max-width:600px;width:100%;border:2px solid rgba(225,29,72,.5);box-shadow:0 24px 64px rgba(0,0,0,.5);max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;gap:0';
-
-  // Build each error card with its own comment textarea
-  const errorCards = myUnacked.map((e,i)=>`
-    <div id="errCard_${i}" style="border:1.5px solid rgba(225,29,72,.25);border-radius:10px;padding:14px;margin-bottom:12px;background:rgba(225,29,72,.03)">
-
-      <!-- Error header -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:13px;font-weight:800;color:var(--rose)">${e.errorType||'Error'}</span>
-            <span style="background:rgba(245,158,11,.15);color:#b45309;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">${e.mode||'—'}</span>
-            <span style="font-size:11px;color:var(--text3)">Txn: <b>${e.txn||'—'}</b></span>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:3px">
-            Client: ${e.clientName||e.client||'—'} &nbsp;·&nbsp; Date: ${e.date||String(e._created||'').slice(0,10)}
-            ${e.percentage?`&nbsp;·&nbsp; <span style="color:var(--rose);font-weight:700">${e.percentage}%</span>`:''} 
-          </div>
-        </div>
-        <span style="font-size:20px;flex-shrink:0">⚠️</span>
-      </div>
-
-      <!-- Client feedback if exists -->
-      ${e.clientComments?`
-      <div style="background:rgba(225,29,72,.06);border-left:3px solid var(--rose);border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:var(--rose);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Client Feedback</div>
-        <div style="font-size:12px;color:var(--text);line-height:1.5">${e.clientComments}</div>
-      </div>`:''}
-
-      <!-- Source of error if exists -->
-      ${e.sourceOfError?`
-      <div style="background:rgba(245,158,11,.06);border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:800;color:#b45309;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px">Source of Error</div>
-        <div style="font-size:12px;color:var(--text)">${e.sourceOfError}</div>
-      </div>`:''}
-
-      <!-- User comment — required -->
-      <div>
-        <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">
-          ✏️ Your Comments <span style="color:var(--rose)">*</span>
-          <span style="font-weight:400;color:var(--text3)">&nbsp;— explain what happened and how you will prevent recurrence</span>
-        </label>
-        <textarea
-          id="errComment_${i}"
-          data-errid="${e._dbid||e.id}"
-          oninput="_checkErrAckReady()"
-          placeholder="Describe what caused this error and the steps you will take to prevent it..."
-          style="width:100%;min-height:72px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-family:var(--font);background:var(--surface2);color:var(--text);resize:vertical;box-sizing:border-box;transition:border .2s"
-          onfocus="this.style.borderColor='var(--primary)'"
-          onblur="this.style.borderColor=this.value.trim().length>=10?'var(--emerald)':'var(--border)'"
-        >${e.userComments||''}</textarea>
-        <div id="errCommentErr_${i}" style="font-size:10px;color:var(--rose);margin-top:3px;display:none">Please enter at least 10 characters</div>
-      </div>
-    </div>`).join('');
-
-  modal.innerHTML = `
-    <!-- Header -->
-    <div style="text-align:center;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px">
-      <div style="font-size:32px;margin-bottom:6px">⚠️</div>
-      <div style="font-size:17px;font-weight:900;color:var(--rose)">Action Required — Error Review</div>
-      <div style="font-size:13px;color:var(--text2);margin-top:4px">
-        You have <strong style="color:var(--rose)">${myUnacked.length} unacknowledged error${myUnacked.length>1?'s':''}</strong>.
-        Review each error, add your comments, then acknowledge to start working.
-      </div>
-    </div>
-
-    <!-- Error cards -->
-    <div style="margin-bottom:4px">${errorCards}</div>
-
-    ${myUnacked.length>10?`<div style="text-align:center;font-size:12px;color:var(--text3);margin-bottom:12px;padding:8px;background:var(--surface2);border-radius:8px">
-      Showing first 10 of ${myUnacked.length} errors. Visit Error Report to see all.</div>`:''}
-
-    <!-- Acknowledgment checkbox -->
-    <div style="background:rgba(245,158,11,.07);border:1.5px solid rgba(245,158,11,.35);border-radius:10px;padding:14px;margin-bottom:14px">
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
-        <input type="checkbox" id="errAckCheck" oninput="_checkErrAckReady()" style="margin-top:2px;width:17px;height:17px;flex-shrink:0;cursor:pointer;accent-color:#059669">
-        <span style="font-size:12px;font-weight:600;color:var(--text);line-height:1.6">
-          I have read and understood all error records above, added my comments for each, and acknowledge these errors.
-          I commit to taking corrective action to prevent recurrence.
-        </span>
-      </label>
-    </div>
-
-    <!-- Validation message -->
-    <div id="errAckValidMsg" style="font-size:12px;color:var(--rose);text-align:center;margin-bottom:10px;display:none;padding:8px;background:rgba(225,29,72,.07);border-radius:8px">
-      ⚠️ Please fill in your comments for all errors (minimum 10 characters each) and tick the checkbox
-    </div>
-
-    <!-- Submit button -->
-    <button id="errAckBtn" onclick="_submitErrorAck()" disabled
-      style="width:100%;padding:14px;background:#ccc;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:not-allowed;transition:all .3s;letter-spacing:.3px">
-      ✅ I Acknowledge — Start Working
-    </button>
-    <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text3)">
-      Your comments and acknowledgment timestamp are recorded in the system
-    </div>`;
-
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  window._errAckIds = myUnacked.map(e=>e._dbid||e.id);
-  window._errAckCount = myUnacked.length;
-}
-
-function _checkErrAckReady(){
-  const btn = document.getElementById('errAckBtn');
-  const checked = document.getElementById('errAckCheck')?.checked;
-  const count = window._errAckCount || 0;
-  const limit = Math.min(count, 10);
-
-  // All comment fields must have ≥10 chars
-  let allFilled = true;
-  for(let i=0; i<limit; i++){
-    const ta = document.getElementById('errComment_'+i);
-    const errEl = document.getElementById('errCommentErr_'+i);
-    if(!ta) continue;
-    const ok = ta.value.trim().length >= 10;
-    if(!ok) allFilled = false;
-    if(errEl) errEl.style.display = (!ok && ta.value.trim().length>0) ? 'block' : 'none';
-  }
-
-  const ready = checked && allFilled;
-  const validMsg = document.getElementById('errAckValidMsg');
-  if(validMsg) validMsg.style.display = (!ready && (checked||!allFilled)) ? 'block' : 'none';
-
-  if(btn){
-    btn.disabled = !ready;
-    btn.style.cssText = `width:100%;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:.3px;transition:all .3s;cursor:${ready?'pointer':'not-allowed'};background:${ready?'linear-gradient(135deg,#059669,#10b981)':'#ccc'};color:#fff`;
-  }
-}
-
-async function _submitErrorAck(){
-  const btn=document.getElementById('errAckBtn');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
-  const nowStr2=new Date().toISOString();
-  const uname=CU.username||CU.name;
-  const count=Math.min(window._errAckCount||0,10);
-
-  if(_supa && window._errAckIds?.length){
-    try{
-      for(let i=0;i<count;i++){
-        const id=window._errAckIds[i];
-        const comment=document.getElementById('errComment_'+i)?.value.trim()||'';
-        await _supa.from('client_errors').update({
-          acknowledged_at: nowStr2,
-          acknowledged_by: uname,
-          user_comments:   comment,
-        }).eq('id', id);
-        // Update local DB record
-        const rec=(DB.errors||[]).find(e=>(e._dbid||e.id)===id);
-        if(rec){rec.acknowledgedAt=nowStr2;rec.acknowledgedBy=uname;rec.userComments=comment;}
-      }
-    }catch(err){console.warn('Ack save failed',err);}
-  }
-  const ov=document.getElementById('errAckOverlay');
-  if(ov){
-    ov.style.transition='opacity .3s';
-    ov.style.opacity='0';
-    setTimeout(()=>ov.remove(),300);
-  }
-  showToast('✅ '+count+' error'+(count>1?'s':'')+' acknowledged with your comments — thank you');
-}
-
 function bootApp(){
-  window._sessionStart = Date.now();
   // Set mobile task page based on user's role
   const _taskPageMap2 = {
     'LVS':'lvs','Classifier':'classifier','Compliance':'compliance',
@@ -9534,8 +9171,8 @@ function bootApp(){
   if(hopeUname) hopeUname.textContent=CU.name;
   buildNav();
   restoreSidebarState();
-  // ── Start Realtime WebSocket — start immediately, don't wait for data load ──
-  if(_supa) setTimeout(setupRealtime, 100); // small delay to let UI render first
+  // ── Start Realtime WebSocket — falls back to bgPoll automatically if WS unavailable ──
+  if(_supa) setupRealtime();
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
@@ -9560,8 +9197,6 @@ function bootApp(){
   }
   // Check for today's Daily Huddle after 800ms (non-blocking)
   setTimeout(_checkDailyHuddle, 800);
-  // Check for unacknowledged errors — mandatory popup for team members
-  setTimeout(_checkErrorAcknowledgment, 2000);
 }
 
 // ── Offline Login — uses localStorage cache only ──
@@ -9824,13 +9459,7 @@ async function doLogin(){
       const _dbTxt=_dbEl?.innerHTML||'';
       const dbUnreachable=_dbTxt.includes('unreachable')||_dbTxt.includes('timed out')||_dbTxt.includes('Cannot reach');
       if(dbUnreachable){
-        err.innerHTML='⚠️ Cannot reach database (Error 1016).<br><span style="font-size:11px;color:#6b7280">This is a temporary network issue. Please wait 10 seconds and try again, or click Retry Connection.</span>';
-        // Auto-retry once after 3 seconds for 1016 errors
-        if((_dbTxt.includes('1016')||_dbTxt.includes('unreachable'))&&!window._autoRetryLogin){
-          window._autoRetryLogin=true;
-          setTimeout(()=>{ window._autoRetryLogin=false; doLogin(); }, 3000);
-          err.innerHTML+='<br><span style="font-size:11px;color:#4d79ff">⏳ Auto-retrying in 3 seconds...</span>';
-        }
+        err.innerHTML='⚠️ Database unreachable on this network.<br><span style="font-size:11px;color:#6b7280">Try: mobile hotspot · Retry Connection button · different browser</span>';
       } else {
         err.innerHTML=`⚠️ Invalid username or password. <span style="font-size:11px">${remaining} attempt${remaining!==1?'s':''} remaining.</span>`;
       }
@@ -10422,7 +10051,7 @@ function renderLVS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayR=all.filter(r=>String(r._created||'').slice(0,10)===today);
+  const todayR=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
   const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
   const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
@@ -10436,7 +10065,7 @@ function renderLVS(c){
   </div>
   <div class="sg">
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="lvsTodayCard">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
     <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
@@ -10964,7 +10593,7 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
+  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -10974,7 +10603,7 @@ function renderCLS(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="clsTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
@@ -11815,8 +11444,7 @@ function renderDashboard(c){
   // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
   const _existingDash = c.querySelector('.dash-ed');
   if(_existingDash && !window._forceRefresh){
-    const _set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
-    // Update big KPI task cards
+    // Just update the KPI numbers in place — no DOM rebuild
     visibleDefs.forEach(d=>{
       const s=stats[d.key];
       const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
@@ -11827,21 +11455,6 @@ function renderDashboard(c){
         if(footEl) footEl.textContent='Today: '+s.todayCnt;
       }
     });
-    // Update secondary stat panels
-    _set('dashTodayAll', todayAll.toLocaleString());
-    _set('dashTotalAll', totalAll.toLocaleString());
-    _set('dashHoldAll',  holdAll);
-    _set('dashActiveToday', todayUserSet.size);
-    const _tatEl = document.getElementById('dashTatPct');
-    if(_tatEl){ _tatEl.textContent=allTatPct+'%'; _tatEl.style.color=tatColor; }
-    _set('dashTatDetail', allTatR+' reached · '+allTatN+' missed');
-    const _auditPctBadge = c.querySelector('.dash-ed-audit-pct-badge');
-    if(_auditPctBadge) _auditPctBadge.textContent=auditPct+'% audited';
-    const _auditNums = c.querySelectorAll('.dash-ed-audit-num-val');
-    if(_auditNums[0]) _auditNums[0].textContent=auditDone;
-    if(_auditNums[1]) _auditNums[1].textContent=auditPend;
-    if(_auditNums[2]) _auditNums[2].textContent=todayAuditCnt;
-    if(_auditNums[3]) _auditNums[3].textContent=avgScore+'%';
     return;
   }
 
@@ -11873,7 +11486,7 @@ function renderDashboard(c){
     <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
       <div class="dash-ed-kpi-ico">⏸️</div>
       <div class="dash-ed-kpi-lbl">On Hold</div>
-      <div class="dash-ed-kpi-num" id="dashHoldAll">${holdAll}</div>
+      <div class="dash-ed-kpi-num">${holdAll}</div>
       <div class="dash-ed-kpi-foot">Needs attention</div>
     </div>
     ${(!isTL||isMgr||CU.task==='Release')?`
@@ -11895,17 +11508,17 @@ function renderDashboard(c){
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📅 Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTodayAll">${todayAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${todayAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">entries across all tasks</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✅ Overall TAT</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}" id="dashTatPct">${allTatPct}%</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px" id="dashTatDetail">${allTatR} reached · ${allTatN} missed</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}">${allTatPct}%</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">${allTatR} reached · ${allTatN} missed</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">👥 Active Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed" id="dashActiveToday">${todayUserSet.size}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed">${todayUserSet.size}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">of ${DB.loginUsers.filter(u=>u.active!==false).length} total staff</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
@@ -11917,7 +11530,7 @@ function renderDashboard(c){
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📊 Total Records</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTotalAll">${totalAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${totalAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">all tasks combined</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
@@ -12198,19 +11811,6 @@ function renderPerfMonitor(c){
     </div>
   </div>
 
-  <!-- Submit → DB → RT → Screen timing -->
-  <div class="tw" style="margin-bottom:14px">
-    <div class="th2">
-      <div class="tt">⚡ Submit → Screen Round-Trip Timing</div>
-      <div class="tc" id="rtTimingCount">0 recorded</div>
-    </div>
-    <div id="rtTimingBody" style="padding:12px 16px">
-      <div style="color:var(--text3);font-size:12px;padding:10px 0;text-align:center">
-        No submissions yet — add or update any record to measure timing
-      </div>
-    </div>
-  </div>
-
   <!-- Render history -->
   <div class="tw">
     <div class="th2"><div class="tt">⏱ Page Render History (last 20)</div><div class="tc">${(p.renders||[]).length} recorded</div></div>
@@ -12224,40 +11824,6 @@ function renderPerfMonitor(c){
     💡 <strong>Target:</strong> Page renders under 100ms = fast. 100–400ms = acceptable. Over 400ms = needs investigation.
     Memory: Chrome shows heap usage. Under 200MB is healthy for this app size.
   </div>`;
-
-  // Populate round-trip timing
-  const _rt = window._submitTiming || {};
-  const _rtHistory = _rt.history || [];
-  const _rtCount = document.getElementById('rtTimingCount');
-  const _rtBody = document.getElementById('rtTimingBody');
-  if(_rtCount) _rtCount.textContent = _rtHistory.length + ' recorded';
-  if(_rtBody && _rtHistory.length > 0){
-    function _colorMs(ms){ return ms===null?'var(--text3)':ms<500?'#17a00e':ms<2000?'#f59e0b':'#e11d48'; }
-    function _fmtMs(ms){ return ms===null?'—':ms+'ms'; }
-    _rtBody.innerHTML = `
-    <div style="overflow-x:auto">
-    <table class="dt" style="font-size:12px">
-      <thead><tr>
-        <th>Time</th><th>Table</th>
-        <th style="text-align:right">Submit→DB</th>
-        <th style="text-align:right">DB→RT Event</th>
-        <th style="text-align:right;font-weight:800">Total</th>
-      </tr></thead>
-      <tbody>
-        ${_rtHistory.map(r=>`<tr>
-          <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${r.time}</td>
-          <td style="font-weight:600">${r.table}</td>
-          <td style="text-align:right;font-family:var(--mono);color:${_colorMs(r.dbMs)}">${_fmtMs(r.dbMs)}</td>
-          <td style="text-align:right;font-family:var(--mono);color:${_colorMs(r.rtMs)}">${_fmtMs(r.rtMs)}</td>
-          <td style="text-align:right;font-family:var(--mono);font-weight:800;color:${_colorMs(r.totalMs)}">${_fmtMs(r.totalMs)}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-    </div>
-    <div style="margin-top:8px;font-size:11px;color:var(--text3)">
-      Target: Submit→DB under 500ms · DB→RT under 1000ms · Total under 2000ms
-    </div>`;
-  }
 
   // Auto-refresh every 5 seconds while on this page
   clearTimeout(window._perfRefreshTimer);
@@ -12555,7 +12121,7 @@ async function deleteClient(id, name){
   if(!confirm('Delete client: '+name+' (ID: '+id+')? This cannot be undone.')) return;
   if(_supaAdmin){
     const {error} = await _supaAdmin.from('clients').delete().eq('id', id);
-    if(error){ showToast('❌ Delete failed — please try again or contact admin', true); console.error('Delete error:',error.message); return; }
+    if(error){ showToast('❌ Delete failed: '+error.message, true); return; }
   }
   DB.clients = DB.clients.filter(c => c.id !== id);
   showToast('🗑️ Client deleted');
@@ -12717,7 +12283,7 @@ function renderClientDashboard(c){
     const myRecs = clientNo
       ? t.db.filter(r=>String(r[t.client_field]||r.client||r.clientNo||'')===clientNo)
       : t.db;
-    const todayCnt = myRecs.filter(r=>String(r._created||'').slice(0,10)===todayStr).length;
+    const todayCnt = myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
     const tatR = myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const tatN = myRecs.filter(r=>(r.tat||'').toLowerCase().includes('not reached')).length;
     const tatPct = (tatR+tatN) ? Math.round(tatR/(tatR+tatN)*100) : 0;
@@ -12888,11 +12454,14 @@ function kpiShowTab(id){
   if(!c2) return;
 
   // ── Stat KPIs ──
+  // For release tab with no date/mode/team filter: use true DB count (DB.release2 is 90-day only)
+  const _useRlTrue = tab.id==='release' && !_kpiD1 && !_kpiD2 && !_kpiMode && !_kpiTeam
+    && window._rlTrueCount && window._rlTrueCount > data.length;
+  const total = _useRlTrue ? window._rlTrueCount : data.length;
   const tf=tab.tf; const sf=tab.sf;
   const done = sf ? data.filter(r=>tab.doneVals.some(v=>(r[sf]||'').toLowerCase().includes(v))).length : 0;
   const hold = sf ? data.filter(r=>(r[sf]||'')===tab.holdVal).length : 0;
-  // pending computed from loaded data (not inflated total) to avoid negative numbers
-  const pending = sf ? Math.max(0, data.length-done-hold) : 0;
+  const pending = sf ? total-done-hold : 0;
   const tatReached = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat reached').length : null;
   const tatMissed  = tf ? data.filter(r=>(r[tf]||'').toLowerCase()==='tat not reached').length : null;
   const tatTotal = (tatReached||0) + (tatMissed||0);
@@ -12900,22 +12469,13 @@ function kpiShowTab(id){
   const durs=data.filter(r=>r.duration&&r.duration!=='—'&&r.duration!=='00:00:00').map(r=>durToMins(r.duration));
   const avgDur=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
 
-  // ── Stat cards — use _trueCounts for ALL tasks, not just release ──
-  const _tcKeyForTab = {release:'release',pars:'pars_docs',ocean:'ocean_docs',
-    lvs:'lvs',cls:'cls',comp:'comp',partlot:'part_lot',oceantt:'ocean_tt',b2:'b2_entries'};
-  const _trueForTab = (()=>{
-    if(_kpiD1||_kpiD2||_kpiMode||_kpiTeam) return data.length; // filtered — use filtered count
-    const k=_tcKeyForTab[tab.id];
-    if(tab.id==='release' && window._rlTrueCount) return window._rlTrueCount;
-    return (k && window._trueCounts && window._trueCounts[k]) || data.length;
-  })();
-  const total = _trueForTab;
+  // ── Stat cards ──
   const tatColor=tatPct===null?tab.color:tatPct>=80?'#17a00e':tatPct>=50?'#f59e0b':'#e11d48';
   const _gcCard=(bg1,bg2)=>`background:linear-gradient(135deg,${bg1},${bg2})!important`;
   let statCards=`
     <div class="sc" style="${_gcCard(tab.color, tab.color+'bb')}">
       <div class="si">📦</div><div class="sl">Total</div>
-      <div class="sv">${total.toLocaleString()}</div>
+      <div class="sv">${total}</div>
     </div>`;
   if(sf){
     statCards+=`
@@ -13231,130 +12791,6 @@ function kpiShowTab(id){
   }
 
   // ── Render all sections ──
-  // ── Per-tab smooth trend line chart ──
-  const _trendPeriod = window._kpiTrendPeriod || 'daily';
-
-  // Parse any date value → YYYY-MM-DD bucket key
-  function _bucketKey(raw, period){
-    if(!raw) return null;
-    let y,mo,d;
-    if(raw instanceof Date && !isNaN(raw)){
-      y=raw.getFullYear(); mo=raw.getMonth(); d=raw.getDate();
-    } else {
-      const s=String(raw).trim();
-      const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if(iso){y=+iso[1];mo=+iso[2]-1;d=+iso[3];}
-      else{
-        const dmy=s.match(/^(\d{2})-(\d{2})-(\d{4})/);
-        if(dmy){d=+dmy[1];mo=+dmy[2]-1;y=+dmy[3];}
-        else return null;
-      }
-    }
-    if(!y||isNaN(y)||isNaN(mo)||isNaN(d)||y<2020||y>2030) return null;
-    const isoDate=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    if(period==='daily') return isoDate;
-    if(period==='weekly'){
-      const dt=new Date(y,mo,d); const dow=dt.getDay()||7;
-      const mon=new Date(y,mo,d-(dow-1));
-      return mon.getFullYear()+'-'+String(mon.getMonth()+1).padStart(2,'0')+'-'+String(mon.getDate()).padStart(2,'0');
-    }
-    if(period==='monthly') return isoDate.slice(0,7);
-    return null;
-  }
-
-  // Build bucket — try _submitRaw (Date obj), then _created string, then ef field
-  const tabBucket={};
-  data.forEach(r=>{
-    const raw = (r._submitRaw instanceof Date && !isNaN(r._submitRaw)) ? r._submitRaw
-              : r._created || String(r[tab.ef]||'');
-    const bk=_bucketKey(raw,_trendPeriod);
-    if(!bk) return;
-    tabBucket[bk]=(tabBucket[bk]||0)+1;
-  });
-
-  const allBuckets=Object.keys(tabBucket).sort();
-  const last=_trendPeriod==='daily'?30:_trendPeriod==='weekly'?16:12;
-  const visibleBuckets=allBuckets.slice(-last);
-  const bucketVals=visibleBuckets.map(b=>tabBucket[b]||0);
-
-  // Smooth SVG path using cubic bezier
-  function _smoothPath(xs, ys){
-    if(xs.length<2) return xs.length===1?`M${xs[0]},${ys[0]}`:'';
-    let d=`M${xs[0]},${ys[0]}`;
-    for(let i=1;i<xs.length;i++){
-      const cpx=(xs[i-1]+xs[i])/2;
-      d+=` C${cpx},${ys[i-1]} ${cpx},${ys[i]} ${xs[i]},${ys[i]}`;
-    }
-    return d;
-  }
-
-  const svgW=680, svgH=220, padL=46, padR=20, padT=20, padB=44;
-  const chartW=svgW-padL-padR, chartH=svgH-padT-padB;
-  const maxVal=Math.max(1,...bucketVals);
-  const xPos=visibleBuckets.map((_,i)=>padL+Math.round(i/(Math.max(visibleBuckets.length-1,1))*chartW));
-  const yPos=bucketVals.map(v=>padT+chartH-Math.round(v/maxVal*chartH));
-
-  const smoothD=_smoothPath(xPos,yPos);
-  // Fill area under line
-  const fillD=smoothD+(xPos.length?` L${xPos[xPos.length-1]},${padT+chartH} L${xPos[0]},${padT+chartH} Z`:'');
-
-  const step=Math.ceil(visibleBuckets.length/8);
-  const xLabels=visibleBuckets.map((b,i)=>{
-    if(i%step!==0&&i!==visibleBuckets.length-1) return '';
-    const lbl=_trendPeriod==='monthly'?b.slice(0,7):b.slice(5);
-    return `<text x="${xPos[i]}" y="${svgH-8}" text-anchor="middle" style="font-size:10px;fill:var(--text3)">${lbl}</text>`;
-  }).join('');
-
-  const yStep=Math.max(1,Math.ceil(maxVal/4));
-  const yLabels=[0,1,2,3,4].map(i=>{
-    const v=Math.round(i*yStep); if(v>maxVal) return '';
-    const y2=padT+chartH-Math.round(v/maxVal*chartH);
-    return `<text x="${padL-5}" y="${y2+4}" text-anchor="end" style="font-size:10px;fill:var(--text3)">${v}</text>
-    <line x1="${padL}" y1="${y2}" x2="${svgW-padR}" y2="${y2}" stroke="var(--border)" stroke-width="0.5" stroke-dasharray="3,3"/>`;
-  }).join('');
-
-  const dots2=visibleBuckets.map((b,i)=>
-    `<circle cx="${xPos[i]}" cy="${yPos[i]}" r="4" fill="${tab.color}" stroke="#fff" stroke-width="2">
-      <title>${b}: ${bucketVals[i]} records</title></circle>`).join('');
-
-  const trendSection=`
-  <div class="tw" style="margin-bottom:20px">
-    <div class="th2" style="align-items:center">
-      <div class="tt">📈 ${tab.label} — Volume Trend</div>
-      <div style="display:flex;gap:6px">
-        ${['daily','weekly','monthly'].map(p=>`
-          <button onclick="window._kpiTrendPeriod='${p}';kpiShowTab(_kpiActiveTab)"
-            style="padding:4px 12px;font-size:11px;font-weight:700;border-radius:20px;cursor:pointer;
-            border:1.5px solid ${_trendPeriod===p?tab.color:'var(--border)'};
-            background:${_trendPeriod===p?tab.color:'transparent'};
-            color:${_trendPeriod===p?'#fff':'var(--text2)'}">
-            ${p.charAt(0).toUpperCase()+p.slice(1)}
-          </button>`).join('')}
-      </div>
-    </div>
-    <div style="padding:12px 16px">
-      ${visibleBuckets.length===0?'<div style="text-align:center;padding:40px;color:var(--text3);font-size:13px">No data in selected period</div>':''}
-      ${visibleBuckets.length>0?`<div style="overflow-x:auto">
-        <svg viewBox="0 0 ${svgW} ${svgH}" style="width:100%;min-width:360px">
-          ${yLabels}
-          <defs>
-            <linearGradient id="trendFill_${tab.id}" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
-              <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.03"/>
-            </linearGradient>
-          </defs>
-          <path d="${fillD}" fill="url(#trendFill_${tab.id})"/>
-          <path d="${smoothD}" fill="none" stroke="${tab.color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-          ${dots2}
-          ${xLabels}
-          <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+chartH}" stroke="var(--border)" stroke-width="1"/>
-          <line x1="${padL}" y1="${padT+chartH}" x2="${svgW-padR}" y2="${padT+chartH}" stroke="var(--border)" stroke-width="1"/>
-        </svg>
-      </div>`:''}
-    </div>
-  </div>`;
-
-  // Trend goes at bottom; Client×Hour removed from all tabs (replaced by trend)
   c2.innerHTML=`
     <div class="sg" style="margin-bottom:20px">${statCards}</div>
     ${mailEtaSection}
@@ -13362,7 +12798,7 @@ function kpiShowTab(id){
     ${teamSection}
     ${clientSection}
     ${teamHourSection}
-    ${trendSection}
+    ${clientHourSection}
   `;
 }
 
@@ -13562,7 +12998,7 @@ function clearReportFilter(){
 // ══════════════════════════════════════════════════════════
 // EXPORT ALL TASKS — Multi-sheet Excel (SheetJS)
 // ══════════════════════════════════════════════════════════
-async function exportAllTasksXLSX(){
+function exportAllTasksXLSX(){
   // Dynamically load SheetJS if missing (CDN blocked or slow)
   if(typeof XLSX==='undefined'){
     showToast('⏳ Loading Excel library... please wait.',true);
@@ -13599,65 +13035,34 @@ async function exportAllTasksXLSX(){
     // ── 1. Summary ──
     const {d1:_xd1, d2:_xd2, label:_xlabel, display:_xdisplay} = _getReportDateRange();
     const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
-    const _hasDateFilter = !!(_xd1||_xd2);
-    showToast('⏳ Fetching all records for export... please wait');
-    // When no date filter: fetch ALL records from DB for accurate export
-    let lvsAll,clsAll,compAll,parsAll,oceanAll,partAll,relAll,ottAll,b2All,auditAll;
-    if(!_hasDateFilter){
-      [lvsAll,clsAll,compAll,parsAll,oceanAll,partAll,relAll,ottAll,b2All,auditAll] =
-        await Promise.all([
-          _fetchAllForExport('lvs',mapLVS),
-          _fetchAllForExport('cls',mapCLS),
-          _fetchAllForExport('comp',mapCOMP),
-          _fetchAllForExport('pars_docs',mapPARSDocs),
-          _fetchAllForExport('ocean_docs',mapOceanDocs),
-          _fetchAllForExport('part_lot',mapPartLot),
-          _fetchAllForExport('release',mapRelease),
-          _fetchAllForExport('ocean_tt',mapOceanTT),
-          _fetchAllForExport('b2_entries',mapB2),
-          _fetchAllForExport('audit',mapAudit),
-        ]);
-    }
     const taskDefs=[
-      {name:'LVS',         data:_hasDateFilter?_xf(DB.lvs):(lvsAll||DB.lvs)},
-      {name:'Classifier',  data:_hasDateFilter?_xf(DB.cls):(clsAll||DB.cls)},
-      {name:'Compliance',  data:_hasDateFilter?_xf(DB.comp):(compAll||DB.comp)},
-      {name:'PARS Docs',   data:_hasDateFilter?_xf(DB.parsDocs):(parsAll||DB.parsDocs)},
-      {name:'Ocean Docs',  data:_hasDateFilter?_xf(DB.oceanDocs):(oceanAll||DB.oceanDocs)},
-      {name:'Part Lot',    data:_hasDateFilter?_xf(DB.partLot):(partAll||DB.partLot)},
-      {name:'Release',     data:_hasDateFilter?_xf(DB.release2):(relAll||DB.release2)},
-      {name:'Ocean TT',    data:_hasDateFilter?_xf(DB.oceanTT):(ottAll||DB.oceanTT)},
-      {name:'B2 Entries',  data:_hasDateFilter?_xf(DB.b2entries):(b2All||DB.b2entries)},
-      {name:'Audit',       data:_hasDateFilter?_xf(DB.audit):(auditAll||DB.audit)},
+      {name:'LVS',         data:_xf(DB.lvs)},
+      {name:'Classifier',  data:_xf(DB.cls)},
+      {name:'Compliance',  data:_xf(DB.comp)},
+      {name:'PARS Docs',   data:_xf(DB.parsDocs)},
+      {name:'Ocean Docs',  data:_xf(DB.oceanDocs)},
+      {name:'Part Lot',    data:_xf(DB.partLot)},
+      {name:'Release',     data:_xf(DB.release2)},
+      {name:'Ocean TT',    data:_xf(DB.oceanTT)},
+      {name:'B2 Entries',  data:_xf(DB.b2entries)},
+      {name:'Audit',       data:_xf(DB.audit)},
     ];
-    // Use true DB counts when no date filter is active
-    const _tc = window._trueCounts||{};
-    const _tcMap = {
-      'LVS':_tc.lvs,'Classifier':_tc.cls,'Compliance':_tc.comp,
-      'PARS Docs':_tc.pars_docs,'Ocean Docs':_tc.ocean_docs,'Part Lot':_tc.part_lot,
-      'Release':window._rlTrueCount||_tc.release,'Ocean TT':_tc.ocean_tt,
-      'B2 Entries':_tc.b2_entries,'Audit':_tc.audit
-    };
     const summaryRows=[
       ['KPI Production Report - All Tasks'],
       ['Generated Date:', today],
-      ['Date Range:', _xdisplay||'All Records (Full DB)'],
+      ['Date Range:', _xdisplay||'All Records'],
       ['Generated By:', CU?.name||'Admin'],
       [],
       ['Task Name','Total Records','TAT Reached','TAT Not Reached','TAT Compliance %'],
       ...taskDefs.map(t=>{
-        // Use true DB count when no date filter, else use filtered data count
-        const total = _hasDateFilter ? (t.data||[]).length : (_tcMap[t.name]||(t.data||[]).length);
+        const total=(t.data||[]).length;
         const reached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
         const notReached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
         const tatTotal=reached+notReached;
         return[t.name, total, reached, notReached, tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
       }),
       [],
-      ['TOTAL', _hasDateFilter
-        ? taskDefs.reduce((s,t)=>s+(t.data||[]).length,0)
-        : taskDefs.reduce((s,t)=>s+(_tcMap[t.name]||(t.data||[]).length),0)
-      ],
+      ['TOTAL', taskDefs.reduce((s,t)=>s+(t.data||[]).length,0)],
     ];
     const wsSummary=XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols']=[{wch:22},{wch:16},{wch:14},{wch:18},{wch:18}];
@@ -13666,43 +13071,43 @@ async function exportAllTasksXLSX(){
     // ── 2. LVS ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'],
-      (taskDefs[0].data||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.lvs||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
     ), 'LVS');
 
     // ── 3. Classifier ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'],
-      (taskDefs[1].data||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.cls||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Classifier');
 
     // ── 4. Compliance ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','TAT','Status','Comments','Created Date'],
-      (taskDefs[2].data||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.comp||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Compliance');
 
     // ── 5. PARS Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'],
-      (taskDefs[3].data||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.parsDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'PARS Docs');
 
     // ── 6. Ocean Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'],
-      (taskDefs[4].data||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.oceanDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Ocean Docs');
 
     // ── 7. Part Lot ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'],
-      (taskDefs[5].data||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.partLot||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Part Lot');
 
     // ── 8. Release ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines','Doc Rcvd','Status','User','Start Time','Submitted Time','Duration','TAT','User Comments','TAT Analytics','Created Date','Audit By','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'],
-      (taskDefs[6].data||[]).map(r=>{
+      (DB.release2||[]).map(r=>{
         const ar=(DB.audit||[]).find(a=>a.txn===r.txn);
         const combined=r.comments||'';
         const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
@@ -13715,19 +13120,19 @@ async function exportAllTasksXLSX(){
     // ── 9. Ocean TT ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'],
-      (taskDefs[7].data||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
+      (DB.oceanTT||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
     ), 'Ocean TT');
 
     // ── 10. B2 Entries ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','Comments','Created Date'],
-      (taskDefs[8].data||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'B2 Entries');
 
     // ── 11. Audit ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','User','Status','TAT','Trans Created','Submitted','Auditor','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Duration','Created Date'],
-      (taskDefs[9].data||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
+      (DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
     ), 'Audit');
 
     // ── Trigger download ──
@@ -14242,7 +13647,6 @@ function editLoginUser(idx){
 }
 
 function deleteLoginUser(idx){
-  if(!isAdmin()){showToast('❌ Not permitted',true);return;}
   const u=DB.loginUsers[idx];if(!u)return;
   if(!confirm('Permanently delete user "'+u.name+'" ('+u.username+')? Cannot be undone.')) return;
   DB.loginUsers.splice(idx,1);
@@ -14914,45 +14318,31 @@ function renderMyStatus(c){
 
   const today=todayDateStringET();
   const now=new Date();
-  // Fast date helpers — avoid parseAppDate on every record
-  const _todayYMD = today; // already YYYY-MM-DD
-  const _nowY=now.getFullYear(), _nowM=now.getMonth();
-  const _isToday = r => String(r._created||'').slice(0,10)===_todayYMD;
-  const _isMonth = r => { const s=String(r._created||'').slice(0,7); const y=+s.slice(0,4),m=+s.slice(5,7)-1; return y===_nowY&&m===_nowM; };
   const myName=CU.name||CU.empName||CU.username||'';
   const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
-  const todayRecs=myRecs.filter(_isToday);
-  const monthRecs=myRecs.filter(_isMonth);
+  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
   const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
   const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
   const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
   const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
-  // Team data (TL only) — single pass
+  // Team data (TL only)
   const teamRecs=tm.db||[];
-  let teamTodayCnt=0,teamMonthCnt=0,teamHoldCnt=0,teamTatOkCnt=0,teamTatMissCnt=0;
-  teamRecs.forEach(r=>{
-    if(_isToday(r)) teamTodayCnt++;
-    if(_isMonth(r)) teamMonthCnt++;
-    const st=(r.status||'').toLowerCase(); if(st==='hold') teamHoldCnt++;
-    const tv=(r.tat||'').toLowerCase();
-    if(tv==='tat reached') teamTatOkCnt++;
-    else if(tv.includes('not reached')) teamTatMissCnt++;
-  });
-  const teamTodayRecs={length:teamTodayCnt};
-  const teamMonthRecs={length:teamMonthCnt};
-  const teamHold={length:teamHoldCnt};
-  const teamTatOk={length:teamTatOkCnt};
-  const teamTatMiss={length:teamTatMissCnt};
-  const teamTatPct=(teamTatOkCnt+teamTatMissCnt)?Math.round(teamTatOkCnt/(teamTatOkCnt+teamTatMissCnt)*100):0;
+  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
+  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
+  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
+  const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
 
   // Hourly heatmap (today)
   const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
   const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
-  todayRecs.forEach(r=>{const s=String(r._created||'');const h=s.slice(11,13)||String((parseAppDate(s)||new Date(0)).getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
+  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
   const nowH=String(now.getHours()).padStart(2,'0');
   const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
   const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
@@ -14981,15 +14371,15 @@ function renderMyStatus(c){
   // Team member stats (TL only)
   const memberStats=usersArr.map((u,ui)=>{
     const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
-    const uToday=uRecs.filter(r=>String(r._created||'').slice(0,10)===todayDateStringET()).length;
-    const uMonth=uRecs.filter(r=>{const s=String(r._created||'').slice(0,7);const y=+s.slice(0,4),m=+s.slice(5,7)-1;return y===now.getFullYear()&&m===now.getMonth();}).length;
+    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
+    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
     const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
     const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>String(r._created||'').slice(0,10)===todayDateStringET()).length),1);
+    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -15847,7 +15237,6 @@ function saveUserComment(idx){
 }
 
 function deleteErrorRecord(idx){
-  if(!canUploadErrors()&&!isAdmin()){showToast('❌ Not permitted',true);return;}
   if(!confirm('Delete this error record?'))return;
   DB.errors.splice(idx,1);
   DB.errors.forEach((e,i)=>e._idx=i);
@@ -16702,21 +16091,6 @@ function renderAudit(c){
     <div style="padding:14px;display:flex;gap:12px;flex-wrap:wrap">${modeCards||'<div style="color:var(--text3);padding:10px">No records</div>'}</div>
   </div>
 
-  <!-- Double Sign summary + Team × Date table -->
-  <div class="tw" style="margin-bottom:14px" id="dsTableWrap">
-    <div class="th2" style="align-items:center">
-      <div class="tt">✍️ Double Sign — Team × Date</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="ds_d1" class="fi2" style="font-size:11px" onchange="_renderDSTable()"/>
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="ds_d2" class="fi2" style="font-size:11px" onchange="_renderDSTable()"/>
-        <button class="btn-f" onclick="_renderDSTable()">Apply</button>
-        <button class="btn-cl" onclick="document.getElementById('ds_d1').value='';document.getElementById('ds_d2').value='';_renderDSTable()">Clear</button>
-      </div>
-    </div>
-    <div id="dsTableBody" style="overflow-x:auto;padding:4px 0"></div>
-  </div>
-
   <!-- Hourly auditor activity -->
   <div class="tw" style="margin-bottom:14px">
     <div class="th2"><div class="tt">⏰ Hourly Audit Activity — Auditor Wise (Today)</div></div>
@@ -16768,7 +16142,7 @@ function renderAudit(c){
   // Defer table — skeleton shows instantly, data fills after paint
   const _atc=document.getElementById('auditTabContent');
   if(_atc) _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
-  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); setTimeout(_renderDSTable,100); },0); });
+  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); },0); });
 }
 
 function switchAuditTab(tab){
@@ -16795,153 +16169,6 @@ const AUDIT_PAGE_SIZE=50;
 window._auditPageNum=window._auditPageNum||1;
 
 function pgGoAudit(p){ window._auditPageNum=p; renderAuditTab(window._auditActiveTab||'pending'); }
-
-function _renderDSTable(){
-  const cont = document.getElementById('dsTableBody');
-  if(!cont) return;
-  const d1 = document.getElementById('ds_d1')?.value;
-  const d2 = document.getElementById('ds_d2')?.value;
-  const auditMap = window._auditByTxn || new Map();
-  const allRecs = window._auditTeamRecords || [];
-
-  // Filter audit records by date
-  let audits = DB.audit.filter(a=>{
-    const teamTxns = new Set(allRecs.map(r=>String(r.txn)));
-    if(!teamTxns.has(String(a.txn))) return false;
-    if(!d1 && !d2) return true;
-    const dateStr = String(a._created||'').slice(0,10);
-    if(d1 && dateStr < d1) return false;
-    if(d2 && dateStr > d2) return false;
-    return true;
-  });
-
-  if(!audits.length){
-    cont.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">No audit records in selected range</div>';
-    return;
-  }
-
-  // Get unique dates and teams
-  const dates = [...new Set(audits.map(a=>String(a._created||'').slice(0,10)))].filter(Boolean).sort().slice(-30);
-  const teams = [...new Set(audits.map(a=>a.team||'—'))].sort();
-
-  // Build matrix: team → date → {yes,no,total}
-  const matrix = {};
-  teams.forEach(t=>{ matrix[t]={}; dates.forEach(d=>{ matrix[t][d]={yes:0,no:0,total:0}; }); });
-  audits.forEach(a=>{
-    const t=a.team||'—'; const d=String(a._created||'').slice(0,10);
-    if(!matrix[t]||!matrix[t][d]) return;
-    matrix[t][d].total++;
-    const ds=(a.doubleSign||'').toLowerCase();
-    if(ds==='yes') matrix[t][d].yes++;
-    else if(ds==='no') matrix[t][d].no++;
-  });
-
-  // Totals per team
-  const teamTotals = {};
-  teams.forEach(t=>{
-    const yes=dates.reduce((s,d)=>s+(matrix[t][d]?.yes||0),0);
-    const no=dates.reduce((s,d)=>s+(matrix[t][d]?.no||0),0);
-    const total=dates.reduce((s,d)=>s+(matrix[t][d]?.total||0),0);
-    teamTotals[t]={yes,no,total};
-  });
-
-  // Totals per date
-  const dateTotals = {};
-  dates.forEach(d=>{
-    const yes=teams.reduce((s,t)=>s+(matrix[t][d]?.yes||0),0);
-    const no=teams.reduce((s,t)=>s+(matrix[t][d]?.no||0),0);
-    const total=teams.reduce((s,t)=>s+(matrix[t][d]?.total||0),0);
-    dateTotals[d]={yes,no,total};
-  });
-
-  const grandYes=audits.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length;
-  const grandNo=audits.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length;
-
-  // Show date range shortened label
-  const dateLbl = d=>{
-    const parts=d.split('-'); return parts[2]+'/'+parts[1]; // DD/MM
-  };
-
-  const thCols = dates.map(d=>`
-    <th style="min-width:70px;text-align:center;font-size:11px;white-space:nowrap">
-      ${dateLbl(d)}
-    </th>`).join('');
-
-  const bodyRows = teams.map(t=>{
-    const cells = dates.map(d=>{
-      const cell=matrix[t][d];
-      if(!cell||cell.total===0) return '<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
-      const pct=Math.round(cell.yes/cell.total*100);
-      const bg=pct===100?'#dcfce7':pct>=80?'#fef9c3':pct>0?'#fff7ed':'#fff1f2';
-      const col=pct===100?'#166534':pct>=80?'#92400e':pct>0?'#b45309':'#991b1b';
-      return `<td style="text-align:center;background:${bg};padding:4px 2px">
-        <div style="font-size:12px;font-weight:800;color:${col}">${cell.yes}✅</div>
-        <div style="font-size:10px;color:#991b1b">${cell.no>0?cell.no+'❌':''}</div>
-      </td>`;
-    }).join('');
-    const tot=teamTotals[t];
-    const totPct=tot.total?Math.round(tot.yes/tot.total*100):0;
-    return `<tr>
-      <td style="font-weight:700;font-size:12px;padding:6px 12px;white-space:nowrap">${t}</td>
-      ${cells}
-      <td style="text-align:center;padding:6px 8px;border-left:2px solid var(--border)">
-        <div style="font-size:13px;font-weight:900;color:${totPct>=80?'#166534':'#991b1b'}">${tot.yes}</div>
-        <div style="font-size:10px;color:var(--text3)">${totPct}% signed</div>
-      </td>
-    </tr>`;
-  }).join('');
-
-  const totalRow = `<tr style="background:var(--surface2);border-top:2px solid var(--border);font-weight:800">
-    <td style="padding:6px 12px;font-size:12px">TOTAL</td>
-    ${dates.map(d=>{
-      const dt=dateTotals[d];
-      if(!dt||dt.total===0) return '<td style="text-align:center;font-size:11px;color:var(--text3)">—</td>';
-      const pct=Math.round(dt.yes/dt.total*100);
-      return `<td style="text-align:center;padding:4px 2px">
-        <div style="font-size:12px;font-weight:900;color:${pct>=80?'#166534':'#991b1b'}">${dt.yes}✅</div>
-        <div style="font-size:10px;color:#991b1b">${dt.no>0?dt.no+'❌':''}</div>
-      </td>`;
-    }).join('')}
-    <td style="text-align:center;border-left:2px solid var(--border)">
-      <div style="font-size:14px;font-weight:900;color:${grandYes/(grandYes+grandNo||1)>=0.8?'#166534':'#991b1b'}">${grandYes}</div>
-      <div style="font-size:10px;color:var(--text3)">${grandYes+grandNo?Math.round(grandYes/(grandYes+grandNo)*100):0}% total</div>
-    </td>
-  </tr>`;
-
-  cont.innerHTML=`
-    <!-- Summary bar -->
-    <div style="display:flex;gap:12px;padding:10px 14px;flex-wrap:wrap">
-      <div style="background:#dcfce7;border-radius:8px;padding:8px 16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#166534">${grandYes}</div>
-        <div style="font-size:11px;color:#166534;font-weight:700">✅ Double Signed</div>
-      </div>
-      <div style="background:#fee2e2;border-radius:8px;padding:8px 16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:#991b1b">${grandNo}</div>
-        <div style="font-size:11px;color:#991b1b;font-weight:700">❌ Not Signed</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:8px 16px;text-align:center">
-        <div style="font-size:22px;font-weight:900;color:var(--primary)">${grandYes+grandNo>0?Math.round(grandYes/(grandYes+grandNo)*100):0}%</div>
-        <div style="font-size:11px;color:var(--text3);font-weight:700">Compliance Rate</div>
-      </div>
-    </div>
-    <table class="dt" style="font-size:12px;min-width:600px">
-      <thead><tr>
-        <th style="min-width:100px">Team</th>
-        ${thCols}
-        <th style="text-align:center;min-width:80px;border-left:2px solid var(--border)">Total</th>
-      </tr></thead>
-      <tbody>${bodyRows}${totalRow}</tbody>
-    </table>`;
-
-  // Set default date range to last 7 days if empty
-  if(!d1&&!d2){
-    const today=new Date(); const week=new Date(today); week.setDate(today.getDate()-6);
-    const fmt=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    const d1El=document.getElementById('ds_d1'); const d2El=document.getElementById('ds_d2');
-    if(d1El&&!d1El.value) d1El.value=fmt(week);
-    if(d2El&&!d2El.value) d2El.value=fmt(today);
-  }
-}
 
 function renderAuditTab(tab){
   const q=(document.getElementById('audit_search')?.value||'').toLowerCase();
@@ -17260,7 +16487,7 @@ function renderCOMP(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
+  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -17270,7 +16497,7 @@ function renderCOMP(c){
   </div>
   <div class="sg">
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Total Records</div><div class="sv" id="compTotalCard">${window._trueCounts&&window._trueCounts['comp']?window._trueCounts['comp'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="compTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✔️</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div><div class="sf">Resolved</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔄</div><div class="sl">Pending</div><div class="sv">${all.filter(r=>r.status==='Pending').length}</div><div class="sf">In progress</div></div>
@@ -17625,7 +16852,7 @@ function renderPARSDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="parsTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18088,7 +17315,7 @@ function renderOceanDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="oceanDocsTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18367,7 +17594,7 @@ function renderPartLot(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="partLotTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18657,31 +17884,13 @@ function saveTLReleaseEdit(){
 
 
 function renderRelease2(c){
-  // Smart re-render: if already on this page, refresh table rows AND stat cards
+  // Smart re-render: if already on this page, only refresh the table rows
   if(c.querySelector('#rlTbody') && !window._forceRefresh){
     const pc=document.getElementById('pc');
     const _sy=pc?pc.scrollTop:0;
     const _d=_scopeByUser(DB.release2,'user');
     pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
     if(_restoreFilter('rl')) applyRLFilter();
-    // ── Also refresh stat cards so TODAY/TAT/Hold stay accurate ──
-    const _all2 = (!isSuperLead()&&CU.task&&CU.task!=='Manager')
-      ? DB.release2.filter(r=>r.user===CU.name) : DB.release2;
-    const _td2 = todayDateStringET();
-    let _tr=0,_tn=0,_th=0,_tc2=0;
-    _all2.forEach(r=>{
-      if(String(r._created||'').slice(0,10)===_td2) _tc2++;
-      const tv=(r.tat||'').toLowerCase();
-      if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'))) _tr++;
-      else if(tv.includes('not reached')||tv.includes('not-reached')) _tn++;
-      if((r.status||'')==='Hold') _th++;
-    });
-    const _setTxt=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-    _setTxt('rlTodayCard',_tc2);
-    _setTxt('rlTatReachedCard',_tr);
-    _setTxt('rlTatNotCard',_tn);
-    _setTxt('rlHoldCard',_th);
-    _setTxt('rlTotalCard',(isSuperLead()&&(window._rlTrueCount??0)>_all2.length)?(window._rlTrueCount):_all2.length);
     requestAnimationFrame(()=>{ if(pc) pc.scrollTop=_sy; });
     return;
   }
@@ -18698,9 +17907,9 @@ function renderRelease2(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${(()=>{const _td=todayDateStringET();let n=0;all.forEach(r=>{if(String(r._created||'').slice(0,10)===_td)n++;});return n;})()}</div></div>
-    ${(()=>{let tr=0,tn=0,th=0;all.forEach(r=>{const tv=(r.tat||'').toLowerCase();if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not')))tr++;else if(tv.includes('not reached')||tv.includes('not-reached'))tn++;if((r.status||'')==='Hold')th++;});return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${th}</div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{
       // Profile Code stats — visible to all Release roles
       const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
@@ -18921,7 +18130,7 @@ function renderTATIssue(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${all.length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
     ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
   </div>
   <div class="fb">
@@ -19068,7 +18277,7 @@ function renderDCIssue(c){
   }).length;
   const totalIssues = all.length;
   const todayStr = new Date().toDateString();
-  const todayCount = all.filter(r=>String(r._created||'').slice(0,10)===todayStr).length;
+  const todayCount = all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
   const withDelay = all.filter(r=>r._delayMins!==null);
   const avgDelay = withDelay.length ? Math.round(withDelay.reduce((s,r)=>s+r._delayMins,0)/withDelay.length) : 0;
   const over2h = all.filter(r=>r._delayMins!==null&&r._delayMins>120).length;
@@ -20605,7 +19814,7 @@ function renderQualityAnalytics(c){
   function empty(msg){ return '<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">'+msg+'</div>'; }
 
   // ── KPI cards (always visible) ──
-  const totalErrors=(window._trueCounts&&window._trueCounts['client_errors']&&!f.from&&!f.to)?window._trueCounts['client_errors']:errors.length;
+  const totalErrors=errors.length;
   const totalAudits=audits.length;
   const auditedWithErr=audits.filter(r=>r.errorType&&r.errorType!=='Good Job'&&r.errorType!=='None'&&r.errorType!=='—'&&r.errorType!=='').length;
   const repeatUsers=Object.values(errors.reduce(function(a,r){var u=r.userName||'?';a[u]=(a[u]||0)+1;return a;},{})).filter(function(n){return n>=2;}).length;
@@ -22470,9 +21679,8 @@ function renderOceanTT(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard">${window._trueCounts&&window._trueCounts['ocean_tt']?window._trueCounts['ocean_tt'].toLocaleString():all.length}</div></div>
-    ${(()=>{let _tc2=0,_tr=0,_tn=0;const _td=today;all.forEach(r=>{if(String(r._created||'').slice(0,10)===_td)_tc2++;const tv=(r.tat||'').toLowerCase();if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not')))_tr++;else if(tv.includes('not reached'))_tn++;});return`
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="ottTodayCard">${_tc2}</div></div>
-    <div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="ottTatReachedCard">${_tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="ottTatNotCard">${_tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv">${all.filter(r=>r.destination==='Toronto').length}</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Montreal</div><div class="sv">${all.filter(r=>r.destination==='Montreal').length}</div></div>
   </div>
@@ -22700,19 +21908,10 @@ function renderB2Entries(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="b2TodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{
-      let ready=0,hold=0,proj=0,indiv=0;
-      all.forEach(r=>{
-        if(r.status==='Ready to Submit') ready++;
-        else if(r.status==='Hold'||r.status==='Waiting for Info') hold++;
-        if(r.tasktype==='Project') proj++;
-        else if(r.tasktype==='Individual') indiv++;
-      });
-      return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>
-      <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${proj}</div></div>
-      <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv">${indiv}</div></div>`;
-    })()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${all.filter(r=>r.tasktype==='Project').length}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv">${all.filter(r=>r.tasktype==='Individual').length}</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
