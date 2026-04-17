@@ -5561,6 +5561,7 @@ const DB = {
   errors:[], // Client Error Feedback records
   instructions:[], // Instruction Followup records
   audit:[],  // Audit records (one per audited release txn)
+  auditNotifications:[], // Per-member notifications from internal audit
   idleLog:[], secLog:[],
 };
 // Aliases — some parts of code use alternate names
@@ -5582,6 +5583,48 @@ const AUDIT_ERROR_SCORES = {
   'VFD Code':97,'Wrong HS Code':97,'Multiple Errors':50,'Good Job':100
 };
 function getAuditScore(errorType){ return AUDIT_ERROR_SCORES[errorType]??null; }
+
+// ── Action plans per error type — shown to team member in audit notification ──
+const AUDIT_ACTION_PLANS = {
+  'IOR Error':          'Verify the IOR (Importer of Record) against the client profile before submission. Cross-check with the commercial invoice and ensure the correct entity is used.',
+  'Cargo Control Number':'Always copy the CCN directly from the manifest. Do not retype manually — use copy-paste to avoid transposition errors.',
+  'Sublocation':        'Check the CBSA sublocation code against the approved list for that port. Confirm with the manifest or arrival notice.',
+  'Manifest QTY':       'Compare manifest quantity with the commercial invoice line by line. Flag any discrepancy to TL before releasing.',
+  'Manifest QTY UOM':   'Ensure the unit of measure on the manifest (KG, LBS, PCS) matches exactly. Do not assume — verify source document.',
+  'Contain QTY':        'Container quantity must match the packing list. Count containers listed and verify against the B3/manifest.',
+  'Contain QTY UOM':    'Use the correct container UOM (CTN, PCS, PKG). Refer to the packing list for the correct unit.',
+  'Manifest Gross Weight':'Pull gross weight from the manifest only. Do not use invoice weight unless manifest is unavailable and TL approves.',
+  'Manifest Weight UOM':'Confirm weight UOM (KG vs LBS). Incorrect UOM causes duty calculation errors — always verify before saving.',
+  'Invoice No':         'Copy invoice number exactly as printed. Watch for leading zeros and special characters. Verify against the physical invoice.',
+  'Client Ref#':        'Client reference must match the client-provided PO or reference document. Check client profile notes for reference format.',
+  'PO#':                'PO number must match the purchase order exactly. If missing from invoice, check client profile or request from client.',
+  'Vendor/Consignee/Exporter':'Verify vendor, consignee, and exporter names match the invoice exactly. Check client profile for approved vendor list.',
+  'Place of Export':    'Confirm country and port of export from the invoice/B/L. Do not guess — use document values only.',
+  'Invoice Qty/UOM':    'Line-level invoice quantity and UOM must match the invoice document exactly. Check each line before saving.',
+  'Invoice Value':      'Invoice value must match total on commercial invoice. Include all charges as per client profile instructions.',
+  'Currency':           'Use the exact currency code from the invoice (CAD, USD, EUR). Currency conversion must follow client profile rules.',
+  'Shipment date':      'Shipment date must be taken from the B/L or AWB. Do not use invoice date unless instructed by TL.',
+  'Invoice Date':       'Invoice date must be copied exactly from the commercial invoice. Do not use shipment or arrival date.',
+  'Payment Terms':      'Payment terms (e.g. FOB, CIF, DDP) must match the invoice. Affects duty valuation — double-check.',
+  'Condition of Sale':  'Condition of sale must reflect the actual trade terms. Review client profile for default terms if not on invoice.',
+  'Invoice Adjustment': 'Any adjustments (royalties, assists, commissions) must be added per CBSA valuation rules. Review client SOP.',
+  'Invoice Lines Details':'Each invoice line needs correct description, quantity, UOM, unit value, and HS code. Review all lines before submission.',
+  'Country of Origin':  'Country of origin must match the certificate of origin or invoice declaration. Do not assume — verify every shipment.',
+  'Product Code / P Code':'P-Code must match the approved product code in the client profile. Contact TL if P-Code is not in the profile.',
+  'Unqualified Code / U Code':'U-Code must be applied only when the product qualifies. Check CBSA guidelines and client SOP before using.',
+  'Generic Code / M Code':'M-Code usage must follow client profile. Do not use a generic code without TL confirmation.',
+  'Line PGA':           'PGA (Partner Government Agency) flags must be applied for regulated goods. Check commodity against PGA list.',
+  'TT CODE':            'TT Code must match the tariff treatment applicable to the shipment. Verify origin and trade agreement eligibility.',
+  'Sales Qty':          'Sales quantity at line level must match invoice exactly. Do not combine lines — enter as separate line items.',
+  'Sales UOM':          'Sales UOM must match invoice UOM exactly. Do not convert without TL approval.',
+  'Line Value':         'Line value = unit price × quantity. Recalculate manually to verify before saving.',
+  'SP1 Qty':            'SP1 quantity must match the specific product quantity on invoice. Double-check when multiple UOMs appear.',
+  'VFD Code':           'VFD (Value for Duty) code must be applied correctly per client SOP. Review before submission.',
+  'Wrong HS Code':      'Verify HS code against the product description, country of origin, and client profile. Use CBSA Customs Tariff tool for confirmation. When unsure, escalate to TL — do not guess.',
+  'Multiple Errors':    'Multiple errors detected in this entry. Review each field systematically: IOR → CCN → Invoice → HS Code → UOM. Use the client SOP checklist before submission.',
+  'Good Job':           'No errors found. Maintain this standard — continue following the SOP checklist for every transaction.'
+};
+function getActionPlan(errorType){ return AUDIT_ACTION_PLANS[errorType]||'Review the transaction against the client SOP and ensure all fields match the source documents. Escalate to your Team Lead if unsure.'; }
 
 
 let CU=null, selectedTask='', lvsStart=null, clsStart=null, compStart=null, compStarted=false,
@@ -9392,6 +9435,11 @@ function bootApp(){
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
+  // Load audit notifications for this user (after 1.5s to not block main load)
+  setTimeout(()=>{
+    if(isSuperLead()) loadAllAuditNotifications();
+    else loadAuditNotifications();
+  }, 1500);
   _updateLastRefreshed(); // mark initial load time
   // Normalize task casing from DB (handles 'release' vs 'Release' etc.)
   const TASK_PAGE_MAP = {
@@ -9913,6 +9961,7 @@ function buildNav(){
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
       {id:'audit',l:'🔍 Audit',g:'tasks'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -9934,6 +9983,7 @@ function buildNav(){
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
       {id:'audit',l:'🔍 Audit',g:'tasks'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -9968,6 +10018,7 @@ function buildNav(){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       ...(tlTaskNavMap[_tlNavTask]||[]),
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -10015,6 +10066,7 @@ function buildNav(){
     const _navTask = taskNavMap[CU.task] ? CU.task : (_NAV_NORM[(CU.task||'').toLowerCase().trim()] || CU.task);
     items=[
       ...(taskNavMap[_navTask]||[{id:'coming',l:'🚧 My Task',g:'tasks'}]),
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
       {id:'mystatus',l:'📊 My Status',g:'reports'},
       errItem,
     ];
@@ -10039,9 +10091,10 @@ function buildNav(){
       const icon = parts ? parts[1] : i.l;
       const label = parts ? parts[2] : '';
       const tipText = label || i.l;
+      const _auditNotifBadgeHtml = i.id==='auditnotif' ? `<span id="auditNotifBadge" style="display:none;background:#e11d48;color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:800;margin-left:4px;min-width:18px;text-align:center;line-height:16px;"></span>` : '';
       html += `<button class="nb" id="nb_${i.id}" onclick="closeMobSidebar();showPage('${i.id}')" data-tip="${tipText}">
         <span style="font-size:16px;flex-shrink:0;">${icon}</span>
-        <span class="nb-label">${label}</span>
+        <span class="nb-label">${label}${_auditNotifBadgeHtml}</span>
       </button>`;
     });
   });
@@ -10229,6 +10282,11 @@ function showPage(id){
   else if(id==='errorreport') renderErrorReport(c);
   else if(id==='perfmon') renderPerfMonitor(c);
   else if(id==='audit'){ renderAudit(c); _perfDone(); }
+  else if(id==='auditnotif'){
+    if(isSuperLead()) loadAllAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
+    else loadAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
+    _perfDone();
+  }
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
   else if(id==='tatissue') renderTATIssue(c);
@@ -10505,13 +10563,17 @@ function applyLVSFilter(){
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  let data=_scopeByUser(DB.lvs,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>r.assignedTo===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(s) data=data.filter(r=>r.status===s);
-  if(q) data=data.filter(r=>String(r.txn).toLowerCase().includes(q)||String(r.client).toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
+  // When searching by txn: bypass date/user/team/status filters — always search full scope
+  const _isTxnSearch = q && /^[0-9]/.test(q);
+  let data = _isTxnSearch ? _scopeByUser(DB.lvs,'assignedTo') : _scopeByUser(DB.lvs,'assignedTo');
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>r.assignedTo===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(s) data=data.filter(r=>r.status===s);
+  }
+  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('lvs', data);
   renderLVSRows(pgSlice('lvs'));
   pgRender('lvs', 'pg_lvs', 'pgGoLVS');
@@ -10916,13 +10978,16 @@ function applyCLSFilter(){
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.cls,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>r.assignedTo===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(s) data=data.filter(r=>r.status===s);
-  if(q) data=data.filter(r=>String(r.txn).toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>r.assignedTo===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(s) data=data.filter(r=>r.status===s);
+  }
+  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('cls', data);
   renderCLSRows(pgSlice('cls'));
   pgRender('cls', 'pg_cls', 'pgGoCLS');
@@ -16577,11 +16642,17 @@ function renderAuditTab(tab){
   const all=window._auditTeamRecords||[];
   let data=tab==='pending'?all.filter(r=>!auditedTxns.has(r.txn)):
            tab==='done'?all.filter(r=>auditedTxns.has(r.txn)):all;
-  if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
-  if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
-  if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
-  if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
-  if(q){ window._auditPageNum=1; data=data.filter(r=>(r.txn+'').includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
+  const _isTxnQ = q && /^[0-9]/.test(q);
+  if(!_isTxnQ){
+    if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
+    if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
+    if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
+    if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
+  } else {
+    if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
+    if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
+  }
+  if(q){ window._auditPageNum=1; data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
   const cont=document.getElementById('auditTabContent');
   if(!cont) return;
   if(!data.length){
@@ -16834,16 +16905,38 @@ function submitAudit(){
   };
   // Build a local fallback record in case insert returns null
   const _localAuditRec={txn:r.txn,auditor,errorType,score,doubleSign,comments:_auditRow.comments,startTime:_auditRow.start_time,endTime:_auditRow.end_time,duration:_auditRow.duration,mode:r.mode,clientname:r.clientname,client:r.client,team:r.team,user:r.user,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.status,rlTat:r.tat,_created:nowISOET()};
+  // ── Push audit notification to target user (fire-and-forget) ──
+  function _pushAuditNotification(auditId){
+    if(errorType==='Good Job') return;
+    const targetUser = r.user||null;
+    if(!targetUser) return;
+    const _notifRow={
+      audit_id:auditId||null, txn:r.txn, target_user:targetUser, auditor:auditor,
+      error_type:errorType, score:score, comments:_auditRow.comments||'',
+      action_plan:getActionPlan(errorType), client:r.client||null,
+      client_name:r.clientname||null, team:r.team||null, mode:r.mode||null,
+      acknowledged:false, acknowledged_by:null, acknowledged_at:null, created_at:nowISOET()
+    };
+    DB.auditNotifications=DB.auditNotifications||[];
+    DB.auditNotifications.push(Object.assign({id:null,_created:nowISOET()},_notifRow));
+    if(_supa){
+      _supa.from('audit_notifications').insert(_notifRow).select().single()
+        .then(({data,error})=>{ if(error) console.warn('[KPI] audit_notif insert:',error.message); })
+        .catch(e=>console.warn('[KPI] audit_notif threw:',e.message));
+    }
+    _refreshAuditNotifBadge();
+  }
+
   if(_supa){
     dbInsert('audit',_auditRow).then(r2=>{
       if(r2 && r2.id){
-        // Successful DB insert — use the returned row so _dbid is correct
         const mapped=mapAudit(r2);
         DB.audit.push(mapped);
+        _pushAuditNotification(r2.id);
       } else {
-        // dbInsert returned null (error already shown by dbInsert) — keep local copy
         DB.audit.push(_localAuditRec);
-        console.warn('[KPI] Audit insert returned null — using local record');
+        _pushAuditNotification(null);
+        console.warn('[KPI] Audit insert returned null');
       }
       _finishAudit();
     }).catch(err=>{
@@ -16853,11 +16946,242 @@ function submitAudit(){
       _finishAudit();
     });
   }
-  else{ DB.audit.push(_localAuditRec); _finishAudit(); }
+  else{ DB.audit.push(_localAuditRec); _pushAuditNotification(null); _finishAudit(); }
 }
 
 
 // Quality score helper for status page
+
+// ── Audit Notification helpers ──────────────────────────────────────────────
+function _refreshAuditNotifBadge(){
+  const unread=(DB.auditNotifications||[]).filter(n=>!n.acknowledged).length;
+  const badge=document.getElementById('auditNotifBadge');
+  if(badge){ badge.textContent=unread; badge.style.display=unread?'inline-flex':'none'; }
+}
+
+async function loadAuditNotifications(){
+  if(!_supa) return;
+  const targetUser = CU?.name;
+  if(!targetUser) return;
+  try{
+    const {data,error}=await _supa.from('audit_notifications')
+      .select('*').eq('target_user',targetUser).order('created_at',{ascending:false}).limit(200);
+    if(!error && data){
+      DB.auditNotifications=data;
+      _refreshAuditNotifBadge();
+    }
+  }catch(e){ console.warn('[KPI] loadAuditNotifications:',e.message); }
+}
+
+async function loadAllAuditNotifications(){
+  // For TL/Supervisor/Manager — load all notifications (to see ack progress)
+  if(!_supa) return;
+  try{
+    const {data,error}=await _supa.from('audit_notifications')
+      .select('*').order('created_at',{ascending:false}).limit(500);
+    if(!error && data){
+      DB.auditNotifications=data;
+      _refreshAuditNotifBadge();
+    }
+  }catch(e){ console.warn('[KPI] loadAllAuditNotifications:',e.message); }
+}
+
+async function acknowledgeAuditNotification(notifId, btnEl){
+  if(btnEl){ btnEl.disabled=true; btnEl.textContent='Saving...'; }
+  const notif = (DB.auditNotifications||[]).find(n=>n.id===notifId || (!notifId && n._localId===notifId));
+  if(notif){
+    notif.acknowledged=true;
+    notif.acknowledged_by=CU?.name||'';
+    notif.acknowledged_at=nowISOET();
+  }
+  if(_supa && notifId){
+    try{
+      await _supa.from('audit_notifications').update({
+        acknowledged:true, acknowledged_by:CU?.name||'', acknowledged_at:nowISOET()
+      }).eq('id',notifId);
+    }catch(e){ console.warn('[KPI] ack notif failed:',e.message); }
+  }
+  _refreshAuditNotifBadge();
+  // Notify TL/Supervisor of acknowledgement progress via badge refresh
+  // Re-render the notifications panel if visible
+  const pc=document.getElementById('pc');
+  if(pc && window._currentAuditNotifView){
+    renderAuditNotificationsPanel(pc);
+  }
+  showToast('✅ Error acknowledged');
+}
+
+// ── Export Internal Audit CSV ────────────────────────────────────────────────
+function exportInternalAuditCSV(){
+  const data = DB.audit||[];
+  if(!data.length){ showToast('⚠️ No audit records to export',true); return; }
+  const headers=['Txn','Client','Client Name','Team','Mode','User Name','Audit By','Error Type','Score %','Double Sign','Audit Date','Comments'];
+  const rows=data.map(a=>[
+    a.txn||'', a.client||'', a.clientname||'', a.team||'', a.mode||'',
+    a.user||'', a.auditor||'', a.errorType||'', a.score||'',
+    a.doubleSign||'', (a._created||a.endTime||'').slice(0,10), a.comments||''
+  ]);
+  const byErr={};
+  data.forEach(a=>{ const e=a.errorType||'Unknown'; byErr[e]=(byErr[e]||0)+1; });
+  const topErr=Object.entries(byErr).sort((x,y)=>y[1]-x[1]).slice(0,5).map(([k,v])=>[k,v]);
+  const scores=data.map(a=>parseFloat(a.score)||0).filter(s=>s>0);
+  const avgScore=scores.length?Math.round(scores.reduce((s,n)=>s+n,0)/scores.length):0;
+  exportCSV(rows,headers,'Internal_Audit_Report_'+todayStrET()+'.csv',{
+    taskName:'Internal Audit', dateLabel:'All Records', total:data.length,
+    extras:[
+      ['Avg Quality Score %', avgScore+'%'],
+      ['Good Job Count', data.filter(a=>a.errorType==='Good Job').length],
+      ['Error Records', data.filter(a=>a.errorType!=='Good Job').length],
+      ...topErr.map(([k,v])=>['Error: '+k, v])
+    ]
+  });
+  showToast('✅ Exported '+data.length+' audit records');
+}
+
+// ── Render Audit Notifications Panel (Team Member view + TL summary) ─────────
+function renderAuditNotificationsPanel(c){
+  window._currentAuditNotifView=true;
+  const isLead=isSuperLead();
+  const notifs=(DB.auditNotifications||[]);
+  const myNotifs=isLead ? notifs : notifs.filter(n=>n.target_user===CU.name);
+  const unread=myNotifs.filter(n=>!n.acknowledged);
+  const read=myNotifs.filter(n=>n.acknowledged);
+
+  // TL summary bar
+  let summaryBar='';
+  if(isLead){
+    const todayYMD=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+    const todayNotifs=notifs.filter(n=>(n.created_at||'').slice(0,10)===todayYMD);
+    const todayAck=todayNotifs.filter(n=>n.acknowledged).length;
+    const todayTotal=todayNotifs.length;
+    summaryBar=`<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+      <div style="font-size:13px;font-weight:800;color:#166534">Today's Audit Acknowledgement Summary</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <span style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#166534">Total Errors Today: <b>${todayTotal}</b></span>
+        <span style="background:#fff;border:1px solid #86efac;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#059669">Acknowledged: <b>${todayAck}</b></span>
+        <span style="background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#991b1b">Pending: <b>${todayTotal-todayAck}</b></span>
+        ${todayTotal?`<span style="background:#dbeafe;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#1e40af">Rate: <b>${Math.round(todayAck/todayTotal*100)}%</b></span>`:''}
+      </div>
+    </div>`;
+  }
+
+  // Build notification cards
+  function buildCards(arr, showAckBtn){
+    if(!arr.length) return '<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No records found.</div>';
+    return arr.map(n=>{
+      const isGood=(n.error_type||'')==='Good Job';
+      const bdColor=isGood?'#86efac':n.acknowledged?'var(--border)':'#fca5a5';
+      const scoreColor=parseFloat(n.score||0)>=95?'#166534':parseFloat(n.score||0)>=85?'#854d0e':'#991b1b';
+      const scoreBg=parseFloat(n.score||0)>=95?'#dcfce7':parseFloat(n.score||0)>=85?'#fef9c3':'#fee2e2';
+      const plan=n.action_plan||getActionPlan(n.error_type||'');
+      return `<div style="background:var(--surface);border:1.5px solid ${bdColor};border-radius:12px;margin-bottom:10px;overflow:hidden;${n.acknowledged?'opacity:0.75':''}">
+        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:${isGood?'#dcfce7':'#fee2e2'};color:${isGood?'#166534':'#991b1b'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">${n.error_type||'—'}</span>
+            ${n.target_user&&isLead?`<span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">${n.target_user}</span>`:''}
+            <span style="background:var(--surface2);color:var(--text2);border-radius:8px;padding:2px 8px;font-size:11px">${n.mode||'—'} · ${n.team||'—'}</span>
+            <span style="background:${scoreBg};color:${scoreColor};border-radius:8px;padding:2px 8px;font-size:12px;font-weight:800;font-family:var(--mono)">${n.score||'—'}%</span>
+            ${n.acknowledged?'<span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">Acknowledged</span>':''}
+          </div>
+          <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${(n.created_at||'').slice(0,10)}</span>
+        </div>
+        <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Txn</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">${n.txn||'—'}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Client</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.client||'—'} ${n.client_name?'— '+n.client_name:''}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Audited By</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.auditor||'—'}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Team</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.team||'—'}</div></div>
+        </div>
+        ${n.comments?`<div style="padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"><b>Audit note:</b> ${n.comments}</div>`:''}
+        ${!isGood?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
+          <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Action Plan — How to avoid this error</div>
+          <div style="font-size:12px;color:#78350f;line-height:1.7">${plan}</div>
+        </div>`:''}
+        ${showAckBtn&&!n.acknowledged&&!isGood?`<div style="padding:10px 16px;background:var(--surface2)">
+          <button style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer" onclick="acknowledgeAuditNotification(${JSON.stringify(n.id)},this)">Acknowledge Error</button>
+          <span style="font-size:11px;color:var(--text3);margin-left:10px">By acknowledging you confirm you have read and understood the error and action plan.</span>
+        </div>`:''}
+        ${n.acknowledged&&n.acknowledged_by?`<div style="padding:8px 16px;background:#f0fdf4"><span style="font-size:11px;color:#166534;font-weight:700">Acknowledged by ${n.acknowledged_by} on ${(n.acknowledged_at||'').slice(0,10)}</span></div>`:''}
+      </div>`;
+    }).join('');
+  }
+
+  const showMemberView = !isLead;
+  const html=`
+    <div class="ph">
+      <div><div class="pt">Audit Error Notifications</div>
+      <div class="ps">${isLead?'All team members':'Your errors from internal audit'} · ${myNotifs.length} total</div></div>
+      <button class="btn-add" style="background:var(--emerald)" onclick="exportInternalAuditCSV()">Export Audit CSV</button>
+    </div>
+    ${summaryBar}
+    <div class="tw">
+      <div style="padding:10px 14px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px">
+          <button class="stat-tab active" id="anfTab_unread" onclick="switchAuditNotifTab('unread')" style="font-size:11px">Unread (${unread.length})</button>
+          <button class="stat-tab" id="anfTab_read" onclick="switchAuditNotifTab('read')" style="font-size:11px">Acknowledged (${read.length})</button>
+          <button class="stat-tab" id="anfTab_all" onclick="switchAuditNotifTab('all')" style="font-size:11px">All (${myNotifs.length})</button>
+          ${unread.length&&showMemberView?`<span style="background:#fee2e2;color:#991b1b;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:800">${unread.length} pending acknowledgement</span>`:''}
+        </div>
+      </div>
+      <div id="auditNotifCards" style="padding:14px">
+        ${buildCards(unread, showMemberView)}
+      </div>
+    </div>`;
+
+  c.innerHTML=html;
+  window._auditNotifData={myNotifs,unread,read,showMemberView};
+}
+
+function switchAuditNotifTab(tab){
+  const d=window._auditNotifData||{};
+  const map={unread:d.unread||[],read:d.read||[],all:d.myNotifs||[]};
+  const arr=map[tab]||[];
+  ['unread','read','all'].forEach(t=>{
+    const b=document.getElementById('anfTab_'+t);
+    if(b) b.classList.toggle('active',t===tab);
+  });
+  const cards=document.getElementById('auditNotifCards');
+  if(cards){
+    const showBtn=tab!=='read'&&d.showMemberView;
+    const isLead=isSuperLead();
+    const isGood=n=>(n.error_type||'')==='Good Job';
+    const scoreColor=s=>parseFloat(s||0)>=95?'#166534':parseFloat(s||0)>=85?'#854d0e':'#991b1b';
+    const scoreBg=s=>parseFloat(s||0)>=95?'#dcfce7':parseFloat(s||0)>=85?'#fef9c3':'#fee2e2';
+    if(!arr.length){ cards.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No records.</div>'; return; }
+    cards.innerHTML=arr.map(n=>{
+      const plan=n.action_plan||getActionPlan(n.error_type||'');
+      const bdColor=isGood(n)?'#86efac':n.acknowledged?'var(--border)':'#fca5a5';
+      return `<div style="background:var(--surface);border:1.5px solid ${bdColor};border-radius:12px;margin-bottom:10px;overflow:hidden;${n.acknowledged?'opacity:0.75':''}">
+        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:${isGood(n)?'#dcfce7':'#fee2e2'};color:${isGood(n)?'#166534':'#991b1b'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">${n.error_type||'—'}</span>
+            ${n.target_user&&isLead?`<span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">${n.target_user}</span>`:''}
+            <span style="background:var(--surface2);color:var(--text2);border-radius:8px;padding:2px 8px;font-size:11px">${n.mode||'—'} · ${n.team||'—'}</span>
+            <span style="background:${scoreBg(n.score)};color:${scoreColor(n.score)};border-radius:8px;padding:2px 8px;font-size:12px;font-weight:800;font-family:var(--mono)">${n.score||'—'}%</span>
+            ${n.acknowledged?'<span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">Acknowledged</span>':''}
+          </div>
+          <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${(n.created_at||'').slice(0,10)}</span>
+        </div>
+        <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Txn</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">${n.txn||'—'}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Client</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.client||'—'} ${n.client_name?'— '+n.client_name:''}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Audited By</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.auditor||'—'}</div></div>
+          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Team</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.team||'—'}</div></div>
+        </div>
+        ${n.comments?`<div style="padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"><b>Audit note:</b> ${n.comments}</div>`:''}
+        ${!isGood(n)?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
+          <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Action Plan</div>
+          <div style="font-size:12px;color:#78350f;line-height:1.7">${plan}</div>
+        </div>`:''}
+        ${showBtn&&!n.acknowledged&&!isGood(n)?`<div style="padding:10px 16px;background:var(--surface2)">
+          <button style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer" onclick="acknowledgeAuditNotification(${JSON.stringify(n.id)},this)">Acknowledge Error</button>
+          <span style="font-size:11px;color:var(--text3);margin-left:10px">Confirm you have read and understood the error and action plan.</span>
+        </div>`:''}
+        ${n.acknowledged&&n.acknowledged_by?`<div style="padding:8px 16px;background:#f0fdf4"><span style="font-size:11px;color:#166534;font-weight:700">Acknowledged by ${n.acknowledged_by} on ${(n.acknowledged_at||'').slice(0,10)}</span></div>`:''}
+      </div>`;
+    }).join('');
+  }
+}
+
 function getQualityForUser(username){
   const auditedByUser=DB.audit.filter(a=>a.user===username);
   if(!auditedByUser.length)return null;
@@ -17027,13 +17351,16 @@ function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.comp,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>r.assignedTo===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(rt) data=data.filter(r=>r.reqType===rt);
-  if(s) data=data.filter(r=>r.status===s);
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>r.assignedTo===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(rt) data=data.filter(r=>r.reqType===rt);
+    if(s) data=data.filter(r=>r.status===s);
+  }
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.clientNo||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('comp', data);
   renderCOMPRows(pgSlice('comp'));
@@ -17339,12 +17666,15 @@ function applyPDFilter(){
   const tm=document.getElementById('pd_fteam')?.value;
   const mo=document.getElementById('pd_fmode')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.parsDocs,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  }
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pd', data);
   renderPDRows(pgSlice('pd'));
@@ -17808,12 +18138,15 @@ function applyODFilter(){
   const tm=document.getElementById('od_fteam')?.value;
   const mo=document.getElementById('od_fmode')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.oceanDocs,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  }
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('od', data);
   renderODRows(pgSlice('od'));
@@ -18080,10 +18413,13 @@ function applyPLFilter(){
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.partLot,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+  }
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.parsno||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pl', data);
   renderPLRows(pgSlice('pl'));
@@ -18524,13 +18860,16 @@ function applyRLFilter(){
   const mo=document.getElementById('rl_fmode')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.release2,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(mo) data=data.filter(r=>(r.mode||'')===mo);
-  if(s) data=data.filter(r=>r.status===s);
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(mo) data=data.filter(r=>(r.mode||'')===mo);
+    if(s) data=data.filter(r=>r.status===s);
+  }
   if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('rl', data);
   renderRLRows(pgSlice('rl'));
@@ -22241,14 +22580,17 @@ function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.oceanTT,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
-  if(tm) data=data.filter(r=>(r.team||'')===tm);
-  if(s) data=data.filter(r=>r.status===s);
-  if(dest) data=data.filter(r=>r.destination===dest);
-  if(q) data=data.filter(r=>String(r.txn||'').includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.team||'').toLowerCase().includes(q));
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+    if(tm) data=data.filter(r=>(r.team||'')===tm);
+    if(s) data=data.filter(r=>r.status===s);
+    if(dest) data=data.filter(r=>r.destination===dest);
+  }
+  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.team||'').toLowerCase().includes(q));
   pgSetData('ott', data);
   renderOTTRows(pgSlice('ott'));
   pgRender('ott', 'pg_ott', 'pgGoOTT');
@@ -22497,14 +22839,17 @@ function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
+  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.b2entries,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-  if(u) data=data.filter(r=>(r.user||'')===u);
-  if(s) data=data.filter(r=>r.status===s);
-  if(src) data=data.filter(r=>r.source===src);
-  if(tt) data=data.filter(r=>r.tasktype===tt);
-  if(q) data=data.filter(r=>String(r.txn||'').includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.adjtype||'').toLowerCase().includes(q));
+  if(!_isTxnSearch){
+    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+    if(u) data=data.filter(r=>(r.user||'')===u);
+    if(s) data=data.filter(r=>r.status===s);
+    if(src) data=data.filter(r=>r.source===src);
+    if(tt) data=data.filter(r=>r.tasktype===tt);
+  }
+  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.adjtype||'').toLowerCase().includes(q));
   pgSetData('b2', data);
   renderB2Rows(pgSlice('b2'));
   pgRender('b2', 'pg_b2', 'pgGoB2');
