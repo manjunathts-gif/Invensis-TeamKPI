@@ -9437,7 +9437,7 @@ function bootApp(){
   if(_supa) startKeepAlive(); // prevent Supabase cold start
   // Load audit notifications for this user (after 1.5s to not block main load)
   setTimeout(()=>{
-    if(isSuperLead()) loadAllAuditNotifications();
+    if(isAdmin()||isSuperLead()) loadAllAuditNotifications();
     else loadAuditNotifications();
   }, 1500);
   _updateLastRefreshed(); // mark initial load time
@@ -9925,6 +9925,8 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'tasks'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
@@ -10283,7 +10285,7 @@ function showPage(id){
   else if(id==='perfmon') renderPerfMonitor(c);
   else if(id==='audit'){ renderAudit(c); _perfDone(); }
   else if(id==='auditnotif'){
-    if(isSuperLead()) loadAllAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
+    if(isAdmin()||isSuperLead()) loadAllAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
     else loadAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
     _perfDone();
   }
@@ -17041,7 +17043,7 @@ function exportInternalAuditCSV(){
 // ── Render Audit Notifications Panel (Team Member view + TL summary) ─────────
 function renderAuditNotificationsPanel(c){
   window._currentAuditNotifView=true;
-  const isLead=isSuperLead();
+  const isLead=isAdmin()||isSuperLead();
   const notifs=(DB.auditNotifications||[]);
   const myNotifs=isLead ? notifs : notifs.filter(n=>n.target_user===CU.name);
   const unread=myNotifs.filter(n=>!n.acknowledged);
