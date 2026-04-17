@@ -2221,6 +2221,30 @@ body.style-modern .fs2:focus{
 <!-- Shared Audit Panel (accessible from Release and Audit pages) -->
 <div id="auditPanelBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:200;backdrop-filter:blur(4px)" onclick="closeAuditPanel()"></div>
 
+
+<!-- Audit Error Member Popup -->
+<div id="auditErrPopupBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:310;align-items:center;justify-content:center;">
+  <div style="background:var(--surface,#fff);border-radius:16px;width:92%;max-width:540px;overflow:hidden;animation:_popIn .25s ease;">
+    <div style="padding:14px 20px 12px;border-bottom:1px solid var(--border,#e5e7f0);display:flex;align-items:center;gap:12px;background:#fef2f2;">
+      <div style="width:38px;height:38px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⚠</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:#991b1b;">Audit Error — Action Required</div>
+        <div id="aepSub" style="font-size:11px;color:#b91c1c;margin-top:2px;"></div>
+      </div>
+      <button onclick="closeAuditErrPopup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;padding:4px;line-height:1;">×</button>
+    </div>
+    <div id="aepBody" style="padding:16px 20px;max-height:65vh;overflow-y:auto;"></div>
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#e5e7f0);background:var(--surface2,#f8f9fc);">
+      <div style="font-size:11px;font-weight:700;color:var(--text2,#4a5568);margin-bottom:6px;">Your comment / action taken:</div>
+      <textarea id="aepComment" rows="3" style="width:100%;padding:8px 12px;border:1.5px solid var(--border2,#d0d4e8);border-radius:8px;font-size:12px;font-family:var(--font);resize:vertical;background:var(--surface,#fff);color:var(--text,#232d42);" placeholder="Describe the action you took to correct this error..."></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button onclick="closeAuditErrPopup()" style="padding:8px 16px;border:0.5px solid var(--border2,#d0d4e8);border-radius:8px;background:var(--surface,#fff);color:var(--text2,#4a5568);font-size:12px;font-weight:600;cursor:pointer;">Close</button>
+        <button id="aepAckBtn" onclick="submitAuditErrAck()" style="padding:8px 20px;border:none;border-radius:8px;background:#059669;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">✓ Acknowledge & Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Audit Notification Popup -->
 <div id="auditNotifPopupBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:300;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
   <div id="auditNotifPopupBox" style="background:var(--surface,#fff);border-radius:16px;padding:0;max-width:520px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden;animation:_popIn .25s ease;">
@@ -2244,6 +2268,9 @@ body.style-modern .fs2:focus{
 </div>
 <style>
 @keyframes _popIn{from{opacity:0;transform:scale(.92) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes _errBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.15)}}
+.audit-err-badge{display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;animation:_errBlink 1.4s ease-in-out infinite;white-space:nowrap;}
+.audit-err-badge.acked{background:#dcfce7;color:#166534;border-color:#86efac;animation:none;cursor:pointer;}
 </style>
 <div id="auditPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:660px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:28px 30px;box-shadow:var(--shadow-lg);z-index:201">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
@@ -4346,7 +4373,7 @@ function mapB2(r){
   const dur=resolveDuration(r.duration, startDisp, compDisp);
   return{id:r.id,txn:r.txn,source:r.source,assigneddate:r.assigned_date,adjtype:r.adj_type,tasktype:r.task_type,lines:r.lines,status:r.status,user:r.user_name,comments:r.comments,start:startDisp,completed:compDisp,completedB2:compDisp,duration:dur,tat:r.tat||'',_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
-function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,_created:r.submitted||r.created_at,_dbid:r.id};}
+function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,_created:r.submitted||r.created_at,_dbid:r.id,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||false,userAckAt:r.user_ack_at||null};}
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
@@ -9496,10 +9523,13 @@ function bootApp(){
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
-  // Load audit notifications for this user (after 1.5s to not block main load)
+  // Refresh audit error badge counts after data loads (1.5s delay — non-blocking)
   setTimeout(()=>{
-    if(isAdmin()||isSuperLead()) loadAllAuditNotifications();
-    else loadAuditNotifications();
+    // Force refresh release page error summary if already open
+    if(_currentPage==='release2'){
+      const _c=document.getElementById('pc');
+      if(_c){ window._forceRefresh=true; renderRelease2(_c); }
+    }
   }, 1500);
   _updateLastRefreshed(); // mark initial load time
   // Normalize task casing from DB (handles 'release' vs 'Release' etc.)
@@ -10039,7 +10069,6 @@ function buildNav(){
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'huddle',l:'👥 Daily Huddle',g:'main'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
-      {id:'huddle',l:'👥 Daily Huddle',g:'admin'},
     ];
   } else if(isReleaseTL){
     items=[
@@ -10057,7 +10086,6 @@ function buildNav(){
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
-      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(isTeamLead){
     // TL nav: dashboard + their task + status + reports
@@ -10091,7 +10119,6 @@ function buildNav(){
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
-      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
@@ -17033,6 +17060,134 @@ function submitAudit(){
 
 // Quality score helper for status page
 
+// ── Audit Error Member Popup (Release tab blinking badge) ───────────────────
+let _aepTxn = null;
+
+function openAuditErrPopup(txn){
+  const ar = window._auditByTxn ? window._auditByTxn.get(String(txn)) : DB.audit.find(a=>String(a.txn)===String(txn));
+  if(!ar){ showToast('Audit record not found',true); return; }
+  _aepTxn = String(txn);
+  const isGood = (ar.errorType||'')==='Good Job';
+  const score  = parseFloat(ar.score||0);
+  const scoreColor = score>=95?'#166534':score>=85?'#854d0e':'#991b1b';
+  const scoreBg    = score>=95?'#dcfce7':score>=85?'#fef9c3':'#fee2e2';
+  const plan = getActionPlan(ar.errorType||'');
+
+  const sub = document.getElementById('aepSub');
+  if(sub) sub.textContent = 'Audited by '+(ar.auditor||'Team Lead')+' · '+String(ar._created||ar.endTime||'').slice(0,10);
+
+  const body = document.getElementById('aepBody');
+  if(body) body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;">
+        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Transaction</div>
+        <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--text,#232d42);">${txn}</div>
+      </div>
+      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;">
+        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Client</div>
+        <div style="font-size:12px;font-weight:700;color:var(--text,#232d42);">${ar.client||'—'} ${ar.clientname?'— '+ar.clientname:''}</div>
+      </div>
+      <div style="background:#fee2e2;border-radius:10px;padding:10px 12px;">
+        <div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Error Type</div>
+        <div style="font-size:13px;font-weight:800;color:#991b1b;">${ar.errorType||'—'}</div>
+      </div>
+      <div style="background:${scoreBg};border-radius:10px;padding:10px 12px;">
+        <div style="font-size:9px;font-weight:800;color:${scoreColor};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Quality Score</div>
+        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${scoreColor};">${score}%</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:12px;">
+      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Mode: </span><span style="color:var(--text,#232d42);font-weight:700;">${ar.mode||'—'}</span></div>
+      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Team: </span><span style="color:var(--text,#232d42);font-weight:700;">${ar.team||'—'}</span></div>
+    </div>
+    ${ar.comments?`<div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Audit Comment from Team Lead</div>
+      <div style="font-size:13px;color:var(--text,#232d42);line-height:1.6;">${ar.comments}</div>
+    </div>`:''}
+    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:9px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">⚠ Action Plan — How to avoid this error</div>
+      <div style="font-size:12px;color:#78350f;line-height:1.75;">${plan}</div>
+    </div>
+    ${ar.userAcknowledged?`<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:10px 12px;">
+      <div style="font-size:11px;font-weight:700;color:#166534;">✓ You acknowledged this on ${String(ar.userAckAt||'').slice(0,10)}</div>
+      ${ar.userResponse?`<div style="font-size:12px;color:#15803d;margin-top:4px;font-style:italic;">"${ar.userResponse}"</div>`:''}
+    </div>`:''}
+  `;
+
+  const cmtEl = document.getElementById('aepComment');
+  if(cmtEl) cmtEl.value = ar.userResponse||'';
+
+  const ackBtn = document.getElementById('aepAckBtn');
+  if(ackBtn){
+    if(ar.userAcknowledged){
+      ackBtn.textContent = '✓ Already Acknowledged';
+      ackBtn.style.background = '#6b7280';
+      ackBtn.disabled = true;
+    } else {
+      ackBtn.textContent = '✓ Acknowledge & Save';
+      ackBtn.style.background = '#059669';
+      ackBtn.disabled = false;
+    }
+  }
+
+  const bg = document.getElementById('auditErrPopupBg');
+  if(bg) bg.style.display = 'flex';
+}
+
+function closeAuditErrPopup(){
+  const bg = document.getElementById('auditErrPopupBg');
+  if(bg) bg.style.display = 'none';
+  _aepTxn = null;
+}
+
+async function submitAuditErrAck(){
+  if(!_aepTxn){ closeAuditErrPopup(); return; }
+  const ar = window._auditByTxn ? window._auditByTxn.get(_aepTxn) : DB.audit.find(a=>String(a.txn)===_aepTxn);
+  if(!ar){ showToast('Audit record not found',true); return; }
+  const comment = (document.getElementById('aepComment')?.value||'').trim();
+  const btn = document.getElementById('aepAckBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+  const nowVal = nowISOET();
+  // Update local record immediately
+  ar.userResponse = comment;
+  ar.userAcknowledged = true;
+  ar.userAckAt = nowVal;
+  // Persist to Supabase audit table
+  if(_supa && ar._dbid){
+    try{
+      const {error} = await _supa.from('audit').update({
+        user_response: comment,
+        user_acknowledged: true,
+        user_ack_at: nowVal
+      }).eq('id', ar._dbid);
+      if(error) console.warn('[KPI] audit ack update failed:', error.message);
+    }catch(e){ console.warn('[KPI] audit ack threw:', e.message); }
+  }
+  showToast('✅ Acknowledged — response saved');
+  closeAuditErrPopup();
+  // Refresh release page to update badge state
+  const _mainC = document.getElementById('pc');
+  if(_mainC && _currentPage==='release2') renderRelease2(_mainC);
+}
+
+// Show all my internal audit errors in the popup list
+function showMyAuditErrors(){
+  const myName = CU.name||'';
+  const errors = DB.audit.filter(a=>a.user===myName&&parseFloat(a.score||100)<100);
+  if(!errors.length){ showToast('No audit errors found'); return; }
+  // Open first unacknowledged, else first
+  const first = errors.find(a=>!a.userAcknowledged)||errors[0];
+  openAuditErrPopup(String(first.txn));
+}
+
+// Show client errors list popup (reuse existing error report or simple list)
+function showMyClientErrors(){
+  const myName = CU.name||'';
+  const errors = (DB.errors||[]).filter(e=>e.userName===myName);
+  if(!errors.length){ showToast('No client errors found'); return; }
+  showPage('errorreport');
+}
+
 // ── Audit Notification Popup ─────────────────────────────────────────────────
 let _auditPopupNotifId = null;
 
@@ -17169,11 +17324,12 @@ async function acknowledgeAuditNotification(notifId, btnEl){
 function exportInternalAuditCSV(){
   const data = DB.audit||[];
   if(!data.length){ showToast('⚠️ No audit records to export',true); return; }
-  const headers=['Txn','Client','Client Name','Team','Mode','User Name','Audit By','Error Type','Score %','Double Sign','Audit Date','Comments'];
+  const headers=['Txn','Client','Client Name','Team','Mode','User Name','Audit By','Error Type','Score %','Double Sign','Audit Date','TL Comments','Member Acknowledged','Member Response','Acknowledged At'];
   const rows=data.map(a=>[
     a.txn||'', a.client||'', a.clientname||'', a.team||'', a.mode||'',
     a.user||'', a.auditor||'', a.errorType||'', a.score||'',
-    a.doubleSign||'', (a._created||a.endTime||'').slice(0,10), a.comments||''
+    a.doubleSign||'', (a._created||a.endTime||'').slice(0,10), a.comments||'',
+    a.userAcknowledged?'Yes':'No', a.userResponse||'', (a.userAckAt||'').slice(0,10)
   ]);
   const byErr={};
   data.forEach(a=>{ const e=a.errorType||'Unknown'; byErr[e]=(byErr[e]||0)+1; });
@@ -18831,6 +18987,25 @@ function renderRelease2(c){
     <div class="ps">Track release entries
   </div></div>
   </div>
+  ${(()=>{
+    // ── Error summary cards for team member (not TL/Supervisor/Admin) ──
+    if(isSuperLead()||isAdmin()) return '';
+    const _myName=CU.name||'';
+    const _myAudits=DB.audit.filter(a=>a.user===_myName&&parseFloat(a.score||100)<100);
+    const _myAuditNew=_myAudits.filter(a=>!a.userAcknowledged);
+    const _myClientErr=(DB.errors||[]).filter(e=>e.userName===_myName);
+    const _myClientErrNew=_myClientErr.filter(e=>!e.acknowledgedAt);
+    const _totalNew=_myAuditNew.length+_myClientErrNew.length;
+    if(!_myAudits.length&&!_myClientErr.length) return '';
+    return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px;background:var(--surface);border:1.5px solid #fca5a5;border-radius:12px;align-items:center">
+      <div style="font-size:13px;font-weight:800;color:#991b1b;flex:0 0 auto">🚨 Error Summary</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${_myAudits.length?`<div onclick="showMyAuditErrors()" style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 14px;cursor:pointer;${_myAuditNew.length?'animation:_errBlink 1.4s ease-in-out infinite':''}"><div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px">Internal Audit Errors</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#991b1b">${_myAudits.length}</div><div style="font-size:10px;color:#b91c1c">${_myAuditNew.length} unacknowledged</div></div>`:''}
+        ${_myClientErr.length?`<div onclick="showMyClientErrors()" style="background:#fff7ed;border:1.5px solid #fdba74;border-radius:10px;padding:8px 14px;cursor:pointer;${_myClientErrNew.length?'animation:_errBlink 1.4s ease-in-out infinite':''}"><div style="font-size:9px;font-weight:800;color:#9a3412;text-transform:uppercase;letter-spacing:.5px">Client Errors</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#ea580c">${_myClientErr.length}</div><div style="font-size:10px;color:#c2410c">${_myClientErrNew.length} unacknowledged</div></div>`:''}
+        ${_totalNew?`<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 14px"><div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px">Total Pending</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#dc2626">${_totalNew}</div><div style="font-size:10px;color:#b91c1c">need acknowledgement</div></div>`:''}
+      </div>
+    </div>`;
+  })()}
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
@@ -18920,7 +19095,8 @@ function renderRLRows(data){
   const _canEdit = canEditData();
   const _isAdm = isAdmin();
   const _isTLRel = CU&&CU.role==='Team Lead'&&CU.task==='Release'&&_canEdit;
-  const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
+  const _showErrBadge = !isSuperLead()&&!isAdmin()&&!showAuditBtn;
+  const colCount=(showAuditBtn?(showTLEdit?20:19):(_showErrBadge?19:18))-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
   // Pre-cache all 7 status option combos once
   const _RL_ST=['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'];
@@ -18936,11 +19112,16 @@ function renderRLRows(data){
       const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';
       return`<td style="text-align:center"><span style="background:${bg};color:${col};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:800;font-family:var(--mono)">${sc}%</span></td>`;
     })();
+    const _isMyRow = !isSuperLead()&&!isAdmin()&&r.user===CU.name;
+    const _hasErr = ar&&parseFloat(ar.score||100)<100;
     const auditCell=showAuditBtn
       ?(ar
         ?`<td style="text-align:center"><span style="background:#dcfce7;color:#166534;border-radius:16px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap">✅ Audited</span></td>`
         :`<td style="text-align:center"><button onclick="openAuditFromRelease(${r._idx!==undefined?r._idx:i})" style="padding:5px 12px;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(37,99,235,.3)">🔍 Audit</button></td>`
-      ):'';
+      )
+      :(_isMyRow&&_hasErr
+        ?`<td style="text-align:center"><span class="audit-err-badge${ar.userAcknowledged?' acked':''}" onclick="openAuditErrPopup(${JSON.stringify(String(r.txn))})">⚠ ${ar.userAcknowledged?'Viewed':'New Error'}</span></td>`
+        :'');
     return`<tr>
     <td class="mono" style="color:var(--text3)">${i+1}</td>
     <td class="mono" style="color:var(--rose);font-weight:700">${r.txn||'—'}</td>
