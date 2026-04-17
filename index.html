@@ -3543,7 +3543,12 @@ function _makeSupaClient(){
     try {
       const r = await fetch(BASE + path, opts);
       const txt = await r.text();
-      if(!r.ok) console.error('❌ REST ERROR', method, path, r.status, txt.substring(0,200));
+      // Suppress 530/1016 errors during retry attempts — they're expected
+      if(!r.ok && !(r.status===530||r.status===502) ){
+        console.error('❌ REST ERROR', method, path, r.status, txt.substring(0,200));
+      } else if(!r.ok && _retryCount===0){
+        console.warn('[KPI] Transient', r.status, '— retrying...', path.split('?')[0]);
+      }
       let data = null;
       try { data = JSON.parse(txt); } catch(e){}
       const cr = r.headers.get('Content-Range');
@@ -4029,6 +4034,21 @@ const _missingTableWarned={};
 
 async function dbLoad(table){
   if(!_supa) return [];
+  // Cache rarely-changing tables in sessionStorage to survive 1016 retries
+  const _SESSION_CACHE_TABLES = {
+    'users': 15*60*1000,       // 15 min
+    'login_users': 15*60*1000, // 15 min
+    'instructions': 30*60*1000,// 30 min
+  };
+  if(_SESSION_CACHE_TABLES[table]){
+    try{
+      const ck = 'kpi_sc_'+table;
+      const cached = JSON.parse(sessionStorage.getItem(ck)||'null');
+      if(cached && cached.ts && (Date.now()-cached.ts) < _SESSION_CACHE_TABLES[table] && cached.data?.length>0){
+        return cached.data;
+      }
+    }catch(e){}
+  }
   // SPEED FIX: clients table rarely changes — cache in localStorage for 1 hour
   if(table === 'clients'){
     try{
@@ -4076,6 +4096,11 @@ async function dbLoad(table){
   // Cache clients table for 1 hour
   if(table === 'clients' && allRows.length > 0){
     try{ localStorage.setItem('kpi_clients_cache_v2', JSON.stringify({ts:Date.now(),data:allRows})); }catch(e){}
+  }
+  // Cache users/login_users/instructions in sessionStorage — survives 1016 retries
+  const _scTables = {'users':1,'login_users':1,'instructions':1};
+  if(_scTables[table] && allRows.length > 0){
+    try{ sessionStorage.setItem('kpi_sc_'+table, JSON.stringify({ts:Date.now(),data:allRows})); }catch(e){}
   }
   return allRows;
 }
