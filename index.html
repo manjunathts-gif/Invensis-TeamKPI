@@ -3535,6 +3535,7 @@ function _makeSupaClient(){
 
   async function _req(method, path, body, extraHeaders, _retryCount){
     if(!_retryCount) window._perf && window._perf.dbCalls++;
+    const _maxRetry = 3;
     const hdrs = Object.assign({}, H, extraHeaders||{});
     const opts = {method, headers:hdrs};
     if(body !== undefined) opts.body = JSON.stringify(body);
@@ -3547,6 +3548,12 @@ function _makeSupaClient(){
       try { data = JSON.parse(txt); } catch(e){}
       const cr = r.headers.get('Content-Range');
       const count = cr ? (parseInt(cr.split('/')[1])||null) : null;
+      // Auto-retry on 502/530 (Cloudflare 1016 error) and 503
+      const _retry = _retryCount||0;
+      if((r.status===502||r.status===530||r.status===503) && _retry < 3){
+        await new Promise(res=>setTimeout(res, (_retry+1)*400));
+        return _req(method, path, body, extraHeaders, _retry+1);
+      }
       return {data: r.ok ? data : null, error: r.ok ? null : {message: txt}, count};
     } catch(e) {
       // Classify network/IO errors and auto-retry up to 2x for GET requests
