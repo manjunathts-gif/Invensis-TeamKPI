@@ -4727,9 +4727,72 @@ function _silentRefreshPage(id){
       pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
       // Update stat cards
       const _all=_scopeByUser(DB.release2,'user');
-      const _today=todayDateStringET();
       const _rlTotal=document.getElementById('rlTotalCard');
       if(_rlTotal) _rlTotal.textContent=(window._rlTrueCount||_all.length).toLocaleString();
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='lvs' && document.getElementById('lvsTbody')){
+      const _d=_scopeByUser(DB.lvs,'assignedTo');
+      pgSetData('lvs',_d); renderLVSRows(pgSlice('lvs')); pgRender('lvs','pg_lvs','pgGoLVS');
+      const _el=document.getElementById('lvsTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.lvs?window._trueCounts.lvs.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='classifier' && document.getElementById('clsTbody')){
+      const _d=_scopeByUser(DB.cls,'assignedTo');
+      pgSetData('cls',_d); renderCLSRows(pgSlice('cls')); pgRender('cls','pg_cls','pgGoCLS');
+      const _el=document.getElementById('clsTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.cls?window._trueCounts.cls.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='compliance' && document.getElementById('compTbody')){
+      const _d=_scopeByUser(DB.comp,'assignedTo');
+      pgSetData('comp',_d); renderCOMPRows(pgSlice('comp')); pgRender('comp','pg_comp','pgGoCOMP');
+      const _el=document.getElementById('compTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.comp?window._trueCounts.comp.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='parsdocs' && document.getElementById('pdTbody')){
+      const _d=_scopeByUser(DB.parsDocs,'user');
+      pgSetData('pd',_d); renderPDRows(pgSlice('pd')); pgRender('pd','pg_pd','pgGoPD');
+      const _el=document.getElementById('pdTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.pars_docs?window._trueCounts.pars_docs.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='oceandocs' && document.getElementById('odTbody')){
+      const _d=_scopeByUser(DB.oceanDocs,'user');
+      pgSetData('od',_d); renderODRows(pgSlice('od')); pgRender('od','pg_od','pgGoOD');
+      const _el=document.getElementById('odTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.ocean_docs?window._trueCounts.ocean_docs.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='partlot' && document.getElementById('plTbody')){
+      const _d=_scopeByUser(DB.partLot,'user');
+      pgSetData('pl',_d); renderPLRows(pgSlice('pl')); pgRender('pl','pg_pl','pgGoPL');
+      const _el=document.getElementById('plTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.part_lot?window._trueCounts.part_lot.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='oceantt' && document.getElementById('ottTbody')){
+      const _d=_scopeByUser(DB.oceanTT,'user');
+      pgSetData('ott',_d); renderOTTRows(pgSlice('ott')); pgRender('ott','pg_ott','pgGoOTT');
+      const _el=document.getElementById('ottTotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.ocean_tt?window._trueCounts.ocean_tt.toLocaleString():_d.length.toLocaleString());
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
+    if(id==='b2entries' && document.getElementById('b2Tbody')){
+      const _d=_scopeByUser(DB.b2entries,'user');
+      pgSetData('b2',_d); renderB2Rows(pgSlice('b2')); pgRender('b2','pg_b2','pgGoB2');
+      const _el=document.getElementById('b2TotalCard');
+      if(_el) _el.textContent=(window._trueCounts?.b2_entries?window._trueCounts.b2_entries.toLocaleString():_d.length.toLocaleString());
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
@@ -4743,7 +4806,7 @@ function _silentRefreshPage(id){
     window._forceRefresh = true;
     showPage(id);
     requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-  }, 1500);
+  }, 300);
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
