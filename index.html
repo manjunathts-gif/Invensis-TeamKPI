@@ -2220,58 +2220,6 @@ body.style-modern .fs2:focus{
 </div>
 <!-- Shared Audit Panel (accessible from Release and Audit pages) -->
 <div id="auditPanelBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:200;backdrop-filter:blur(4px)" onclick="closeAuditPanel()"></div>
-
-
-<!-- Audit Error Member Popup -->
-<div id="auditErrPopupBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:310;align-items:center;justify-content:center;">
-  <div style="background:var(--surface,#fff);border-radius:16px;width:92%;max-width:540px;overflow:hidden;animation:_popIn .25s ease;">
-    <div style="padding:14px 20px 12px;border-bottom:1px solid var(--border,#e5e7f0);display:flex;align-items:center;gap:12px;background:#fef2f2;">
-      <div style="width:38px;height:38px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⚠</div>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:800;color:#991b1b;">Audit Error — Action Required</div>
-        <div id="aepSub" style="font-size:11px;color:#b91c1c;margin-top:2px;"></div>
-      </div>
-      <button onclick="closeAuditErrPopup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;padding:4px;line-height:1;">×</button>
-    </div>
-    <div id="aepBody" style="padding:16px 20px;max-height:65vh;overflow-y:auto;"></div>
-    <div style="padding:12px 20px;border-top:1px solid var(--border,#e5e7f0);background:var(--surface2,#f8f9fc);">
-      <div style="font-size:11px;font-weight:700;color:var(--text2,#4a5568);margin-bottom:6px;">Your comment / action taken:</div>
-      <textarea id="aepComment" rows="3" style="width:100%;padding:8px 12px;border:1.5px solid var(--border2,#d0d4e8);border-radius:8px;font-size:12px;font-family:var(--font);resize:vertical;background:var(--surface,#fff);color:var(--text,#232d42);" placeholder="Describe the action you took to correct this error..."></textarea>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-        <button onclick="closeAuditErrPopup()" style="padding:8px 16px;border:0.5px solid var(--border2,#d0d4e8);border-radius:8px;background:var(--surface,#fff);color:var(--text2,#4a5568);font-size:12px;font-weight:600;cursor:pointer;">Close</button>
-        <button id="aepAckBtn" onclick="submitAuditErrAck()" style="padding:8px 20px;border:none;border-radius:8px;background:#059669;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">✓ Acknowledge & Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Audit Notification Popup -->
-<div id="auditNotifPopupBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:300;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
-  <div id="auditNotifPopupBox" style="background:var(--surface,#fff);border-radius:16px;padding:0;max-width:520px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden;animation:_popIn .25s ease;">
-    <!-- Header -->
-    <div id="auditNotifPopupHdr" style="padding:16px 20px 14px;border-bottom:1px solid var(--border,#e5e7f0);display:flex;align-items:center;gap:12px;">
-      <div style="width:40px;height:40px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">&#128276;</div>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:800;color:var(--text,#232d42)">Audit Error Notification</div>
-        <div id="auditNotifPopupSub" style="font-size:11px;color:var(--text3,#8492a6);margin-top:2px"></div>
-      </div>
-      <button onclick="closeAuditNotifPopup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3,#8492a6);padding:4px;line-height:1;">&times;</button>
-    </div>
-    <!-- Body -->
-    <div id="auditNotifPopupBody" style="padding:16px 20px;max-height:70vh;overflow-y:auto;"></div>
-    <!-- Footer -->
-    <div style="padding:12px 20px;border-top:1px solid var(--border,#e5e7f0);display:flex;gap:10px;justify-content:flex-end;background:var(--surface2,#f8f9fc);">
-      <button onclick="closeAuditNotifPopup()" style="padding:8px 18px;border:1px solid var(--border2,#d0d4e8);border-radius:8px;background:var(--surface,#fff);color:var(--text2,#4a5568);font-size:13px;font-weight:600;cursor:pointer;">Close</button>
-      <button id="auditNotifAckBtn" style="padding:8px 20px;border:none;border-radius:8px;background:#059669;color:#fff;font-size:13px;font-weight:700;cursor:pointer;" onclick="ackFromPopup()">&#10003; Acknowledge Error</button>
-    </div>
-  </div>
-</div>
-<style>
-@keyframes _popIn{from{opacity:0;transform:scale(.92) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
-@keyframes _errBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.15)}}
-.audit-err-badge{display:inline-flex;align-items:center;gap:4px;background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;animation:_errBlink 1.4s ease-in-out infinite;white-space:nowrap;}
-.audit-err-badge.acked{background:#dcfce7;color:#166534;border-color:#86efac;animation:none;cursor:pointer;}
-</style>
 <div id="auditPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:660px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:28px 30px;box-shadow:var(--shadow-lg);z-index:201">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
     <div style="font-size:16px;font-weight:800;color:var(--primary)">🔍 Audit Transaction</div>
@@ -4373,7 +4321,7 @@ function mapB2(r){
   const dur=resolveDuration(r.duration, startDisp, compDisp);
   return{id:r.id,txn:r.txn,source:r.source,assigneddate:r.assigned_date,adjtype:r.adj_type,tasktype:r.task_type,lines:r.lines,status:r.status,user:r.user_name,comments:r.comments,start:startDisp,completed:compDisp,completedB2:compDisp,duration:dur,tat:r.tat||'',_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
-function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,_created:r.submitted||r.created_at,_dbid:r.id,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||false,userAckAt:r.user_ack_at||null};}
+function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,_created:r.submitted||r.created_at,_dbid:r.id};}
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
@@ -5024,7 +4972,6 @@ const REALTIME_MAP=[
   {table:'instructions', arr:()=>DB.instructions||[], map:mapInstruction, idx:false},
   {table:'audit',       arr:()=>DB.audit,           map:mapAudit,       idx:false},
   {table:'login_users', arr:()=>DB.loginUsers,       map:mapLoginUser,   idx:false},
-  {table:'audit_notifications', arr:()=>DB.auditNotifications, map:r=>r, idx:false},
 ];
 
 // Pages that should auto-refresh when a table changes
@@ -5041,7 +4988,6 @@ const TABLE_TO_PAGES={
   'client_errors':['errorreport','dashboard','perfmon'],
   'instructions':['instructions'],
   'audit':['audit','dashboard','release2','perfmon'],
-  'audit_notifications':['auditnotif'],
   'login_users':['loginusers'],
 };
 
@@ -5348,50 +5294,12 @@ function _applyRealtimeRow(table, row, eventType){
   // Apply a single realtime event to the correct DB array and refresh
   if(!row && eventType!=='DELETE') return;
 
-  // ── Audit notification: show popup to target user on INSERT ──
-  // NOTE: audit_notifications must NOT be blocked by isPanelOpen() —
-  // the audit panel IS open when TL submits, but the popup targets a
-  // different user's session, so we must always process these events.
-  if(table==='audit_notifications' && eventType==='INSERT' && row){
-    DB.auditNotifications = DB.auditNotifications||[];
-    const already = DB.auditNotifications.some(n=>n.id===row.id);
-    if(!already) DB.auditNotifications.unshift(row);
-    _refreshAuditNotifBadge();
-    // Show popup only to the target user
-    if(CU && row.target_user && row.target_user===CU.name){
-      showAuditNotifPopup(row);
-    }
-    // Refresh notifications panel if open
-    if(_currentPage==='auditnotif'){
-      const c=document.getElementById('pc');
-      if(c) renderAuditNotificationsPanel(c);
-    }
-    return;
-  }
-  if(table==='audit_notifications' && eventType==='UPDATE' && row){
-    DB.auditNotifications = DB.auditNotifications||[];
-    const idx = DB.auditNotifications.findIndex(n=>n.id===row.id);
-    if(idx>=0) DB.auditNotifications[idx]=row; else DB.auditNotifications.unshift(row);
-    _refreshAuditNotifBadge();
-    if(_currentPage==='auditnotif'){
-      const c=document.getElementById('pc');
-      if(c) renderAuditNotificationsPanel(c);
-    }
-    return;
-  }
-
-
   // Use REALTIME_MAP — single source of truth for mapper + array + idx
   const rtEntry = REALTIME_MAP.find(e=>e.table===table);
   if(!rtEntry) return;
 
-  // ── DATA MUTATION RUNS ALWAYS (even when a panel is open) ──
-  // Previously this function early-returned if isPanelOpen() was true,
-  // which dropped every realtime event while any form was open and made
-  // live sync appear delayed (counts / tables only refreshed after the
-  // user closed the panel, and even then the data arrays were stale).
-  // Now we apply the INSERT/UPDATE/DELETE to the in-memory array right
-  // away and only DEFER the visual refresh when a panel is open.
+  // Skip if panel open — don't interrupt active form entry
+  if(isPanelOpen()){ window._pendingPageRefresh = _currentPage; return; }
 
   const arr = rtEntry.arr();
   if(!arr) return;
@@ -5455,14 +5363,6 @@ function _applyRealtimeRow(table, row, eventType){
   // Re-index if needed
   if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
 
-  // ── Defer ONLY the visual page refresh if a panel is open ──
-  // Data mutation has already happened above, so when the panel closes the
-  // deferred _silentRefreshPage call will render fully-current state.
-  if(isPanelOpen()){
-    window._pendingPageRefresh = _currentPage;
-    return;
-  }
-
   // Refresh visible pages using TABLE_TO_PAGES map
   const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
@@ -5498,10 +5398,10 @@ function setupRealtime(){
 
   // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task only
   const tables = isMgrRT || isSupRT
-    ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users','audit_notifications']
+    ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
     : isTLRT
-    ? [taskTbl,'audit','login_users','client_errors','audit_notifications'].filter(Boolean)
-    : [taskTbl,'login_users','audit_notifications'].filter(Boolean);
+    ? [taskTbl,'audit','login_users','client_errors'].filter(Boolean)
+    : [taskTbl,'login_users'].filter(Boolean);
 
   _realtimeChannel = _supaRT
     .channel('kpi-live-'+((CU&&CU.username)||'anon'))
@@ -5661,7 +5561,6 @@ const DB = {
   errors:[], // Client Error Feedback records
   instructions:[], // Instruction Followup records
   audit:[],  // Audit records (one per audited release txn)
-  auditNotifications:[], // Per-member notifications from internal audit
   idleLog:[], secLog:[],
 };
 // Aliases — some parts of code use alternate names
@@ -5683,48 +5582,6 @@ const AUDIT_ERROR_SCORES = {
   'VFD Code':97,'Wrong HS Code':97,'Multiple Errors':50,'Good Job':100
 };
 function getAuditScore(errorType){ return AUDIT_ERROR_SCORES[errorType]??null; }
-
-// ── Action plans per error type — shown to team member in audit notification ──
-const AUDIT_ACTION_PLANS = {
-  'IOR Error':          'Verify the IOR (Importer of Record) against the client profile before submission. Cross-check with the commercial invoice and ensure the correct entity is used.',
-  'Cargo Control Number':'Always copy the CCN directly from the manifest. Do not retype manually — use copy-paste to avoid transposition errors.',
-  'Sublocation':        'Check the CBSA sublocation code against the approved list for that port. Confirm with the manifest or arrival notice.',
-  'Manifest QTY':       'Compare manifest quantity with the commercial invoice line by line. Flag any discrepancy to TL before releasing.',
-  'Manifest QTY UOM':   'Ensure the unit of measure on the manifest (KG, LBS, PCS) matches exactly. Do not assume — verify source document.',
-  'Contain QTY':        'Container quantity must match the packing list. Count containers listed and verify against the B3/manifest.',
-  'Contain QTY UOM':    'Use the correct container UOM (CTN, PCS, PKG). Refer to the packing list for the correct unit.',
-  'Manifest Gross Weight':'Pull gross weight from the manifest only. Do not use invoice weight unless manifest is unavailable and TL approves.',
-  'Manifest Weight UOM':'Confirm weight UOM (KG vs LBS). Incorrect UOM causes duty calculation errors — always verify before saving.',
-  'Invoice No':         'Copy invoice number exactly as printed. Watch for leading zeros and special characters. Verify against the physical invoice.',
-  'Client Ref#':        'Client reference must match the client-provided PO or reference document. Check client profile notes for reference format.',
-  'PO#':                'PO number must match the purchase order exactly. If missing from invoice, check client profile or request from client.',
-  'Vendor/Consignee/Exporter':'Verify vendor, consignee, and exporter names match the invoice exactly. Check client profile for approved vendor list.',
-  'Place of Export':    'Confirm country and port of export from the invoice/B/L. Do not guess — use document values only.',
-  'Invoice Qty/UOM':    'Line-level invoice quantity and UOM must match the invoice document exactly. Check each line before saving.',
-  'Invoice Value':      'Invoice value must match total on commercial invoice. Include all charges as per client profile instructions.',
-  'Currency':           'Use the exact currency code from the invoice (CAD, USD, EUR). Currency conversion must follow client profile rules.',
-  'Shipment date':      'Shipment date must be taken from the B/L or AWB. Do not use invoice date unless instructed by TL.',
-  'Invoice Date':       'Invoice date must be copied exactly from the commercial invoice. Do not use shipment or arrival date.',
-  'Payment Terms':      'Payment terms (e.g. FOB, CIF, DDP) must match the invoice. Affects duty valuation — double-check.',
-  'Condition of Sale':  'Condition of sale must reflect the actual trade terms. Review client profile for default terms if not on invoice.',
-  'Invoice Adjustment': 'Any adjustments (royalties, assists, commissions) must be added per CBSA valuation rules. Review client SOP.',
-  'Invoice Lines Details':'Each invoice line needs correct description, quantity, UOM, unit value, and HS code. Review all lines before submission.',
-  'Country of Origin':  'Country of origin must match the certificate of origin or invoice declaration. Do not assume — verify every shipment.',
-  'Product Code / P Code':'P-Code must match the approved product code in the client profile. Contact TL if P-Code is not in the profile.',
-  'Unqualified Code / U Code':'U-Code must be applied only when the product qualifies. Check CBSA guidelines and client SOP before using.',
-  'Generic Code / M Code':'M-Code usage must follow client profile. Do not use a generic code without TL confirmation.',
-  'Line PGA':           'PGA (Partner Government Agency) flags must be applied for regulated goods. Check commodity against PGA list.',
-  'TT CODE':            'TT Code must match the tariff treatment applicable to the shipment. Verify origin and trade agreement eligibility.',
-  'Sales Qty':          'Sales quantity at line level must match invoice exactly. Do not combine lines — enter as separate line items.',
-  'Sales UOM':          'Sales UOM must match invoice UOM exactly. Do not convert without TL approval.',
-  'Line Value':         'Line value = unit price × quantity. Recalculate manually to verify before saving.',
-  'SP1 Qty':            'SP1 quantity must match the specific product quantity on invoice. Double-check when multiple UOMs appear.',
-  'VFD Code':           'VFD (Value for Duty) code must be applied correctly per client SOP. Review before submission.',
-  'Wrong HS Code':      'Verify HS code against the product description, country of origin, and client profile. Use CBSA Customs Tariff tool for confirmation. When unsure, escalate to TL — do not guess.',
-  'Multiple Errors':    'Multiple errors detected in this entry. Review each field systematically: IOR → CCN → Invoice → HS Code → UOM. Use the client SOP checklist before submission.',
-  'Good Job':           'No errors found. Maintain this standard — continue following the SOP checklist for every transaction.'
-};
-function getActionPlan(errorType){ return AUDIT_ACTION_PLANS[errorType]||'Review the transaction against the client SOP and ensure all fields match the source documents. Escalate to your Team Lead if unsure.'; }
 
 
 let CU=null, selectedTask='', lvsStart=null, clsStart=null, compStart=null, compStarted=false,
@@ -9535,14 +9392,6 @@ function bootApp(){
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
-  // Refresh audit error badge counts after data loads (1.5s delay — non-blocking)
-  setTimeout(()=>{
-    // Force refresh release page error summary if already open
-    if(_currentPage==='release2'){
-      const _c=document.getElementById('pc');
-      if(_c){ window._forceRefresh=true; renderRelease2(_c); }
-    }
-  }, 1500);
   _updateLastRefreshed(); // mark initial load time
   // Normalize task casing from DB (handles 'release' vs 'Release' etc.)
   const TASK_PAGE_MAP = {
@@ -10028,8 +9877,6 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'reports'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
@@ -10065,8 +9912,7 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'reports'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
+      {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -10081,13 +9927,13 @@ function buildNav(){
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'huddle',l:'👥 Daily Huddle',g:'main'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'admin'},
     ];
   } else if(isReleaseTL){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'reports'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
+      {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -10098,6 +9944,7 @@ function buildNav(){
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(isTeamLead){
     // TL nav: dashboard + their task + status + reports
@@ -10121,7 +9968,6 @@ function buildNav(){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       ...(tlTaskNavMap[_tlNavTask]||[]),
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -10131,6 +9977,7 @@ function buildNav(){
       {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
       {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
+      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
@@ -10168,7 +10015,6 @@ function buildNav(){
     const _navTask = taskNavMap[CU.task] ? CU.task : (_NAV_NORM[(CU.task||'').toLowerCase().trim()] || CU.task);
     items=[
       ...(taskNavMap[_navTask]||[{id:'coming',l:'🚧 My Task',g:'tasks'}]),
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'mystatus',l:'📊 My Status',g:'reports'},
       errItem,
     ];
@@ -10193,10 +10039,9 @@ function buildNav(){
       const icon = parts ? parts[1] : i.l;
       const label = parts ? parts[2] : '';
       const tipText = label || i.l;
-      const _auditNotifBadgeHtml = i.id==='auditnotif' ? `<span id="auditNotifBadge" style="display:none;background:#e11d48;color:#fff;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:800;margin-left:4px;min-width:18px;text-align:center;line-height:16px;"></span>` : '';
       html += `<button class="nb" id="nb_${i.id}" onclick="closeMobSidebar();showPage('${i.id}')" data-tip="${tipText}">
         <span style="font-size:16px;flex-shrink:0;">${icon}</span>
-        <span class="nb-label">${label}${_auditNotifBadgeHtml}</span>
+        <span class="nb-label">${label}</span>
       </button>`;
     });
   });
@@ -10384,11 +10229,6 @@ function showPage(id){
   else if(id==='errorreport') renderErrorReport(c);
   else if(id==='perfmon') renderPerfMonitor(c);
   else if(id==='audit'){ renderAudit(c); _perfDone(); }
-  else if(id==='auditnotif'){
-    if(isAdmin()||isSuperLead()) loadAllAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
-    else loadAuditNotifications().then(()=>renderAuditNotificationsPanel(c));
-    _perfDone();
-  }
   else if(id==='tatanalyzer') renderTATAnalyzer(c);
   else if(id==='tatreasons') renderTATReasons(c);
   else if(id==='tatissue') renderTATIssue(c);
@@ -10665,17 +10505,13 @@ function applyLVSFilter(){
   const tm=document.getElementById('lf_fteam')?.value;
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
-  // When searching by txn: bypass date/user/team/status filters — always search full scope
-  const _isTxnSearch = q && /^[0-9]/.test(q);
-  let data = _isTxnSearch ? _scopeByUser(DB.lvs,'assignedTo') : _scopeByUser(DB.lvs,'assignedTo');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>r.assignedTo===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(s) data=data.filter(r=>r.status===s);
-  }
-  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
+  let data=_scopeByUser(DB.lvs,'assignedTo');
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>r.assignedTo===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(s) data=data.filter(r=>r.status===s);
+  if(q) data=data.filter(r=>String(r.txn).toLowerCase().includes(q)||String(r.client).toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('lvs', data);
   renderLVSRows(pgSlice('lvs'));
   pgRender('lvs', 'pg_lvs', 'pgGoLVS');
@@ -11080,16 +10916,13 @@ function applyCLSFilter(){
   const tm=document.getElementById('cf_fteam')?.value;
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.cls,'assignedTo');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>r.assignedTo===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(s) data=data.filter(r=>r.status===s);
-  }
-  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>r.assignedTo===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(s) data=data.filter(r=>r.status===s);
+  if(q) data=data.filter(r=>String(r.txn).toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('cls', data);
   renderCLSRows(pgSlice('cls'));
   pgRender('cls', 'pg_cls', 'pgGoCLS');
@@ -14883,37 +14716,22 @@ function renderMyStatus(c){
   const today=todayDateStringET();
   const now=new Date();
   const myName=CU.name||CU.empName||CU.username||'';
-  // ── PERF: pre-parse _created dates once per record — avoids O(n*filters)
-  //    repeated parseAppDate() calls (each spawns Intl.DateTimeFormat) across
-  //    5000+ Release rows caused 10-15s delay on My Status open. Cache once. ──
-  const _nowDS=now.toDateString();
-  const _nowY=now.getFullYear(); const _nowM=now.getMonth();
-  const _allRecs=tm.db||[];
-  // Single pass: parse date + compute flags for every record
-  const _parsed=_allRecs.map(r=>{
-    const d=parseAppDate(r._created)||new Date(0);
-    return{r,d,ds:d.toDateString(),isMe:r[tm.fld]===myName,
-      isToday:d.toDateString()===_nowDS,
-      isMonth:d.getFullYear()===_nowY&&d.getMonth()===_nowM,
-      tat:(r.tat||'').toLowerCase(),status:(r.status||'').toLowerCase()};
-  });
-  const myParsed=_parsed.filter(p=>p.isMe);
-  const myRecs=myParsed.map(p=>p.r);
-  const todayRecs=myParsed.filter(p=>p.isToday).map(p=>p.r);
-  const monthRecs=myParsed.filter(p=>p.isMonth).map(p=>p.r);
-  const holdRecs=myParsed.filter(p=>p.status==='hold').map(p=>p.r);
-  const tatOkArr=myParsed.filter(p=>p.tat==='tat reached').map(p=>p.r);
-  const tatMissArr=myParsed.filter(p=>p.tat==='tat not reached').map(p=>p.r);
+  const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
+  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
+  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
+  const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
   const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
   // Team data (TL only)
-  const teamRecs=_allRecs;
-  const teamTodayRecs=_parsed.filter(p=>p.isToday).map(p=>p.r);
-  const teamMonthRecs=_parsed.filter(p=>p.isMonth).map(p=>p.r);
-  const teamHold=_parsed.filter(p=>p.status==='hold').map(p=>p.r);
-  const teamTatOk=_parsed.filter(p=>p.tat==='tat reached').map(p=>p.r);
-  const teamTatMiss=_parsed.filter(p=>p.tat==='tat not reached').map(p=>p.r);
+  const teamRecs=tm.db||[];
+  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
+  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
+  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
+  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
   const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
@@ -14921,7 +14739,7 @@ function renderMyStatus(c){
   // Hourly heatmap (today)
   const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
   const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
-  myParsed.filter(p=>p.isToday).forEach(p=>{const h=String(p.d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
+  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
   const nowH=String(now.getHours()).padStart(2,'0');
   const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
   const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
@@ -14930,7 +14748,7 @@ function renderMyStatus(c){
   const dailyRows=[];
   for(let d=0;d<7;d++){
     const dd=new Date(now);dd.setDate(dd.getDate()-d);
-    const _dds=dd.toDateString(); const cnt=myParsed.filter(p=>p.ds===_dds).length;
+    const cnt=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===dd.toDateString()).length;
     if(cnt>0||d<3){
       dailyRows.push(`<tr><td style="padding:8px 14px;font-weight:${d===0?800:600};font-size:12px;color:${d===0?'var(--text1)':'var(--text2)'}">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${cnt}</td><td style="padding:8px 14px;min-width:80px"><div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/Math.max(todayRecs.length,1)*100):0)}%"></div></td></tr>`);
     }
@@ -14949,16 +14767,16 @@ function renderMyStatus(c){
 
   // Team member stats (TL only)
   const memberStats=usersArr.map((u,ui)=>{
-    const uParsed=_parsed.filter(p=>p.r[tm.fld]===u);
-    const uToday=uParsed.filter(p=>p.isToday).length;
-    const uMonth=uParsed.filter(p=>p.isMonth).length;
-    const uHold=uParsed.filter(p=>p.status==='hold').length;
-    const uTatOk=uParsed.filter(p=>p.tat==='tat reached').length;
-    const uTatMiss=uParsed.filter(p=>p.tat==='tat not reached').length;
+    const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
+    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
+    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
+    const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
+    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+    const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>_parsed.filter(p=>p.r[tm.fld]===x&&p.isToday).length),1);
+    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -16560,8 +16378,7 @@ function renderAudit(c){
   const teamTxnSet = new Set(teamRecords.map(r=>String(r.txn)));
   const todayYMD2  = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
   const todayDone  = DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD2&&teamTxnSet.has(String(a.txn))).length;
-  const _totalForPct = (window._rlTrueCount&&window._rlTrueCount>teamRecords.length)?window._rlTrueCount:teamRecords.length;
-  const pct        = _totalForPct?Math.round(done.length/_totalForPct*100):0;
+  const pct        = teamRecords.length?Math.round(done.length/teamRecords.length*100):0;
   const scores     = done.map(r=>parseFloat(auditMap.get(String(r.txn))?.score)||0).filter(s=>s>0);
   const avgScore   = scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'—';
 
@@ -16645,13 +16462,13 @@ function renderAudit(c){
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🔍 Audit — Release Shipments</div>
-    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${(window._rlTrueCount&&window._rlTrueCount>teamRecords.length?window._rlTrueCount:teamRecords.length).toLocaleString()} txns · ${CU.name}</div></div>
+    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${teamRecords.length} txns · ${CU.name}</div></div>
     <button class="btn-add" style="background:var(--emerald)" onclick="exportAuditCSV()">📥 Export CSV</button>
   </div>
 
   <!-- Summary cards -->
   <div class="sg" style="margin-bottom:14px">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Txns</div><div class="sv">${(window._rlTrueCount&&window._rlTrueCount>teamRecords.length?window._rlTrueCount:teamRecords.length).toLocaleString()}</div><div class="sf">All time DB</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Txns</div><div class="sv">${teamRecords.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audited</div><div class="sv">${done.length}</div><div class="sf">${pct}%</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div></div>
@@ -16760,17 +16577,11 @@ function renderAuditTab(tab){
   const all=window._auditTeamRecords||[];
   let data=tab==='pending'?all.filter(r=>!auditedTxns.has(r.txn)):
            tab==='done'?all.filter(r=>auditedTxns.has(r.txn)):all;
-  const _isTxnQ = q && /^[0-9]/.test(q);
-  if(!_isTxnQ){
-    if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
-    if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
-    if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
-    if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
-  } else {
-    if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
-    if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
-  }
-  if(q){ window._auditPageNum=1; data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
+  if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
+  if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
+  if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
+  if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
+  if(q){ window._auditPageNum=1; data=data.filter(r=>(r.txn+'').includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
   const cont=document.getElementById('auditTabContent');
   if(!cont) return;
   if(!data.length){
@@ -17023,40 +16834,16 @@ function submitAudit(){
   };
   // Build a local fallback record in case insert returns null
   const _localAuditRec={txn:r.txn,auditor,errorType,score,doubleSign,comments:_auditRow.comments,startTime:_auditRow.start_time,endTime:_auditRow.end_time,duration:_auditRow.duration,mode:r.mode,clientname:r.clientname,client:r.client,team:r.team,user:r.user,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.status,rlTat:r.tat,_created:nowISOET()};
-  // ── Push audit notification to target user (fire-and-forget) ──
-  function _pushAuditNotification(auditId){
-    // Only notify when score < 100 — 'Good Job' or any 100% score means no error
-    if(score >= 100) return;
-    if(!errorType || errorType==='Good Job' || errorType==='None' || errorType==='—' || errorType==='') return;
-    const targetUser = r.user||null;
-    if(!targetUser) return;
-    const _notifRow={
-      audit_id:auditId||null, txn:r.txn, target_user:targetUser, auditor:auditor,
-      error_type:errorType, score:score, comments:_auditRow.comments||'',
-      action_plan:getActionPlan(errorType), client:r.client||null,
-      client_name:r.clientname||null, team:r.team||null, mode:r.mode||null,
-      acknowledged:false, acknowledged_by:null, acknowledged_at:null, created_at:nowISOET()
-    };
-    DB.auditNotifications=DB.auditNotifications||[];
-    DB.auditNotifications.push(Object.assign({id:null,_created:nowISOET()},_notifRow));
-    if(_supa){
-      _supa.from('audit_notifications').insert(_notifRow).select().single()
-        .then(({data,error})=>{ if(error) console.warn('[KPI] audit_notif insert:',error.message); })
-        .catch(e=>console.warn('[KPI] audit_notif threw:',e.message));
-    }
-    _refreshAuditNotifBadge();
-  }
-
   if(_supa){
     dbInsert('audit',_auditRow).then(r2=>{
       if(r2 && r2.id){
+        // Successful DB insert — use the returned row so _dbid is correct
         const mapped=mapAudit(r2);
         DB.audit.push(mapped);
-        _pushAuditNotification(r2.id);
       } else {
+        // dbInsert returned null (error already shown by dbInsert) — keep local copy
         DB.audit.push(_localAuditRec);
-        _pushAuditNotification(null);
-        console.warn('[KPI] Audit insert returned null');
+        console.warn('[KPI] Audit insert returned null — using local record');
       }
       _finishAudit();
     }).catch(err=>{
@@ -17066,444 +16853,11 @@ function submitAudit(){
       _finishAudit();
     });
   }
-  else{ DB.audit.push(_localAuditRec); _pushAuditNotification(null); _finishAudit(); }
+  else{ DB.audit.push(_localAuditRec); _finishAudit(); }
 }
 
 
 // Quality score helper for status page
-
-// ── Audit Error Member Popup (Release tab blinking badge) ───────────────────
-let _aepTxn = null;
-
-function openAuditErrPopup(txn){
-  const ar = window._auditByTxn ? window._auditByTxn.get(String(txn)) : DB.audit.find(a=>String(a.txn)===String(txn));
-  if(!ar){ showToast('Audit record not found',true); return; }
-  _aepTxn = String(txn);
-  const isGood = (ar.errorType||'')==='Good Job';
-  const score  = parseFloat(ar.score||0);
-  const scoreColor = score>=95?'#166534':score>=85?'#854d0e':'#991b1b';
-  const scoreBg    = score>=95?'#dcfce7':score>=85?'#fef9c3':'#fee2e2';
-  const plan = getActionPlan(ar.errorType||'');
-
-  const sub = document.getElementById('aepSub');
-  if(sub) sub.textContent = 'Audited by '+(ar.auditor||'Team Lead')+' · '+String(ar._created||ar.endTime||'').slice(0,10);
-
-  const body = document.getElementById('aepBody');
-  if(body) body.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;">
-        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Transaction</div>
-        <div style="font-size:16px;font-weight:800;font-family:var(--mono);color:var(--text,#232d42);">${txn}</div>
-      </div>
-      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;">
-        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Client</div>
-        <div style="font-size:12px;font-weight:700;color:var(--text,#232d42);">${ar.client||'—'} ${ar.clientname?'— '+ar.clientname:''}</div>
-      </div>
-      <div style="background:#fee2e2;border-radius:10px;padding:10px 12px;">
-        <div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Error Type</div>
-        <div style="font-size:13px;font-weight:800;color:#991b1b;">${ar.errorType||'—'}</div>
-      </div>
-      <div style="background:${scoreBg};border-radius:10px;padding:10px 12px;">
-        <div style="font-size:9px;font-weight:800;color:${scoreColor};text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Quality Score</div>
-        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${scoreColor};">${score}%</div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:12px;">
-      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Mode: </span><span style="color:var(--text,#232d42);font-weight:700;">${ar.mode||'—'}</span></div>
-      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Team: </span><span style="color:var(--text,#232d42);font-weight:700;">${ar.team||'—'}</span></div>
-    </div>
-    ${ar.comments?`<div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-      <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Audit Comment from Team Lead</div>
-      <div style="font-size:13px;color:var(--text,#232d42);line-height:1.6;">${ar.comments}</div>
-    </div>`:''}
-    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-      <div style="font-size:9px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">⚠ Action Plan — How to avoid this error</div>
-      <div style="font-size:12px;color:#78350f;line-height:1.75;">${plan}</div>
-    </div>
-    ${ar.userAcknowledged?`<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:10px 12px;">
-      <div style="font-size:11px;font-weight:700;color:#166534;">✓ You acknowledged this on ${String(ar.userAckAt||'').slice(0,10)}</div>
-      ${ar.userResponse?`<div style="font-size:12px;color:#15803d;margin-top:4px;font-style:italic;">"${ar.userResponse}"</div>`:''}
-    </div>`:''}
-  `;
-
-  const cmtEl = document.getElementById('aepComment');
-  if(cmtEl) cmtEl.value = ar.userResponse||'';
-
-  const ackBtn = document.getElementById('aepAckBtn');
-  if(ackBtn){
-    if(ar.userAcknowledged){
-      ackBtn.textContent = '✓ Already Acknowledged';
-      ackBtn.style.background = '#6b7280';
-      ackBtn.disabled = true;
-    } else {
-      ackBtn.textContent = '✓ Acknowledge & Save';
-      ackBtn.style.background = '#059669';
-      ackBtn.disabled = false;
-    }
-  }
-
-  const bg = document.getElementById('auditErrPopupBg');
-  if(bg) bg.style.display = 'flex';
-}
-
-function closeAuditErrPopup(){
-  const bg = document.getElementById('auditErrPopupBg');
-  if(bg) bg.style.display = 'none';
-  _aepTxn = null;
-}
-
-async function submitAuditErrAck(){
-  if(!_aepTxn){ closeAuditErrPopup(); return; }
-  const ar = window._auditByTxn ? window._auditByTxn.get(_aepTxn) : DB.audit.find(a=>String(a.txn)===_aepTxn);
-  if(!ar){ showToast('Audit record not found',true); return; }
-  const comment = (document.getElementById('aepComment')?.value||'').trim();
-  const btn = document.getElementById('aepAckBtn');
-  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
-  const nowVal = nowISOET();
-  // Update local record immediately
-  ar.userResponse = comment;
-  ar.userAcknowledged = true;
-  ar.userAckAt = nowVal;
-  // Persist to Supabase audit table
-  if(_supa && ar._dbid){
-    try{
-      const {error} = await _supa.from('audit').update({
-        user_response: comment,
-        user_acknowledged: true,
-        user_ack_at: nowVal
-      }).eq('id', ar._dbid);
-      if(error) console.warn('[KPI] audit ack update failed:', error.message);
-    }catch(e){ console.warn('[KPI] audit ack threw:', e.message); }
-  }
-  showToast('✅ Acknowledged — response saved');
-  closeAuditErrPopup();
-  // Refresh release page to update badge state
-  const _mainC = document.getElementById('pc');
-  if(_mainC && _currentPage==='release2') renderRelease2(_mainC);
-}
-
-// Show all my internal audit errors in the popup list
-function showMyAuditErrors(){
-  const myName = CU.name||'';
-  const errors = DB.audit.filter(a=>a.user===myName&&parseFloat(a.score||100)<100);
-  if(!errors.length){ showToast('No audit errors found'); return; }
-  // Open first unacknowledged, else first
-  const first = errors.find(a=>!a.userAcknowledged)||errors[0];
-  openAuditErrPopup(String(first.txn));
-}
-
-// Show client errors list popup (reuse existing error report or simple list)
-function showMyClientErrors(){
-  const myName = CU.name||'';
-  const errors = (DB.errors||[]).filter(e=>e.userName===myName);
-  if(!errors.length){ showToast('No client errors found'); return; }
-  showPage('errorreport');
-}
-
-// ── Audit Notification Popup ─────────────────────────────────────────────────
-let _auditPopupNotifId = null;
-
-function showAuditNotifPopup(n){
-  // n = raw audit_notifications row from Supabase (or local object)
-  if(!n) return;
-  _auditPopupNotifId = n.id || null;
-  const isGood = (n.error_type||'')==='Good Job';
-  const score = parseFloat(n.score||0);
-  const scoreColor = score>=95?'#166534':score>=85?'#854d0e':'#991b1b';
-  const scoreBg = score>=95?'#dcfce7':score>=85?'#fef9c3':'#fee2e2';
-  const plan = n.action_plan || getActionPlan(n.error_type||'');
-
-  const sub = document.getElementById('auditNotifPopupSub');
-  if(sub) sub.textContent = 'Audited by ' + (n.auditor||'Team Lead') + ' · ' + (n.created_at||'').slice(0,10);
-
-  const body = document.getElementById('auditNotifPopupBody');
-  if(body) body.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Transaction</div>
-        <div style="font-size:15px;font-weight:800;font-family:var(--mono);color:var(--text,#232d42);">${n.txn||'—'}</div>
-      </div>
-      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Client</div>
-        <div style="font-size:13px;font-weight:700;color:var(--text,#232d42);">${n.client||'—'} ${n.client_name?'<span style="font-weight:500;font-size:11px;">— '+n.client_name+'</span>':''}</div>
-      </div>
-      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Error Type</div>
-        <div style="display:inline-block;background:${isGood?'#dcfce7':'#fee2e2'};color:${isGood?'#166534':'#991b1b'};border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;">${n.error_type||'—'}</div>
-      </div>
-      <div style="background:${scoreBg};border-radius:10px;padding:10px 14px;">
-        <div style="font-size:9px;font-weight:800;color:${scoreColor};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Quality Score</div>
-        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${scoreColor};">${score}%</div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:12px;">
-      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Mode: </span><span style="color:var(--text,#232d42);font-weight:700;">${n.mode||'—'}</span></div>
-      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Team: </span><span style="color:var(--text,#232d42);font-weight:700;">${n.team||'—'}</span></div>
-    </div>
-    ${n.comments?`<div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-      <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Audit Comment</div>
-      <div style="font-size:13px;color:var(--text,#232d42);line-height:1.6;">${n.comments}</div>
-    </div>`:''}
-    ${!isGood?`<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px 14px;">
-      <div style="font-size:9px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">&#9888; Action Plan — How to avoid this error</div>
-      <div style="font-size:12px;color:#78350f;line-height:1.75;">${plan}</div>
-    </div>`:'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;font-size:13px;color:#166534;font-weight:600;">&#10003; Great work — no errors found. Keep it up!</div>'}
-  `;
-
-  const ackBtn = document.getElementById('auditNotifAckBtn');
-  if(ackBtn){
-    if(isGood){ ackBtn.style.display='none'; }
-    else { ackBtn.style.display=''; ackBtn.disabled=false; ackBtn.textContent='✓ Acknowledge Error'; }
-  }
-
-  const bg = document.getElementById('auditNotifPopupBg');
-  if(bg){ bg.style.display='flex'; }
-}
-
-function closeAuditNotifPopup(){
-  const bg = document.getElementById('auditNotifPopupBg');
-  if(bg) bg.style.display='none';
-  _auditPopupNotifId = null;
-}
-
-async function ackFromPopup(){
-  const btn = document.getElementById('auditNotifAckBtn');
-  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
-  await acknowledgeAuditNotification(_auditPopupNotifId, null);
-  closeAuditNotifPopup();
-}
-
-// ── Audit Notification helpers ──────────────────────────────────────────────
-function _refreshAuditNotifBadge(){
-  const unread=(DB.auditNotifications||[]).filter(n=>!n.acknowledged).length;
-  const badge=document.getElementById('auditNotifBadge');
-  if(badge){ badge.textContent=unread; badge.style.display=unread?'inline-flex':'none'; }
-}
-
-async function loadAuditNotifications(){
-  if(!_supa) return;
-  const targetUser = CU?.name;
-  if(!targetUser) return;
-  try{
-    const {data,error}=await _supa.from('audit_notifications')
-      .select('*').eq('target_user',targetUser).order('created_at',{ascending:false}).limit(200);
-    if(!error && data){
-      DB.auditNotifications=data;
-      _refreshAuditNotifBadge();
-    }
-  }catch(e){ console.warn('[KPI] loadAuditNotifications:',e.message); }
-}
-
-async function loadAllAuditNotifications(){
-  // For TL/Supervisor/Manager — load all notifications (to see ack progress)
-  if(!_supa) return;
-  try{
-    const {data,error}=await _supa.from('audit_notifications')
-      .select('*').order('created_at',{ascending:false}).limit(500);
-    if(!error && data){
-      DB.auditNotifications=data;
-      _refreshAuditNotifBadge();
-    }
-  }catch(e){ console.warn('[KPI] loadAllAuditNotifications:',e.message); }
-}
-
-async function acknowledgeAuditNotification(notifId, btnEl){
-  if(btnEl){ btnEl.disabled=true; btnEl.textContent='Saving...'; }
-  const notif = (DB.auditNotifications||[]).find(n=>n.id===notifId || (!notifId && n._localId===notifId));
-  if(notif){
-    notif.acknowledged=true;
-    notif.acknowledged_by=CU?.name||'';
-    notif.acknowledged_at=nowISOET();
-  }
-  if(_supa && notifId){
-    try{
-      await _supa.from('audit_notifications').update({
-        acknowledged:true, acknowledged_by:CU?.name||'', acknowledged_at:nowISOET()
-      }).eq('id',notifId);
-    }catch(e){ console.warn('[KPI] ack notif failed:',e.message); }
-  }
-  _refreshAuditNotifBadge();
-  // Notify TL/Supervisor of acknowledgement progress via badge refresh
-  // Re-render the notifications panel if visible
-  const pc=document.getElementById('pc');
-  if(pc && window._currentAuditNotifView){
-    renderAuditNotificationsPanel(pc);
-  }
-  showToast('✅ Error acknowledged');
-}
-
-// ── Export Internal Audit CSV ────────────────────────────────────────────────
-function exportInternalAuditCSV(){
-  const data = DB.audit||[];
-  if(!data.length){ showToast('⚠️ No audit records to export',true); return; }
-  const headers=['Txn','Client','Client Name','Team','Mode','User Name','Audit By','Error Type','Score %','Double Sign','Audit Date','TL Comments','Member Acknowledged','Member Response','Acknowledged At'];
-  const rows=data.map(a=>[
-    a.txn||'', a.client||'', a.clientname||'', a.team||'', a.mode||'',
-    a.user||'', a.auditor||'', a.errorType||'', a.score||'',
-    a.doubleSign||'', (a._created||a.endTime||'').slice(0,10), a.comments||'',
-    a.userAcknowledged?'Yes':'No', a.userResponse||'', (a.userAckAt||'').slice(0,10)
-  ]);
-  const byErr={};
-  data.forEach(a=>{ const e=a.errorType||'Unknown'; byErr[e]=(byErr[e]||0)+1; });
-  const topErr=Object.entries(byErr).sort((x,y)=>y[1]-x[1]).slice(0,5).map(([k,v])=>[k,v]);
-  const scores=data.map(a=>parseFloat(a.score)||0).filter(s=>s>0);
-  const avgScore=scores.length?Math.round(scores.reduce((s,n)=>s+n,0)/scores.length):0;
-  exportCSV(rows,headers,'Internal_Audit_Report_'+todayStrET()+'.csv',{
-    taskName:'Internal Audit', dateLabel:'All Records', total:data.length,
-    extras:[
-      ['Avg Quality Score %', avgScore+'%'],
-      ['Good Job Count', data.filter(a=>a.errorType==='Good Job').length],
-      ['Error Records', data.filter(a=>a.errorType!=='Good Job').length],
-      ...topErr.map(([k,v])=>['Error: '+k, v])
-    ]
-  });
-  showToast('✅ Exported '+data.length+' audit records');
-}
-
-// ── Render Audit Notifications Panel (Team Member view + TL summary) ─────────
-function renderAuditNotificationsPanel(c){
-  window._currentAuditNotifView=true;
-  const isLead=isAdmin()||isSuperLead();
-  const notifs=(DB.auditNotifications||[]);
-  const myNotifs=isLead ? notifs : notifs.filter(n=>n.target_user===CU.name);
-  const unread=myNotifs.filter(n=>!n.acknowledged);
-  const read=myNotifs.filter(n=>n.acknowledged);
-
-  // TL summary bar
-  let summaryBar='';
-  if(isLead){
-    const todayYMD=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
-    const todayNotifs=notifs.filter(n=>(n.created_at||'').slice(0,10)===todayYMD);
-    const todayAck=todayNotifs.filter(n=>n.acknowledged).length;
-    const todayTotal=todayNotifs.length;
-    summaryBar=`<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:16px;align-items:center">
-      <div style="font-size:13px;font-weight:800;color:#166534">Today's Audit Acknowledgement Summary</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <span style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#166534">Total Errors Today: <b>${todayTotal}</b></span>
-        <span style="background:#fff;border:1px solid #86efac;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#059669">Acknowledged: <b>${todayAck}</b></span>
-        <span style="background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#991b1b">Pending: <b>${todayTotal-todayAck}</b></span>
-        ${todayTotal?`<span style="background:#dbeafe;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;color:#1e40af">Rate: <b>${Math.round(todayAck/todayTotal*100)}%</b></span>`:''}
-      </div>
-    </div>`;
-  }
-
-  // Build notification cards
-  function buildCards(arr, showAckBtn){
-    if(!arr.length) return '<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No records found.</div>';
-    return arr.map(n=>{
-      const isGood=(n.error_type||'')==='Good Job';
-      const bdColor=isGood?'#86efac':n.acknowledged?'var(--border)':'#fca5a5';
-      const scoreColor=parseFloat(n.score||0)>=95?'#166534':parseFloat(n.score||0)>=85?'#854d0e':'#991b1b';
-      const scoreBg=parseFloat(n.score||0)>=95?'#dcfce7':parseFloat(n.score||0)>=85?'#fef9c3':'#fee2e2';
-      const plan=n.action_plan||getActionPlan(n.error_type||'');
-      return `<div style="background:var(--surface);border:1.5px solid ${bdColor};border-radius:12px;margin-bottom:10px;overflow:hidden;${n.acknowledged?'opacity:0.75':''}">
-        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="background:${isGood?'#dcfce7':'#fee2e2'};color:${isGood?'#166534':'#991b1b'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">${n.error_type||'—'}</span>
-            ${n.target_user&&isLead?`<span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">${n.target_user}</span>`:''}
-            <span style="background:var(--surface2);color:var(--text2);border-radius:8px;padding:2px 8px;font-size:11px">${n.mode||'—'} · ${n.team||'—'}</span>
-            <span style="background:${scoreBg};color:${scoreColor};border-radius:8px;padding:2px 8px;font-size:12px;font-weight:800;font-family:var(--mono)">${n.score||'—'}%</span>
-            ${n.acknowledged?'<span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">Acknowledged</span>':''}
-          </div>
-          <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${(n.created_at||'').slice(0,10)}</span>
-        </div>
-        <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Txn</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">${n.txn||'—'}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Client</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.client||'—'} ${n.client_name?'— '+n.client_name:''}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Audited By</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.auditor||'—'}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Team</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.team||'—'}</div></div>
-        </div>
-        ${n.comments?`<div style="padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"><b>Audit note:</b> ${n.comments}</div>`:''}
-        ${!isGood?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
-          <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Action Plan — How to avoid this error</div>
-          <div style="font-size:12px;color:#78350f;line-height:1.7">${plan}</div>
-        </div>`:''}
-        ${showAckBtn&&!n.acknowledged&&!isGood?`<div style="padding:10px 16px;background:var(--surface2)">
-          <button style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer" onclick="acknowledgeAuditNotification(${JSON.stringify(n.id)},this)">Acknowledge Error</button>
-          <span style="font-size:11px;color:var(--text3);margin-left:10px">By acknowledging you confirm you have read and understood the error and action plan.</span>
-        </div>`:''}
-        ${n.acknowledged&&n.acknowledged_by?`<div style="padding:8px 16px;background:#f0fdf4"><span style="font-size:11px;color:#166534;font-weight:700">Acknowledged by ${n.acknowledged_by} on ${(n.acknowledged_at||'').slice(0,10)}</span></div>`:''}
-      </div>`;
-    }).join('');
-  }
-
-  const showMemberView = !isLead;
-  const html=`
-    <div class="ph">
-      <div><div class="pt">Audit Error Notifications</div>
-      <div class="ps">${isLead?'All team members':'Your errors from internal audit'} · ${myNotifs.length} total</div></div>
-      <button class="btn-add" style="background:var(--emerald)" onclick="exportInternalAuditCSV()">Export Audit CSV</button>
-    </div>
-    ${summaryBar}
-    <div class="tw">
-      <div style="padding:10px 14px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-bottom:8px">
-          <button class="stat-tab active" id="anfTab_unread" onclick="switchAuditNotifTab('unread')" style="font-size:11px">Unread (${unread.length})</button>
-          <button class="stat-tab" id="anfTab_read" onclick="switchAuditNotifTab('read')" style="font-size:11px">Acknowledged (${read.length})</button>
-          <button class="stat-tab" id="anfTab_all" onclick="switchAuditNotifTab('all')" style="font-size:11px">All (${myNotifs.length})</button>
-          ${unread.length&&showMemberView?`<span style="background:#fee2e2;color:#991b1b;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:800">${unread.length} pending acknowledgement</span>`:''}
-        </div>
-      </div>
-      <div id="auditNotifCards" style="padding:14px">
-        ${buildCards(unread, showMemberView)}
-      </div>
-    </div>`;
-
-  c.innerHTML=html;
-  window._auditNotifData={myNotifs,unread,read,showMemberView};
-}
-
-function switchAuditNotifTab(tab){
-  const d=window._auditNotifData||{};
-  const map={unread:d.unread||[],read:d.read||[],all:d.myNotifs||[]};
-  const arr=map[tab]||[];
-  ['unread','read','all'].forEach(t=>{
-    const b=document.getElementById('anfTab_'+t);
-    if(b) b.classList.toggle('active',t===tab);
-  });
-  const cards=document.getElementById('auditNotifCards');
-  if(cards){
-    const showBtn=tab!=='read'&&d.showMemberView;
-    const isLead=isSuperLead();
-    const isGood=n=>(n.error_type||'')==='Good Job';
-    const scoreColor=s=>parseFloat(s||0)>=95?'#166534':parseFloat(s||0)>=85?'#854d0e':'#991b1b';
-    const scoreBg=s=>parseFloat(s||0)>=95?'#dcfce7':parseFloat(s||0)>=85?'#fef9c3':'#fee2e2';
-    if(!arr.length){ cards.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">No records.</div>'; return; }
-    cards.innerHTML=arr.map(n=>{
-      const plan=n.action_plan||getActionPlan(n.error_type||'');
-      const bdColor=isGood(n)?'#86efac':n.acknowledged?'var(--border)':'#fca5a5';
-      return `<div style="background:var(--surface);border:1.5px solid ${bdColor};border-radius:12px;margin-bottom:10px;overflow:hidden;${n.acknowledged?'opacity:0.75':''}">
-        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="background:${isGood(n)?'#dcfce7':'#fee2e2'};color:${isGood(n)?'#166534':'#991b1b'};border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">${n.error_type||'—'}</span>
-            ${n.target_user&&isLead?`<span style="background:#e0e7ff;color:#3730a3;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">${n.target_user}</span>`:''}
-            <span style="background:var(--surface2);color:var(--text2);border-radius:8px;padding:2px 8px;font-size:11px">${n.mode||'—'} · ${n.team||'—'}</span>
-            <span style="background:${scoreBg(n.score)};color:${scoreColor(n.score)};border-radius:8px;padding:2px 8px;font-size:12px;font-weight:800;font-family:var(--mono)">${n.score||'—'}%</span>
-            ${n.acknowledged?'<span style="background:#dcfce7;color:#166534;border-radius:8px;padding:2px 8px;font-size:11px;font-weight:700">Acknowledged</span>':''}
-          </div>
-          <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${(n.created_at||'').slice(0,10)}</span>
-        </div>
-        <div style="padding:10px 16px;display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Txn</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">${n.txn||'—'}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Client</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.client||'—'} ${n.client_name?'— '+n.client_name:''}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Audited By</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.auditor||'—'}</div></div>
-          <div><div style="font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Team</div><div style="font-size:12px;font-weight:600;color:var(--text)">${n.team||'—'}</div></div>
-        </div>
-        ${n.comments?`<div style="padding:8px 16px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"><b>Audit note:</b> ${n.comments}</div>`:''}
-        ${!isGood(n)?`<div style="padding:10px 16px;background:#fffbeb;border-bottom:1px solid #fde68a">
-          <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Action Plan</div>
-          <div style="font-size:12px;color:#78350f;line-height:1.7">${plan}</div>
-        </div>`:''}
-        ${showBtn&&!n.acknowledged&&!isGood(n)?`<div style="padding:10px 16px;background:var(--surface2)">
-          <button style="padding:7px 18px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer" onclick="acknowledgeAuditNotification(${JSON.stringify(n.id)},this)">Acknowledge Error</button>
-          <span style="font-size:11px;color:var(--text3);margin-left:10px">Confirm you have read and understood the error and action plan.</span>
-        </div>`:''}
-        ${n.acknowledged&&n.acknowledged_by?`<div style="padding:8px 16px;background:#f0fdf4"><span style="font-size:11px;color:#166534;font-weight:700">Acknowledged by ${n.acknowledged_by} on ${(n.acknowledged_at||'').slice(0,10)}</span></div>`:''}
-      </div>`;
-    }).join('');
-  }
-}
-
 function getQualityForUser(username){
   const auditedByUser=DB.audit.filter(a=>a.user===username);
   if(!auditedByUser.length)return null;
@@ -17673,16 +17027,13 @@ function applyCOMPFilter(){
   const rt=document.getElementById('cpf2_rt')?.value;
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.comp,'assignedTo');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>r.assignedTo===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(rt) data=data.filter(r=>r.reqType===rt);
-    if(s) data=data.filter(r=>r.status===s);
-  }
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>r.assignedTo===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(rt) data=data.filter(r=>r.reqType===rt);
+  if(s) data=data.filter(r=>r.status===s);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.clientName||'').toLowerCase().includes(q)||String(r.clientNo||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.assignedTo||'').toLowerCase().includes(q));
   pgSetData('comp', data);
   renderCOMPRows(pgSlice('comp'));
@@ -17988,15 +17339,12 @@ function applyPDFilter(){
   const tm=document.getElementById('pd_fteam')?.value;
   const mo=document.getElementById('pd_fmode')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.parsDocs,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(mo) data=data.filter(r=>(r.mode||'')===mo);
-  }
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pd', data);
   renderPDRows(pgSlice('pd'));
@@ -18460,15 +17808,12 @@ function applyODFilter(){
   const tm=document.getElementById('od_fteam')?.value;
   const mo=document.getElementById('od_fmode')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.oceanDocs,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(mo) data=data.filter(r=>(r.mode||'')===mo);
-  }
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('od', data);
   renderODRows(pgSlice('od'));
@@ -18735,13 +18080,10 @@ function applyPLFilter(){
   const d2=document.getElementById('pl_fd2')?.value;
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.partLot,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-  }
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.parsno||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pl', data);
   renderPLRows(pgSlice('pl'));
@@ -18999,25 +18341,6 @@ function renderRelease2(c){
     <div class="ps">Track release entries
   </div></div>
   </div>
-  ${(()=>{
-    // ── Error summary cards for team member (not TL/Supervisor/Admin) ──
-    if(isSuperLead()||isAdmin()) return '';
-    const _myName=CU.name||'';
-    const _myAudits=DB.audit.filter(a=>a.user===_myName&&parseFloat(a.score||100)<100);
-    const _myAuditNew=_myAudits.filter(a=>!a.userAcknowledged);
-    const _myClientErr=(DB.errors||[]).filter(e=>e.userName===_myName);
-    const _myClientErrNew=_myClientErr.filter(e=>!e.acknowledgedAt);
-    const _totalNew=_myAuditNew.length+_myClientErrNew.length;
-    if(!_myAudits.length&&!_myClientErr.length) return '';
-    return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 14px;background:var(--surface);border:1.5px solid #fca5a5;border-radius:12px;align-items:center">
-      <div style="font-size:13px;font-weight:800;color:#991b1b;flex:0 0 auto">🚨 Error Summary</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${_myAudits.length?`<div onclick="showMyAuditErrors()" style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 14px;cursor:pointer;${_myAuditNew.length?'animation:_errBlink 1.4s ease-in-out infinite':''}"><div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px">Internal Audit Errors</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#991b1b">${_myAudits.length}</div><div style="font-size:10px;color:#b91c1c">${_myAuditNew.length} unacknowledged</div></div>`:''}
-        ${_myClientErr.length?`<div onclick="showMyClientErrors()" style="background:#fff7ed;border:1.5px solid #fdba74;border-radius:10px;padding:8px 14px;cursor:pointer;${_myClientErrNew.length?'animation:_errBlink 1.4s ease-in-out infinite':''}"><div style="font-size:9px;font-weight:800;color:#9a3412;text-transform:uppercase;letter-spacing:.5px">Client Errors</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#ea580c">${_myClientErr.length}</div><div style="font-size:10px;color:#c2410c">${_myClientErrNew.length} unacknowledged</div></div>`:''}
-        ${_totalNew?`<div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 14px"><div style="font-size:9px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.5px">Total Pending</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#dc2626">${_totalNew}</div><div style="font-size:10px;color:#b91c1c">need acknowledgement</div></div>`:''}
-      </div>
-    </div>`;
-  })()}
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
@@ -19107,8 +18430,7 @@ function renderRLRows(data){
   const _canEdit = canEditData();
   const _isAdm = isAdmin();
   const _isTLRel = CU&&CU.role==='Team Lead'&&CU.task==='Release'&&_canEdit;
-  const _showErrBadge = !isSuperLead()&&!isAdmin()&&!showAuditBtn;
-  const colCount=(showAuditBtn?(showTLEdit?20:19):(_showErrBadge?19:18))-(isClient()?2:0);
+  const colCount=(showAuditBtn?(showTLEdit?20:19):18)-(isClient()?2:0);
   if(!data.length){tbody.innerHTML=`<tr><td colspan="${colCount}"><div class="empty"><div class="empty-ico">🚀</div><div class="empty-t">No Release records</div></div></td></tr>`;return;}
   // Pre-cache all 7 status option combos once
   const _RL_ST=['Recap done','Submitted','Hold','SWI Rejected','Docs-Recap','Recap-EDI','Recap-ETA'];
@@ -19124,16 +18446,11 @@ function renderRLRows(data){
       const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';
       return`<td style="text-align:center"><span style="background:${bg};color:${col};border-radius:20px;padding:3px 10px;font-size:12px;font-weight:800;font-family:var(--mono)">${sc}%</span></td>`;
     })();
-    const _isMyRow = !isSuperLead()&&!isAdmin()&&r.user===CU.name;
-    const _hasErr = ar&&parseFloat(ar.score||100)<100;
     const auditCell=showAuditBtn
       ?(ar
         ?`<td style="text-align:center"><span style="background:#dcfce7;color:#166534;border-radius:16px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap">✅ Audited</span></td>`
         :`<td style="text-align:center"><button onclick="openAuditFromRelease(${r._idx!==undefined?r._idx:i})" style="padding:5px 12px;background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 2px 6px rgba(37,99,235,.3)">🔍 Audit</button></td>`
-      )
-      :(_isMyRow&&_hasErr
-        ?`<td style="text-align:center"><span class="audit-err-badge${ar.userAcknowledged?' acked':''}" onclick="openAuditErrPopup(${JSON.stringify(String(r.txn))})">⚠ ${ar.userAcknowledged?'Viewed':'New Error'}</span></td>`
-        :'');
+      ):'';
     return`<tr>
     <td class="mono" style="color:var(--text3)">${i+1}</td>
     <td class="mono" style="color:var(--rose);font-weight:700">${r.txn||'—'}</td>
@@ -19207,16 +18524,13 @@ function applyRLFilter(){
   const mo=document.getElementById('rl_fmode')?.value;
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.release2,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(mo) data=data.filter(r=>(r.mode||'')===mo);
-    if(s) data=data.filter(r=>r.status===s);
-  }
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(mo) data=data.filter(r=>(r.mode||'')===mo);
+  if(s) data=data.filter(r=>r.status===s);
   if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.client||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('rl', data);
   renderRLRows(pgSlice('rl'));
@@ -22927,17 +22241,14 @@ function applyOTTFilter(){
   const s=document.getElementById('ott_fstatus')?.value;
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.oceanTT,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-    if(tm) data=data.filter(r=>(r.team||'')===tm);
-    if(s) data=data.filter(r=>r.status===s);
-    if(dest) data=data.filter(r=>r.destination===dest);
-  }
-  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.team||'').toLowerCase().includes(q));
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(tm) data=data.filter(r=>(r.team||'')===tm);
+  if(s) data=data.filter(r=>r.status===s);
+  if(dest) data=data.filter(r=>r.destination===dest);
+  if(q) data=data.filter(r=>String(r.txn||'').includes(q)||String(r.clientname||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.team||'').toLowerCase().includes(q));
   pgSetData('ott', data);
   renderOTTRows(pgSlice('ott'));
   pgRender('ott', 'pg_ott', 'pgGoOTT');
@@ -23186,17 +22497,14 @@ function applyB2Filter(){
   const src=document.getElementById('b2_fsource')?.value;
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
-  const _isTxnSearch = q && /^[0-9]/.test(q);
   let data=_scopeByUser(DB.b2entries,'user');
-  if(!_isTxnSearch){
-    if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-    if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
-    if(u) data=data.filter(r=>(r.user||'')===u);
-    if(s) data=data.filter(r=>r.status===s);
-    if(src) data=data.filter(r=>r.source===src);
-    if(tt) data=data.filter(r=>r.tasktype===tt);
-  }
-  if(q) data=data.filter(r=>String(r.txn||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.adjtype||'').toLowerCase().includes(q));
+  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
+  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(u) data=data.filter(r=>(r.user||'')===u);
+  if(s) data=data.filter(r=>r.status===s);
+  if(src) data=data.filter(r=>r.source===src);
+  if(tt) data=data.filter(r=>r.tasktype===tt);
+  if(q) data=data.filter(r=>String(r.txn||'').includes(q)||String(r.user||'').toLowerCase().includes(q)||String(r.adjtype||'').toLowerCase().includes(q));
   pgSetData('b2', data);
   renderB2Rows(pgSlice('b2'));
   pgRender('b2', 'pg_b2', 'pgGoB2');
@@ -24651,6 +23959,5 @@ if('serviceWorker' in navigator){
 <!-- Cloudflare Web Analytics beacon removed: /cdn-cgi/rum endpoint returns 404
      on this Pages deployment. Re-add only after enabling Web Analytics in the
      Cloudflare dashboard for invensis.myteamkpi.com. -->
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
