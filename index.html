@@ -41,7 +41,7 @@ if(location.protocol === 'file:'){
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
@@ -3791,8 +3791,13 @@ function _initSupaRT(){
     }catch(je){}
     if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase project URL'); return; }
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
-      realtime: { params: { eventsPerSecond: 10 } },
-      auth: { persistSession: false, autoRefreshToken: false }
+      realtime: {
+        params: { eventsPerSecond: 10 },
+        timeout: 20000,
+        heartbeatIntervalMs: 15000,
+      },
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { 'X-Client-Info': 'kpi-tracker/1.0' } }
     });
     console.log('[RT] Supabase Realtime client ready');
   }catch(e){ console.warn('[RT] Failed to init realtime client:', e.message); _supaRT = null; }
