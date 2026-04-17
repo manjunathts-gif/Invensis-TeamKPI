@@ -4818,12 +4818,20 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
   window._pendingPageRefresh=null;
   window._saveJustFired=true;
 
-  // Feature 2: Productivity tracking — DISABLED (tab removed for performance)
-  // _prodRecordSubmit was removed to eliminate unnecessary DB writes on every submit
-
   closePanel();
   showToast('✅ Entry saved!');
   showPage(_stayPage);  // instant render — user sees result immediately
+
+  // ── FIX: refresh all pages that show data from this table ──
+  // Previously only _stayPage was refreshed — dashboard cards never updated
+  // for non-Release tasks until the user navigated away and back.
+  const _relatedPages = (TABLE_TO_PAGES[supaTable]||[]);
+  _relatedPages.forEach(pg => {
+    if(pg !== _stayPage && pg === _currentPage) {
+      _silentRefreshPage(pg);
+    }
+  });
+
   // 2. Save to Supabase in background — silent, no visible reload
   if(_supa){
     dbInsert(supaTable, supaRow).then(saved=>{
@@ -4834,10 +4842,16 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
           if(rowIdx>=0){ dbArray[rowIdx]._dbid=savedRow.id; dbArray[rowIdx].id=savedRow.id; }
         }
       }
-      // Re-sort now that _dbid is set — record keeps its position at top
+      // Re-sort now that _dbid is set
       _sortAllTaskArrays();
-      // Silent re-render to assign correct DB id — preserves scroll, no blink
-      if(_currentPage===_stayPage) _silentRefreshPage(_stayPage);
+      // ── FIX: refresh the task page AND dashboard/status after DB confirm ──
+      // This is the critical fix — after Supabase confirms the save,
+      // refresh all pages that should reflect this table's data.
+      // Previously only _stayPage refreshed → dashboard cards stale for non-Release tasks.
+      const _pagesToRefresh = TABLE_TO_PAGES[supaTable] || [_stayPage];
+      _pagesToRefresh.forEach(pg => {
+        if(pg === _currentPage) _silentRefreshPage(pg);
+      });
     }).catch(e=>{ console.error('BG save failed',supaTable,e); showToast('⚠️ Sync error — entry saved locally',true); });
   }
 }
@@ -5011,7 +5025,7 @@ function startBgPoll(){
         ? (window._bgPollCycle%3===0
             ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries']
             : [activeTbl].filter(Boolean))
-        : [TASK_TABLE_MAP[CU.task]].filter(Boolean); // regular user: only their table
+        : [TASK_TABLE_MAP[CU.task]].filter(Boolean); // regular user: their task table (dashboard cards auto-update from same DB arrays)
 
       let changed=false;
       for(const tbl of tables){
@@ -5111,18 +5125,25 @@ function startBgPoll(){
       if(changed){
         const ap=getActivePage();
         if(ap && !isPanelOpen()){
-          // SPEED FIX: only refresh if user is on a relevant page
-          const taskPages = ['lvs','classifier','compliance','parsdocs','oceandocs',
-            'partlot','release2','oceantt','b2entries','dashboard','status','reports','tatissue','dcissue'];
-          if(taskPages.includes(ap)) _silentRefreshPage(ap);
+          // Refresh the currently visible page so cards update immediately
+          _silentRefreshPage(ap);
+          // Also reset _saveJustFired so next poll runs normally
+          window._saveJustFired=false;
         }
+      } else if(window._saveJustFired){
+        // A save was fired this session but bgPoll didn't detect a DB change yet
+        // (optimistic row added locally but DB save may still be in-flight)
+        // Force-refresh the current page so dashboard cards reflect the local array
+        const ap=getActivePage();
+        if(ap && !isPanelOpen()) _silentRefreshPage(ap);
+        window._saveJustFired=false;
       }
       // Measure actual DB ping and show in UI
       const _pingEnd = Date.now();
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 60000); // Poll every 60s — balanced sync vs DB IO budget
+  }, 30000); // Poll every 30s — ensures dashboard cards stay current
 
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
