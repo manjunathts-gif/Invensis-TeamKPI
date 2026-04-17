@@ -3767,22 +3767,15 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 // Separate from the custom REST client (_supa) which handles reads/writes.
 // This client is ONLY used for Realtime channel subscriptions.
 let _supaRT = null;
-// ── Suppress WebSocket URL from console (hides API key from casual viewers) ──
+// ── Suppress only the WebSocket URL line that contains the API key ──
 (function(){
   const _origErr = console.error.bind(console);
-  const _origWarn = console.warn.bind(console);
-  const _suppress = s => typeof s==='string' && (
-    s.includes('supabase.co/realtime') ||
-    s.includes('WebSocket connection to') ||
-    s.includes('wss://') && s.includes('apikey=')
-  );
+  // Only suppress the browser's built-in "WebSocket connection to wss://...apikey=..." error
+  // Do NOT suppress other Supabase/RT messages — needed for debugging
   console.error = function(...args){
-    if(args.some(a=>_suppress(String(a||'')))) return;
+    const s = String(args[0]||'');
+    if(s.includes('WebSocket connection to') && s.includes('apikey=')) return;
     _origErr(...args);
-  };
-  console.warn = function(...args){
-    if(args.some(a=>_suppress(String(a||'')))) return;
-    _origWarn(...args);
   };
 })();
 
@@ -5376,9 +5369,11 @@ function setupRealtime(){
         showToast('⚡ Realtime sync active — all users see changes instantly');
       }
       console.log('[RT] ✅ WebSocket connected — bgPoll stopped');
+      console.log('[RT] Project:', 'vnibbqgpdtzamztmhheu', '| Tables:', tables.length);
     } else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       _rtConnected=false;
       _setRTIndicator('polling');
+      console.warn('[RT] Connection lost — status:', status, err?.message||'');
       // bgPoll already running — just ensure it's active
       if(!_bgPollInterval) startBgPoll();
       // Try to reconnect — exponential backoff: 15s, 30s, 60s, 120s
@@ -10394,7 +10389,7 @@ function renderLVS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayR=all.filter(r=>(String(r._created||'').slice(0,10)===today);
+  const todayR=all.filter(r=>String(r._created||'').slice(0,10)===today);
   const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
   const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
@@ -10936,7 +10931,7 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(String(r._created||'').slice(0,10)===today);
+  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -12673,7 +12668,7 @@ function renderClientDashboard(c){
     const myRecs = clientNo
       ? t.db.filter(r=>String(r[t.client_field]||r.client||r.clientNo||'')===clientNo)
       : t.db;
-    const todayCnt = myRecs.filter(r=>(String(r._created||'').slice(0,10)===todayStr).length;
+    const todayCnt = myRecs.filter(r=>String(r._created||'').slice(0,10)===todayStr).length;
     const tatR = myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const tatN = myRecs.filter(r=>(r.tat||'').toLowerCase().includes('not reached')).length;
     const tatPct = (tatR+tatN) ? Math.round(tatR/(tatR+tatN)*100) : 0;
@@ -14937,7 +14932,7 @@ function renderMyStatus(c){
   // Team member stats (TL only)
   const memberStats=usersArr.map((u,ui)=>{
     const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
-    const uToday=uRecs.filter(r=>(String(r._created||'').slice(0,10)===todayDateStringET()).length;
+    const uToday=uRecs.filter(r=>String(r._created||'').slice(0,10)===todayDateStringET()).length;
     const uMonth=uRecs.filter(r=>{const s=String(r._created||'').slice(0,7);const y=+s.slice(0,4),m=+s.slice(5,7)-1;return y===now.getFullYear()&&m===now.getMonth();}).length;
     const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
     const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
@@ -14945,7 +14940,7 @@ function renderMyStatus(c){
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(String(r._created||'').slice(0,10)===todayDateStringET()).length),1);
+    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>String(r._created||'').slice(0,10)===todayDateStringET()).length),1);
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -17216,7 +17211,7 @@ function renderCOMP(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(String(r._created||'').slice(0,10)===today);
+  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -19024,7 +19019,7 @@ function renderDCIssue(c){
   }).length;
   const totalIssues = all.length;
   const todayStr = new Date().toDateString();
-  const todayCount = all.filter(r=>(String(r._created||'').slice(0,10)===todayStr).length;
+  const todayCount = all.filter(r=>String(r._created||'').slice(0,10)===todayStr).length;
   const withDelay = all.filter(r=>r._delayMins!==null);
   const avgDelay = withDelay.length ? Math.round(withDelay.reduce((s,r)=>s+r._delayMins,0)/withDelay.length) : 0;
   const over2h = all.filter(r=>r._delayMins!==null&&r._delayMins>120).length;
