@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4437,18 +4438,13 @@ async function loadAllFromSupabase(){
       // Fetch true total counts for all tables in background
       setTimeout(_fetchAllTrueCounts, 1000);
 
-      // ── PHASE 2: Load full 30-day history — SKIP if Realtime is active ──────
-      // Realtime keeps data current via WebSocket push — no need to re-fetch everything
-      // Only run Phase 2 if Realtime failed to connect (fallback poll mode)
+      // ── PHASE 2: Load full 30-day history — ALWAYS run ──────
+      // Previously this was skipped when Realtime connected, on the assumption that
+      // WS push would keep everything current. But Realtime only streams NEW events —
+      // it never backfills older records. That caused counters like "Errors" (0 instead
+      // of 48) and "Double Sign Yes/No" (partial instead of full) because Phase 1 only
+      // pulled the last 2 days. Phase 2 now always runs so historical counts are correct.
       setTimeout(async()=>{
-        if(typeof _rtConnected !== 'undefined' && _rtConnected){
-          // Realtime is live — just save cache and done
-          _saveTaskCache();
-          if(CU) refreshPage();
-
-          return;
-        }
-        // Realtime not connected — run full 30-day load for poll mode
         try{
           const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
@@ -4457,7 +4453,7 @@ async function loadAllFromSupabase(){
           const [oceanF,partF,ottF,b2F,errF,auditF] = await Promise.all([
             dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30)
+            dbLoadRecent('client_errors',90), dbLoadRecent('audit',90)
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4469,10 +4465,10 @@ async function loadAllFromSupabase(){
           DB.oceanTT   = ottF.map(mapOceanTT);
           DB.b2entries = b2F.map(mapB2);
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
-          DB.audit     = auditF.map(mapAudit);
+          DB.audit     = auditF.map(mapAudit);  _rebuildAuditMap();
           _saveTaskCache();
           if(CU) refreshPage();
-          showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.lvs.length+' LVS total');
+          showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.errors.length+' Errors · '+DB.audit.length+' Audits');
 
         }catch(bg){ console.warn('Background history load error:', bg.message); }
       }, 2000); // wait 2s to give Realtime time to connect first
@@ -4676,7 +4672,11 @@ function _esc(str){
     .replace(/`/g,'&#96;');
 }
 
-function _sortAllTaskArrays(){
+function _sortAllTaskArrays(onlyArr){
+  // PERF FIX: accept optional specific array to sort. Previously every call
+  // re-sorted all 10 task arrays (≈ 10× N log N) on every realtime event and
+  // every own-save — the leading cause of the "freeze when navigating between
+  // tasks" complaint. Call sites now pass the single affected array.
   // Sort by DB id descending — but newly inserted local rows have _dbid=0 until Supabase returns.
   // Use a special sort: rows with no _dbid (local-only) always sort FIRST (top of list),
   // then sort the rest by _dbid descending so newest DB records appear at top.
@@ -4687,6 +4687,10 @@ function _sortAllTaskArrays(){
     if(!aId && bId)  return -1;
     if(aId  && !bId) return  1;
     return bId - aId;
+  }
+  if(onlyArr && Array.isArray(onlyArr)){
+    if(onlyArr.length > 1) onlyArr.sort(_taskSort);
+    return;
   }
   [DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries,DB.audit]
     .forEach(arr=>{ if(arr&&arr.length>1) arr.sort(_taskSort); });
@@ -4898,7 +4902,7 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
   localRow._pendingOwnInsert = true;
   dbArray.unshift(localRow);
   if(dbArray[0]._idx!==undefined) dbArray.forEach((r,i)=>r._idx=i);
-  _sortAllTaskArrays();
+  _sortAllTaskArrays(dbArray); // PERF: sort only the affected array
   // Immediate count bump for the user's own insert (works even if realtime
   // lags or the WebSocket is temporarily on polling fallback)
   if(supaTable==='release'){
@@ -4941,7 +4945,7 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
         }
       }
       // Re-sort now that _dbid is set
-      _sortAllTaskArrays();
+      _sortAllTaskArrays(dbArray); // PERF: sort only the affected array
       // ── FIX: refresh the task page AND dashboard/status after DB confirm ──
       // This is the critical fix — after Supabase confirms the save,
       // refresh all pages that should reflect this table's data.
@@ -5205,7 +5209,7 @@ function startBgPoll(){
                 .filter(r => !existIds.has(String(r._dbid||r.id||'')));
               if(newMapped.length > 0){
                 current.unshift(...newMapped);
-                _sortAllTaskArrays();
+                _sortAllTaskArrays(current); // PERF: sort only the affected array
               }
             }
           } else {
@@ -5324,7 +5328,7 @@ function _applyRealtimeRow(table, row, eventType){
       } else {
         const mapped = rtEntry.map(row);
         arr.unshift(mapped);
-        _sortAllTaskArrays();
+        _sortAllTaskArrays(arr); // PERF: sort only the affected array
         if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
           if(typeof window._rlTrueCount === 'number') window._rlTrueCount++; }
         else {
@@ -5343,7 +5347,7 @@ function _applyRealtimeRow(table, row, eventType){
     const mapped = rtEntry.map(row);
     const idx = arr.findIndex(r=>String(r._dbid||r.id||'')===String(row.id));
     if(idx>=0){ arr[idx]={...arr[idx],...mapped}; }
-    else{ arr.unshift(mapped); _sortAllTaskArrays(); }
+    else{ arr.unshift(mapped); _sortAllTaskArrays(arr); /* PERF: sort only this array */ }
   } else if(eventType==='DELETE'){
     const rowId = String((row||{}).id||'');
     if(rowId){
