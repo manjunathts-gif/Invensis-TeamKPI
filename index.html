@@ -2220,6 +2220,31 @@ body.style-modern .fs2:focus{
 </div>
 <!-- Shared Audit Panel (accessible from Release and Audit pages) -->
 <div id="auditPanelBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:200;backdrop-filter:blur(4px)" onclick="closeAuditPanel()"></div>
+
+<!-- Audit Notification Popup -->
+<div id="auditNotifPopupBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:300;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div id="auditNotifPopupBox" style="background:var(--surface,#fff);border-radius:16px;padding:0;max-width:520px;width:92%;box-shadow:0 24px 64px rgba(0,0,0,.35);overflow:hidden;animation:_popIn .25s ease;">
+    <!-- Header -->
+    <div id="auditNotifPopupHdr" style="padding:16px 20px 14px;border-bottom:1px solid var(--border,#e5e7f0);display:flex;align-items:center;gap:12px;">
+      <div style="width:40px;height:40px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">&#128276;</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:var(--text,#232d42)">Audit Error Notification</div>
+        <div id="auditNotifPopupSub" style="font-size:11px;color:var(--text3,#8492a6);margin-top:2px"></div>
+      </div>
+      <button onclick="closeAuditNotifPopup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3,#8492a6);padding:4px;line-height:1;">&times;</button>
+    </div>
+    <!-- Body -->
+    <div id="auditNotifPopupBody" style="padding:16px 20px;max-height:70vh;overflow-y:auto;"></div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid var(--border,#e5e7f0);display:flex;gap:10px;justify-content:flex-end;background:var(--surface2,#f8f9fc);">
+      <button onclick="closeAuditNotifPopup()" style="padding:8px 18px;border:1px solid var(--border2,#d0d4e8);border-radius:8px;background:var(--surface,#fff);color:var(--text2,#4a5568);font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+      <button id="auditNotifAckBtn" style="padding:8px 20px;border:none;border-radius:8px;background:#059669;color:#fff;font-size:13px;font-weight:700;cursor:pointer;" onclick="ackFromPopup()">&#10003; Acknowledge Error</button>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes _popIn{from{opacity:0;transform:scale(.92) translateY(16px)}to{opacity:1;transform:scale(1) translateY(0)}}
+</style>
 <div id="auditPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:660px;max-height:92vh;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius2);padding:28px 30px;box-shadow:var(--shadow-lg);z-index:201">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
     <div style="font-size:16px;font-weight:800;color:var(--primary)">🔍 Audit Transaction</div>
@@ -4972,6 +4997,7 @@ const REALTIME_MAP=[
   {table:'instructions', arr:()=>DB.instructions||[], map:mapInstruction, idx:false},
   {table:'audit',       arr:()=>DB.audit,           map:mapAudit,       idx:false},
   {table:'login_users', arr:()=>DB.loginUsers,       map:mapLoginUser,   idx:false},
+  {table:'audit_notifications', arr:()=>DB.auditNotifications, map:r=>r, idx:false},
 ];
 
 // Pages that should auto-refresh when a table changes
@@ -4988,6 +5014,7 @@ const TABLE_TO_PAGES={
   'client_errors':['errorreport','dashboard','perfmon'],
   'instructions':['instructions'],
   'audit':['audit','dashboard','release2','perfmon'],
+  'audit_notifications':['auditnotif'],
   'login_users':['loginusers'],
 };
 
@@ -5294,6 +5321,36 @@ function _applyRealtimeRow(table, row, eventType){
   // Apply a single realtime event to the correct DB array and refresh
   if(!row && eventType!=='DELETE') return;
 
+  // ── Audit notification: show popup to target user on INSERT ──
+  if(table==='audit_notifications' && eventType==='INSERT' && row){
+    DB.auditNotifications = DB.auditNotifications||[];
+    const already = DB.auditNotifications.some(n=>n.id===row.id);
+    if(!already) DB.auditNotifications.unshift(row);
+    _refreshAuditNotifBadge();
+    // Show popup only to the target user
+    if(CU && row.target_user && row.target_user===CU.name){
+      showAuditNotifPopup(row);
+    }
+    // Refresh notifications panel if open
+    if(_currentPage==='auditnotif'){
+      const c=document.getElementById('pc');
+      if(c) renderAuditNotificationsPanel(c);
+    }
+    return;
+  }
+  if(table==='audit_notifications' && eventType==='UPDATE' && row){
+    DB.auditNotifications = DB.auditNotifications||[];
+    const idx = DB.auditNotifications.findIndex(n=>n.id===row.id);
+    if(idx>=0) DB.auditNotifications[idx]=row; else DB.auditNotifications.unshift(row);
+    _refreshAuditNotifBadge();
+    if(_currentPage==='auditnotif'){
+      const c=document.getElementById('pc');
+      if(c) renderAuditNotificationsPanel(c);
+    }
+    return;
+  }
+
+
   // Use REALTIME_MAP — single source of truth for mapper + array + idx
   const rtEntry = REALTIME_MAP.find(e=>e.table===table);
   if(!rtEntry) return;
@@ -5398,10 +5455,10 @@ function setupRealtime(){
 
   // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task only
   const tables = isMgrRT || isSupRT
-    ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
+    ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users','audit_notifications']
     : isTLRT
-    ? [taskTbl,'audit','login_users','client_errors'].filter(Boolean)
-    : [taskTbl,'login_users'].filter(Boolean);
+    ? [taskTbl,'audit','login_users','client_errors','audit_notifications'].filter(Boolean)
+    : [taskTbl,'login_users','audit_notifications'].filter(Boolean);
 
   _realtimeChannel = _supaRT
     .channel('kpi-live-'+((CU&&CU.username)||'anon'))
@@ -9925,8 +9982,8 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'tasks'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'reports'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
@@ -9962,8 +10019,8 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'tasks'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'reports'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -9984,8 +10041,8 @@ function buildNav(){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
-      {id:'audit',l:'🔍 Audit',g:'tasks'},
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
+      {id:'audit',l:'🔍 Audit',g:'reports'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -10020,7 +10077,7 @@ function buildNav(){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       ...(tlTaskNavMap[_tlNavTask]||[]),
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
@@ -10068,7 +10125,7 @@ function buildNav(){
     const _navTask = taskNavMap[CU.task] ? CU.task : (_NAV_NORM[(CU.task||'').toLowerCase().trim()] || CU.task);
     items=[
       ...(taskNavMap[_navTask]||[{id:'coming',l:'🚧 My Task',g:'tasks'}]),
-      {id:'auditnotif',l:'🔔 Audit Notifications',g:'tasks'},
+      {id:'auditnotif',l:'🔔 Audit Notifications',g:'reports'},
       {id:'mystatus',l:'📊 My Status',g:'reports'},
       errItem,
     ];
@@ -16909,7 +16966,9 @@ function submitAudit(){
   const _localAuditRec={txn:r.txn,auditor,errorType,score,doubleSign,comments:_auditRow.comments,startTime:_auditRow.start_time,endTime:_auditRow.end_time,duration:_auditRow.duration,mode:r.mode,clientname:r.clientname,client:r.client,team:r.team,user:r.user,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.status,rlTat:r.tat,_created:nowISOET()};
   // ── Push audit notification to target user (fire-and-forget) ──
   function _pushAuditNotification(auditId){
-    if(errorType==='Good Job') return;
+    // Only notify when score < 100 — 'Good Job' or any 100% score means no error
+    if(score >= 100) return;
+    if(!errorType || errorType==='Good Job' || errorType==='None' || errorType==='—' || errorType==='') return;
     const targetUser = r.user||null;
     if(!targetUser) return;
     const _notifRow={
@@ -16953,6 +17012,79 @@ function submitAudit(){
 
 
 // Quality score helper for status page
+
+// ── Audit Notification Popup ─────────────────────────────────────────────────
+let _auditPopupNotifId = null;
+
+function showAuditNotifPopup(n){
+  // n = raw audit_notifications row from Supabase (or local object)
+  if(!n) return;
+  _auditPopupNotifId = n.id || null;
+  const isGood = (n.error_type||'')==='Good Job';
+  const score = parseFloat(n.score||0);
+  const scoreColor = score>=95?'#166534':score>=85?'#854d0e':'#991b1b';
+  const scoreBg = score>=95?'#dcfce7':score>=85?'#fef9c3':'#fee2e2';
+  const plan = n.action_plan || getActionPlan(n.error_type||'');
+
+  const sub = document.getElementById('auditNotifPopupSub');
+  if(sub) sub.textContent = 'Audited by ' + (n.auditor||'Team Lead') + ' · ' + (n.created_at||'').slice(0,10);
+
+  const body = document.getElementById('auditNotifPopupBody');
+  if(body) body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Transaction</div>
+        <div style="font-size:15px;font-weight:800;font-family:var(--mono);color:var(--text,#232d42);">${n.txn||'—'}</div>
+      </div>
+      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Client</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text,#232d42);">${n.client||'—'} ${n.client_name?'<span style="font-weight:500;font-size:11px;">— '+n.client_name+'</span>':''}</div>
+      </div>
+      <div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Error Type</div>
+        <div style="display:inline-block;background:${isGood?'#dcfce7':'#fee2e2'};color:${isGood?'#166534':'#991b1b'};border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;">${n.error_type||'—'}</div>
+      </div>
+      <div style="background:${scoreBg};border-radius:10px;padding:10px 14px;">
+        <div style="font-size:9px;font-weight:800;color:${scoreColor};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Quality Score</div>
+        <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:${scoreColor};">${score}%</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;font-size:12px;">
+      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Mode: </span><span style="color:var(--text,#232d42);font-weight:700;">${n.mode||'—'}</span></div>
+      <div><span style="color:var(--text3,#8492a6);font-weight:600;">Team: </span><span style="color:var(--text,#232d42);font-weight:700;">${n.team||'—'}</span></div>
+    </div>
+    ${n.comments?`<div style="background:var(--surface2,#f8f9fc);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:9px;font-weight:800;color:var(--text3,#8492a6);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Audit Comment</div>
+      <div style="font-size:13px;color:var(--text,#232d42);line-height:1.6;">${n.comments}</div>
+    </div>`:''}
+    ${!isGood?`<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:12px 14px;">
+      <div style="font-size:9px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">&#9888; Action Plan — How to avoid this error</div>
+      <div style="font-size:12px;color:#78350f;line-height:1.75;">${plan}</div>
+    </div>`:'<div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:12px 14px;font-size:13px;color:#166534;font-weight:600;">&#10003; Great work — no errors found. Keep it up!</div>'}
+  `;
+
+  const ackBtn = document.getElementById('auditNotifAckBtn');
+  if(ackBtn){
+    if(isGood){ ackBtn.style.display='none'; }
+    else { ackBtn.style.display=''; ackBtn.disabled=false; ackBtn.textContent='✓ Acknowledge Error'; }
+  }
+
+  const bg = document.getElementById('auditNotifPopupBg');
+  if(bg){ bg.style.display='flex'; }
+}
+
+function closeAuditNotifPopup(){
+  const bg = document.getElementById('auditNotifPopupBg');
+  if(bg) bg.style.display='none';
+  _auditPopupNotifId = null;
+}
+
+async function ackFromPopup(){
+  const btn = document.getElementById('auditNotifAckBtn');
+  if(btn){ btn.disabled=true; btn.textContent='Saving...'; }
+  await acknowledgeAuditNotification(_auditPopupNotifId, null);
+  closeAuditNotifPopup();
+}
 
 // ── Audit Notification helpers ──────────────────────────────────────────────
 function _refreshAuditNotifBadge(){
