@@ -3762,6 +3762,25 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 // Separate from the custom REST client (_supa) which handles reads/writes.
 // This client is ONLY used for Realtime channel subscriptions.
 let _supaRT = null;
+// ── Suppress WebSocket URL from console (hides API key from casual viewers) ──
+(function(){
+  const _origErr = console.error.bind(console);
+  const _origWarn = console.warn.bind(console);
+  const _suppress = s => typeof s==='string' && (
+    s.includes('supabase.co/realtime') ||
+    s.includes('WebSocket connection to') ||
+    s.includes('wss://') && s.includes('apikey=')
+  );
+  console.error = function(...args){
+    if(args.some(a=>_suppress(String(a||'')))) return;
+    _origErr(...args);
+  };
+  console.warn = function(...args){
+    if(args.some(a=>_suppress(String(a||'')))) return;
+    _origWarn(...args);
+  };
+})();
+
 function _initSupaRT(){
   try{
     if(typeof window.supabase === 'undefined'){ console.warn('[RT] supabase-js not loaded'); return; }
@@ -5308,18 +5327,25 @@ function setupRealtime(){
   });
 }
 
-// ── Realtime keepalive — ping every 4 min to prevent idle disconnect ──
+// ── Realtime keepalive — ping every 2 min to prevent idle disconnect ──
 setInterval(()=>{
   if(_rtConnected && _realtimeChannel && _supaRT){
     try{
-      // Send a lightweight HEAD request to keep the connection warm
       fetch(SUPA_URL+'/rest/v1/login_users?select=id&limit=1', {
         method:'HEAD',
         headers:{'apikey':_dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4)}
       }).catch(()=>{});
     }catch(e){}
   }
-}, 4 * 60 * 1000);
+  // If RT disconnected for >2 min — force reconnect
+  if(!_rtConnected && _supaRT && !window._rtReconnecting){
+    window._rtReconnecting = true;
+    setTimeout(()=>{ window._rtReconnecting=false; }, 30000);
+    if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
+    window._realtimeShownToast=false;
+    setupRealtime();
+  }
+}, 2 * 60 * 1000);
 
 // ── ETA Monitor removed — all polls and DB writes eliminated ──
 
@@ -9700,7 +9726,13 @@ async function doLogin(){
       const _dbTxt=_dbEl?.innerHTML||'';
       const dbUnreachable=_dbTxt.includes('unreachable')||_dbTxt.includes('timed out')||_dbTxt.includes('Cannot reach');
       if(dbUnreachable){
-        err.innerHTML='⚠️ Database unreachable on this network.<br><span style="font-size:11px;color:#6b7280">Try: mobile hotspot · Retry Connection button · different browser</span>';
+        err.innerHTML='⚠️ Cannot reach database (Error 1016).<br><span style="font-size:11px;color:#6b7280">This is a temporary network issue. Please wait 10 seconds and try again, or click Retry Connection.</span>';
+        // Auto-retry once after 3 seconds for 1016 errors
+        if((_dbTxt.includes('1016')||_dbTxt.includes('unreachable'))&&!window._autoRetryLogin){
+          window._autoRetryLogin=true;
+          setTimeout(()=>{ window._autoRetryLogin=false; doLogin(); }, 3000);
+          err.innerHTML+='<br><span style="font-size:11px;color:#4d79ff">⏳ Auto-retrying in 3 seconds...</span>';
+        }
       } else {
         err.innerHTML=`⚠️ Invalid username or password. <span style="font-size:11px">${remaining} attempt${remaining!==1?'s':''} remaining.</span>`;
       }
@@ -14768,31 +14800,45 @@ function renderMyStatus(c){
 
   const today=todayDateStringET();
   const now=new Date();
+  // Fast date helpers — avoid parseAppDate on every record
+  const _todayYMD = today; // already YYYY-MM-DD
+  const _nowY=now.getFullYear(), _nowM=now.getMonth();
+  const _isToday = r => String(r._created||'').slice(0,10)===_todayYMD;
+  const _isMonth = r => { const s=String(r._created||'').slice(0,7); const y=+s.slice(0,4),m=+s.slice(5,7)-1; return y===_nowY&&m===_nowM; };
   const myName=CU.name||CU.empName||CU.username||'';
   const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
-  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
+  const todayRecs=myRecs.filter(_isToday);
+  const monthRecs=myRecs.filter(_isMonth);
   const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
   const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
   const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
   const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
-  // Team data (TL only)
+  // Team data (TL only) — single pass
   const teamRecs=tm.db||[];
-  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
-  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
-  const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
+  let teamTodayCnt=0,teamMonthCnt=0,teamHoldCnt=0,teamTatOkCnt=0,teamTatMissCnt=0;
+  teamRecs.forEach(r=>{
+    if(_isToday(r)) teamTodayCnt++;
+    if(_isMonth(r)) teamMonthCnt++;
+    const st=(r.status||'').toLowerCase(); if(st==='hold') teamHoldCnt++;
+    const tv=(r.tat||'').toLowerCase();
+    if(tv==='tat reached') teamTatOkCnt++;
+    else if(tv.includes('not reached')) teamTatMissCnt++;
+  });
+  const teamTodayRecs={length:teamTodayCnt};
+  const teamMonthRecs={length:teamMonthCnt};
+  const teamHold={length:teamHoldCnt};
+  const teamTatOk={length:teamTatOkCnt};
+  const teamTatMiss={length:teamTatMissCnt};
+  const teamTatPct=(teamTatOkCnt+teamTatMissCnt)?Math.round(teamTatOkCnt/(teamTatOkCnt+teamTatMissCnt)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
 
   // Hourly heatmap (today)
   const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
   const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
-  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
+  todayRecs.forEach(r=>{const s=String(r._created||'');const h=s.slice(11,13)||String((parseAppDate(s)||new Date(0)).getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
   const nowH=String(now.getHours()).padStart(2,'0');
   const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
   const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
