@@ -5315,6 +5315,13 @@ function _applyRealtimeRow(table, row, eventType){
   // Refresh visible pages using TABLE_TO_PAGES map
   const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
+
+  // Always update dashboard KPI cards if dashboard is rendered (even when on another page)
+  if(_currentPage !== 'dashboard' && pages.includes('dashboard')){
+    const _dc = document.querySelector('[data-kpi]');
+    if(_dc) _silentRefreshPage('dashboard');
+  }
+
   _updateLastRefreshed(0);
   _updateStatCards();
 }
@@ -11803,7 +11810,8 @@ function renderDashboard(c){
   // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
   const _existingDash = c.querySelector('.dash-ed');
   if(_existingDash && !window._forceRefresh){
-    // Just update the KPI numbers in place — no DOM rebuild
+    const _set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+    // Update big KPI task cards
     visibleDefs.forEach(d=>{
       const s=stats[d.key];
       const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
@@ -11814,6 +11822,21 @@ function renderDashboard(c){
         if(footEl) footEl.textContent='Today: '+s.todayCnt;
       }
     });
+    // Update secondary stat panels
+    _set('dashTodayAll', todayAll.toLocaleString());
+    _set('dashTotalAll', totalAll.toLocaleString());
+    _set('dashHoldAll',  holdAll);
+    _set('dashActiveToday', todayUserSet.size);
+    const _tatEl = document.getElementById('dashTatPct');
+    if(_tatEl){ _tatEl.textContent=allTatPct+'%'; _tatEl.style.color=tatColor; }
+    _set('dashTatDetail', allTatR+' reached · '+allTatN+' missed');
+    const _auditPctBadge = c.querySelector('.dash-ed-audit-pct-badge');
+    if(_auditPctBadge) _auditPctBadge.textContent=auditPct+'% audited';
+    const _auditNums = c.querySelectorAll('.dash-ed-audit-num-val');
+    if(_auditNums[0]) _auditNums[0].textContent=auditDone;
+    if(_auditNums[1]) _auditNums[1].textContent=auditPend;
+    if(_auditNums[2]) _auditNums[2].textContent=todayAuditCnt;
+    if(_auditNums[3]) _auditNums[3].textContent=avgScore+'%';
     return;
   }
 
@@ -11845,7 +11868,7 @@ function renderDashboard(c){
     <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
       <div class="dash-ed-kpi-ico">⏸️</div>
       <div class="dash-ed-kpi-lbl">On Hold</div>
-      <div class="dash-ed-kpi-num">${holdAll}</div>
+      <div class="dash-ed-kpi-num" id="dashHoldAll">${holdAll}</div>
       <div class="dash-ed-kpi-foot">Needs attention</div>
     </div>
     ${(!isTL||isMgr||CU.task==='Release')?`
@@ -11867,17 +11890,17 @@ function renderDashboard(c){
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📅 Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${todayAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTodayAll">${todayAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">entries across all tasks</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✅ Overall TAT</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}">${allTatPct}%</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px">${allTatR} reached · ${allTatN} missed</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}" id="dashTatPct">${allTatPct}%</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px" id="dashTatDetail">${allTatR} reached · ${allTatN} missed</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">👥 Active Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed">${todayUserSet.size}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed" id="dashActiveToday">${todayUserSet.size}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">of ${DB.loginUsers.filter(u=>u.active!==false).length} total staff</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
@@ -11889,7 +11912,7 @@ function renderDashboard(c){
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📊 Total Records</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${totalAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTotalAll">${totalAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">all tasks combined</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
