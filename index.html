@@ -1168,6 +1168,15 @@ body.role-client [data-col="clientname"]{
 }
 .dash-ed-kpi-foot { font-size:10px; color:rgba(255,255,255,.65); margin-top:6px; font-weight:500; }
 
+/* ── Live-sync pulse: flash + glow when a counter ticks up ── */
+@keyframes kpiPulse {
+  0%   { transform:scale(1);     text-shadow:0 0 0 rgba(52,211,153,0);  filter:brightness(1); }
+  30%  { transform:scale(1.18);  text-shadow:0 0 14px rgba(52,211,153,.85); filter:brightness(1.25); }
+  60%  { transform:scale(1.08);  text-shadow:0 0 10px rgba(52,211,153,.55); filter:brightness(1.12); }
+  100% { transform:scale(1);     text-shadow:0 0 0 rgba(52,211,153,0);  filter:brightness(1); }
+}
+.kpi-pulse { animation:kpiPulse .9s cubic-bezier(.2,.8,.2,1); display:inline-block; transform-origin:center; will-change:transform,text-shadow; }
+
 /* ── Audit KPI card (dark) ── */
 .dash-ed-audit-card {
   background:linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 60%,#2563eb 100%);
@@ -4711,6 +4720,23 @@ function _silentRefreshPage(id){
     if(!c) return;
     const scrollY = c.scrollTop;
 
+    // ── Shared helper: update a counter element and pulse if value went up ──
+    const _pulseSet = (elOrId, newVal) => {
+      const el = (typeof elOrId==='string') ? document.getElementById(elOrId) : elOrId;
+      if(!el) return;
+      const _old = parseFloat(String(el.textContent).replace(/[^0-9.\-]/g,''))||0;
+      const display = (typeof newVal==='number') ? newVal.toLocaleString() : String(newVal);
+      if(el.textContent !== display){
+        el.textContent = display;
+        const _new = parseFloat(String(display).replace(/[^0-9.\-]/g,''))||0;
+        if(_new > _old){
+          el.classList.remove('kpi-pulse'); void el.offsetWidth; el.classList.add('kpi-pulse');
+          setTimeout(()=>el.classList.remove('kpi-pulse'),900);
+        }
+      }
+    };
+    const _todayET = todayDateStringET();
+
     // For these pages: update in-place without clearing content = no flicker
     if(id==='status'){
       renderStatus(c, window._statusActiveKey||undefined);
@@ -4728,72 +4754,127 @@ function _silentRefreshPage(id){
       pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
       // Update stat cards
       const _all=_scopeByUser(DB.release2,'user');
-      const _rlTotal=document.getElementById('rlTotalCard');
-      if(_rlTotal) _rlTotal.textContent=(window._rlTrueCount||_all.length).toLocaleString();
+      _pulseSet('rlTotalCard', (window._rlTrueCount||_all.length));
+      // ── FIX: refresh ALL header stat cards live (Today / TAT / On Hold /
+      //           Profile Code Yes + No / Audit Done-Pending-Today)
+      _pulseSet('rlTodayCard', _all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('rlTatReachedCard', _all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
+      _pulseSet('rlTatNotCard',     _all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
+      _pulseSet('rlHoldCard',       _all.filter(r=>r.status==='Hold').length);
+      _pulseSet('rlPcYesCard',      _all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length);
+      _pulseSet('rlPcNoCard',       _all.filter(r=>(r.profileCode||'').toLowerCase()==='no').length);
+      // TL-only audit cards
+      const _rlAuditDone = document.getElementById('rlAuditDoneCard');
+      if(_rlAuditDone){
+        const _txnSet = new Set(_all.map(r=>String(r.txn)));
+        const _auditedInAll = DB.audit.filter(a=>_txnSet.has(String(a.txn)));
+        const _aDone = _auditedInAll.length;
+        const _aPend = _all.length - _aDone;
+        const _aToday = _auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===_todayET).length;
+        const _pct = _all.length ? Math.round(_aDone/_all.length*100) : 0;
+        _pulseSet(_rlAuditDone, _aDone);
+        const _pctEl = document.getElementById('rlAuditPctCard'); if(_pctEl) _pctEl.textContent = _pct+'% audited';
+        _pulseSet('rlAuditPendCard', _aPend);
+        _pulseSet('rlAuditTodayCard', _aToday);
+      }
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='lvs' && document.getElementById('lvsTbody')){
       const _d=_scopeByUser(DB.lvs,'assignedTo');
       pgSetData('lvs',_d); renderLVSRows(pgSlice('lvs')); pgRender('lvs','pg_lvs','pgGoLVS');
-      const _el=document.getElementById('lvsTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.lvs?window._trueCounts.lvs.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('lvsTotalCard', (window._trueCounts?.lvs||_d.length));
+      // ── Header stat badges live update ──
+      _pulseSet('lvsTodayCard',       _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('lvsTatReachedCard',  _d.filter(r=>r.tat==='TAT Reached').length);
+      _pulseSet('lvsTatNotCard',      _d.filter(r=>r.tat==='TAT Not Reached').length);
+      _pulseSet('lvsHoldCard',        _d.filter(r=>r.status==='Hold').length);
+      _pulseSet('lvsSubmitCarmCard',  _d.filter(r=>r.status==='Submit to CARM').length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='classifier' && document.getElementById('clsTbody')){
       const _d=_scopeByUser(DB.cls,'assignedTo');
       pgSetData('cls',_d); renderCLSRows(pgSlice('cls')); pgRender('cls','pg_cls','pgGoCLS');
-      const _el=document.getElementById('clsTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.cls?window._trueCounts.cls.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('clsTotalCard', (window._trueCounts?.cls||_d.length));
+      // ── Header stat badges live update ──
+      _pulseSet('clsTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('clsCompletedCard',  _d.filter(r=>r.status==='Completed').length);
+      _pulseSet('clsHoldCard',       _d.filter(r=>r.status==='Hold').length);
+      _pulseSet('clsTatReachedCard', _d.filter(r=>r.tat==='TAT Reached').length);
+      _pulseSet('clsTatNotCard',     _d.filter(r=>r.tat==='TAT Not Reached').length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='compliance' && document.getElementById('compTbody')){
       const _d=_scopeByUser(DB.comp,'assignedTo');
       pgSetData('comp',_d); renderCOMPRows(pgSlice('comp')); pgRender('comp','pg_comp','pgGoCOMP');
-      const _el=document.getElementById('compTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.comp?window._trueCounts.comp.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('compTotalCard', (window._trueCounts?.comp||_d.length));
+      // ── Header stat badges live update ──
+      _pulseSet('compTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('compCompletedCard',  _d.filter(r=>r.status==='Completed').length);
+      _pulseSet('compHoldCard',       _d.filter(r=>r.status==='Hold').length);
+      _pulseSet('compPendingCard',    _d.filter(r=>r.status==='Pending').length);
+      const _tatR = r => { const t=(r.tat||'').toLowerCase(); return t==='tat reached'||t==='reached'; };
+      const _tatN = r => { const t=(r.tat||'').toLowerCase(); return t==='tat not reached'||t.includes('not reached')||t.includes('not-reached'); };
+      const _tatReachedAll = DB.comp.filter(_tatR);
+      _pulseSet('compTatReachedCard', _tatReachedAll.length);
+      _pulseSet('compTatNotCard',     DB.comp.filter(_tatN).length);
+      _pulseSet('compTatInclCard',    _tatReachedAll.filter(r=>r.status==='Pending'||r.status==='Hold').length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='parsdocs' && document.getElementById('pdTbody')){
       const _d=_scopeByUser(DB.parsDocs,'user');
       pgSetData('pd',_d); renderPDRows(pgSlice('pd')); pgRender('pd','pg_pd','pgGoPD');
-      const _el=document.getElementById('pdTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.pars_docs?window._trueCounts.pars_docs.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('pdTotalCard', (window._trueCounts?.pars_docs||_d.length));
+      _pulseSet('pdTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('pdTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
+      _pulseSet('pdTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='oceandocs' && document.getElementById('odTbody')){
       const _d=_scopeByUser(DB.oceanDocs,'user');
       pgSetData('od',_d); renderODRows(pgSlice('od')); pgRender('od','pg_od','pgGoOD');
-      const _el=document.getElementById('odTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.ocean_docs?window._trueCounts.ocean_docs.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('odTotalCard', (window._trueCounts?.ocean_docs||_d.length));
+      _pulseSet('odTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('odTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
+      _pulseSet('odTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='partlot' && document.getElementById('plTbody')){
       const _d=_scopeByUser(DB.partLot,'user');
       pgSetData('pl',_d); renderPLRows(pgSlice('pl')); pgRender('pl','pg_pl','pgGoPL');
-      const _el=document.getElementById('plTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.part_lot?window._trueCounts.part_lot.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('plTotalCard', (window._trueCounts?.part_lot||_d.length));
+      _pulseSet('plTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('plTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
+      _pulseSet('plTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='oceantt' && document.getElementById('ottTbody')){
       const _d=_scopeByUser(DB.oceanTT,'user');
       pgSetData('ott',_d); renderOTTRows(pgSlice('ott')); pgRender('ott','pg_ott','pgGoOTT');
-      const _el=document.getElementById('ottTotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.ocean_tt?window._trueCounts.ocean_tt.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('ottTotalCard', (window._trueCounts?.ocean_tt||_d.length));
+      _pulseSet('ottTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('ottTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
+      _pulseSet('ottTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
+      _pulseSet('ottTorontoCard',    _d.filter(r=>r.destination==='Toronto').length);
+      _pulseSet('ottMontrealCard',   _d.filter(r=>r.destination==='Montreal').length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
     if(id==='b2entries' && document.getElementById('b2Tbody')){
       const _d=_scopeByUser(DB.b2entries,'user');
       pgSetData('b2',_d); renderB2Rows(pgSlice('b2')); pgRender('b2','pg_b2','pgGoB2');
-      const _el=document.getElementById('b2TotalCard');
-      if(_el) _el.textContent=(window._trueCounts?.b2_entries?window._trueCounts.b2_entries.toLocaleString():_d.length.toLocaleString());
+      _pulseSet('b2TotalCard', (window._trueCounts?.b2_entries||_d.length));
+      _pulseSet('b2TodayCard',    _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('b2ReadyCard',    _d.filter(r=>r.status==='Ready to Submit').length);
+      _pulseSet('b2HoldCard',     _d.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length);
+      _pulseSet('b2ProjectCard',  _d.filter(r=>r.tasktype==='Project').length);
+      _pulseSet('b2IndivCard',    _d.filter(r=>r.tasktype==='Individual').length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
@@ -4812,9 +4893,22 @@ function _silentRefreshPage(id){
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
   // 1. Push into local array immediately — UI updates at once, no waiting
+  // ── FIX: mark as own pending insert so the realtime handler can reconcile
+  // without double-counting; bump cached true-count now so every dashboard /
+  // task card reflects the new row instantly (not just Release).
+  localRow._pendingOwnInsert = true;
   dbArray.unshift(localRow);
   if(dbArray[0]._idx!==undefined) dbArray.forEach((r,i)=>r._idx=i);
   _sortAllTaskArrays();
+  // Immediate count bump for the user's own insert (works even if realtime
+  // lags or the WebSocket is temporarily on polling fallback)
+  if(supaTable==='release'){
+    window._rlCache=null; window._rlCacheTs=0;
+    if(typeof window._rlTrueCount === 'number') window._rlTrueCount++;
+  } else {
+    window._trueCounts = window._trueCounts || {};
+    if(typeof window._trueCounts[supaTable] === 'number') window._trueCounts[supaTable]++;
+  }
   const _stayPage = _currentPage || afterShow || 'dashboard';
   window._pendingPageRefresh=null;
   window._saveJustFired=true;
@@ -4840,7 +4934,11 @@ function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterS
         const savedRow=Array.isArray(saved)?saved[0]:saved;
         if(savedRow){
           const rowIdx=dbArray.findIndex(r=>r===localRow);
-          if(rowIdx>=0){ dbArray[rowIdx]._dbid=savedRow.id; dbArray[rowIdx].id=savedRow.id; }
+          if(rowIdx>=0){
+            dbArray[rowIdx]._dbid=savedRow.id;
+            dbArray[rowIdx].id=savedRow.id;
+            delete dbArray[rowIdx]._pendingOwnInsert; // reconciled
+          }
         }
       }
       // Re-sort now that _dbid is set
@@ -4876,18 +4974,18 @@ const REALTIME_MAP=[
 
 // Pages that should auto-refresh when a table changes
 const TABLE_TO_PAGES={
-  'lvs':['lvs','dashboard','status','reports'],
-  'cls':['classifier','dashboard','status','reports'],
-  'comp':['compliance','dashboard','status','reports'],
-  'pars_docs':['parsdocs','dashboard','status','reports'],
-  'ocean_docs':['oceandocs','dashboard','status','reports'],
-  'part_lot':['partlot','dashboard','status','reports'],
-  'release':['release2','dashboard','status','reports','audit'],
-  'ocean_tt':['oceantt','dashboard','status','reports'],
-  'b2_entries':['b2entries','dashboard','status','reports'],
-  'client_errors':['errorreport','dashboard'],
+  'lvs':['lvs','dashboard','status','reports','perfmon'],
+  'cls':['classifier','dashboard','status','reports','perfmon'],
+  'comp':['compliance','dashboard','status','reports','perfmon'],
+  'pars_docs':['parsdocs','dashboard','status','reports','perfmon'],
+  'ocean_docs':['oceandocs','dashboard','status','reports','perfmon'],
+  'part_lot':['partlot','dashboard','status','reports','perfmon'],
+  'release':['release2','dashboard','status','reports','audit','perfmon'],
+  'ocean_tt':['oceantt','dashboard','status','reports','perfmon'],
+  'b2_entries':['b2entries','dashboard','status','reports','perfmon'],
+  'client_errors':['errorreport','dashboard','perfmon'],
   'instructions':['instructions'],
-  'audit':['audit','dashboard','release2'],
+  'audit':['audit','dashboard','release2','perfmon'],
   'login_users':['loginusers'],
 };
 
@@ -5207,22 +5305,40 @@ function _applyRealtimeRow(table, row, eventType){
   if(eventType==='INSERT' && row){
     const exists = arr.some(r=>String(r._dbid||r.id||'')===String(row.id));
     if(!exists){
-      const mapped = rtEntry.map(row);
-      arr.unshift(mapped);
-      _sortAllTaskArrays();
-      if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
-        if(window._rlTrueCount) window._rlTrueCount++; }
-      else {
-        // ── FIX: keep cached true-counts in sync for ALL task tables ──
-        // Dashboard KPI cards read window._trueCounts[table]; previously only
-        // Release was bumped (via _rlTrueCount), so LVS / Classifier /
-        // Compliance / PARS / Ocean Docs / Part Lot / Ocean T&T / B2 cards
-        // stayed frozen at the login-time value until the user logged back in.
-        window._trueCounts = window._trueCounts || {};
-        if(typeof window._trueCounts[table] === 'number') window._trueCounts[table]++;
+      // ── FIX: reconcile with an own-user optimistic insert if present.
+      // dbInsertOptimistic pre-stamps its row with _pendingOwnInsert + a
+      // business key (txn / user_name / timestamp). If the incoming realtime
+      // row matches, we just attach the server id instead of unshifting a
+      // duplicate or double-bumping the cached true-count.
+      const _ownKey = String(row.txn || row.user_name || '').trim();
+      const _pendIdx = arr.findIndex(r=>{
+        if(!r._pendingOwnInsert) return false;
+        const rk = String(r.txn || r.user || r.user_name || r.userName || '').trim();
+        return rk && _ownKey && rk === _ownKey;
+      });
+      if(_pendIdx >= 0){
+        // Same row this client just saved — just stamp the DB id and move on
+        arr[_pendIdx]._dbid = row.id;
+        arr[_pendIdx].id    = row.id;
+        delete arr[_pendIdx]._pendingOwnInsert;
+        if(table==='release'){ window._rlCache=null; window._rlCacheTs=0; }
+      } else {
+        const mapped = rtEntry.map(row);
+        arr.unshift(mapped);
+        _sortAllTaskArrays();
+        if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
+          if(typeof window._rlTrueCount === 'number') window._rlTrueCount++; }
+        else {
+          // ── FIX: keep cached true-counts in sync for ALL task tables ──
+          // Dashboard KPI cards read window._trueCounts[table]; previously only
+          // Release was bumped, so every other task card stayed frozen at the
+          // login-time value until the user logged back in.
+          window._trueCounts = window._trueCounts || {};
+          if(typeof window._trueCounts[table] === 'number') window._trueCounts[table]++;
+        }
+        if(table==='audit') _rebuildAuditMap();
       }
-  if(table==='audit') _rebuildAuditMap();
-  window._perf && window._perf.rtEvents++;
+      window._perf && window._perf.rtEvents++;
     }
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
@@ -10163,10 +10279,10 @@ function renderLVS(c){
   </div>
   <div class="sg">
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
-    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="lvsTodayCard">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="lvsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="lvsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="lvsHoldCard">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
+    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv" id="lvsSubmitCarmCard">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -10701,10 +10817,10 @@ function renderCLS(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
-    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="clsTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clsCompletedCard">${all.filter(r=>r.status==='Completed').length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clsHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
+    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="clsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="clsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -11549,15 +11665,77 @@ function renderDashboard(c){
   // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
   const _existingDash = c.querySelector('.dash-ed');
   if(_existingDash && !window._forceRefresh){
-    // Just update the KPI numbers in place — no DOM rebuild
+    // Helper: set number, flash +1 pulse if value increased, briefly update colour
+    const _setNum = (id, newVal, opts={}) => {
+      const el = (typeof id==='string') ? c.querySelector('#'+id) : id;
+      if(!el) return;
+      const _nOld = parseFloat(String(el.textContent).replace(/[^0-9.\-]/g,''))||0;
+      const _nNew = (typeof newVal==='number') ? newVal : parseFloat(String(newVal).replace(/[^0-9.\-]/g,''))||0;
+      const display = (typeof newVal==='number') ? newVal.toLocaleString() : String(newVal);
+      if(el.textContent !== display){
+        el.textContent = display;
+        if(_nNew > _nOld && !opts.noPulse){
+          el.classList.remove('kpi-pulse'); void el.offsetWidth; el.classList.add('kpi-pulse');
+          setTimeout(()=>el.classList.remove('kpi-pulse'), 900);
+        }
+      }
+    };
+    // KPI cards: total + today
     visibleDefs.forEach(d=>{
       const s=stats[d.key];
       const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
       if(kpiEl){
         const numEl=kpiEl.querySelector('.dash-ed-kpi-num');
         const footEl=kpiEl.querySelector('.dash-ed-kpi-foot');
-        if(numEl) numEl.textContent=s.total.toLocaleString();
+        if(numEl){
+          const _old = parseFloat(String(numEl.textContent).replace(/[^0-9.\-]/g,''))||0;
+          numEl.textContent = s.total.toLocaleString();
+          if(s.total > _old){
+            numEl.classList.remove('kpi-pulse'); void numEl.offsetWidth; numEl.classList.add('kpi-pulse');
+            setTimeout(()=>numEl.classList.remove('kpi-pulse'), 900);
+          }
+        }
         if(footEl) footEl.textContent='Today: '+s.todayCnt;
+      }
+    });
+    // On Hold card
+    _setNum('dashHoldAll', holdAll);
+    // Audit card (Release quality)
+    _setNum('dashAuditDone', auditDone);
+    _setNum('dashAuditPend', auditPend, {noPulse:true});
+    _setNum('dashAuditToday', todayAuditCnt);
+    const _avgEl = c.querySelector('#dashAuditAvg'); if(_avgEl) _avgEl.textContent = avgScore+'%';
+    const _pctBadge = c.querySelector('#dashAuditPctBadge'); if(_pctBadge) _pctBadge.textContent = auditPct+'% audited';
+    const _pctBar = c.querySelector('#dashAuditPctBar'); if(_pctBar) _pctBar.style.width = auditPct+'%';
+    // Analytics quick stats
+    _setNum('dashTodayAll', todayAll);
+    const _tatPctEl = c.querySelector('#dashTatPct');
+    if(_tatPctEl){ _tatPctEl.textContent = allTatPct+'%'; _tatPctEl.style.color = tatColor; }
+    const _tatSubEl = c.querySelector('#dashTatSub'); if(_tatSubEl) _tatSubEl.textContent = allTatR+' reached · '+allTatN+' missed';
+    _setNum('dashActiveToday', todayUserSet.size);
+    const _actTotEl = c.querySelector('#dashActiveTotal'); if(_actTotEl) _actTotEl.textContent = 'of '+DB.loginUsers.filter(u=>u.active!==false).length+' total staff';
+    _setNum('dashErrorsCnt', DB.errors.length);
+    _setNum('dashTotalAll', totalAll);
+    // Profile Code / Double Sign (Release-specific counters)
+    _setNum('dashPcYes', stats._pcYes||0);
+    _setNum('dashPcNo',  stats._pcNo||0);
+    const _dsYes = DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length;
+    const _dsNo  = DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length;
+    _setNum('dashDsYes', _dsYes);
+    _setNum('dashDsNo',  _dsNo);
+    // Task-count table row updates (if rendered)
+    visibleDefs.forEach(d=>{
+      const s=stats[d.key];
+      const row = c.querySelector(`tr[data-taskrow="${d.key}"]`);
+      if(row){
+        const cells = row.querySelectorAll('td');
+        if(cells[1]) cells[1].textContent = s.total.toLocaleString();
+        if(cells[2]) cells[2].textContent = s.todayCnt;
+        if(cells[3]) cells[3].textContent = s.tatR;
+        if(cells[4]){
+          const _tpct = (s.tatR+s.tatN) ? Math.round(s.tatR/(s.tatR+s.tatN)*100) : 0;
+          cells[4].textContent = _tpct+'%';
+        }
       }
     });
     return;
@@ -11588,24 +11766,24 @@ function renderDashboard(c){
         <div class="dash-ed-kpi-num">${stats[d.key].total.toLocaleString()}</div>
         <div class="dash-ed-kpi-foot">Today: ${stats[d.key].todayCnt}</div>
       </div>`).join('')}
-    <div class="dash-ed-kpi" style="background:linear-gradient(135deg,#dc2626,#f87171)">
+    <div class="dash-ed-kpi" data-kpi="holdAll" style="background:linear-gradient(135deg,#dc2626,#f87171)">
       <div class="dash-ed-kpi-ico">⏸️</div>
       <div class="dash-ed-kpi-lbl">On Hold</div>
-      <div class="dash-ed-kpi-num">${holdAll}</div>
+      <div class="dash-ed-kpi-num" id="dashHoldAll">${holdAll}</div>
       <div class="dash-ed-kpi-foot">Needs attention</div>
     </div>
     ${(!isTL||isMgr||CU.task==='Release')?`
     <div class="dash-ed-audit-card">
       <div class="dash-ed-audit-label">🔍 Audit — Release Quality
-        <span class="dash-ed-audit-pct-badge">${auditPct}% audited</span>
+        <span class="dash-ed-audit-pct-badge" id="dashAuditPctBadge">${auditPct}% audited</span>
       </div>
       <div class="dash-ed-audit-nums">
-        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditDone}</div><div class="dash-ed-audit-num-lbl">✅ Audited</div></div>
-        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${auditPend}</div><div class="dash-ed-audit-num-lbl">⏳ Pending</div></div>
-        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${todayAuditCnt}</div><div class="dash-ed-audit-num-lbl">📅 Done Today</div></div>
-        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val">${avgScore}%</div><div class="dash-ed-audit-num-lbl">⭐ Avg Score</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val" id="dashAuditDone">${auditDone}</div><div class="dash-ed-audit-num-lbl">✅ Audited</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val" id="dashAuditPend">${auditPend}</div><div class="dash-ed-audit-num-lbl">⏳ Pending</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val" id="dashAuditToday">${todayAuditCnt}</div><div class="dash-ed-audit-num-lbl">📅 Done Today</div></div>
+        <div class="dash-ed-audit-num"><div class="dash-ed-audit-num-val" id="dashAuditAvg">${avgScore}%</div><div class="dash-ed-audit-num-lbl">⭐ Avg Score</div></div>
       </div>
-      <div class="dash-ed-progress"><div class="dash-ed-progress-fill" style="width:${auditPct}%"></div></div>
+      <div class="dash-ed-progress"><div class="dash-ed-progress-fill" id="dashAuditPctBar" style="width:${auditPct}%"></div></div>
     </div>`:''}
   </div>
 
@@ -11613,40 +11791,40 @@ function renderDashboard(c){
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px">
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📅 Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${todayAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTodayAll">${todayAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">entries across all tasks</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✅ Overall TAT</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}">${allTatPct}%</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px">${allTatR} reached · ${allTatN} missed</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:${tatColor}" id="dashTatPct">${allTatPct}%</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px" id="dashTatSub">${allTatR} reached · ${allTatN} missed</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">👥 Active Today</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed">${todayUserSet.size}</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px">of ${DB.loginUsers.filter(u=>u.active!==false).length} total staff</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#7c3aed" id="dashActiveToday">${todayUserSet.size}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px" id="dashActiveTotal">of ${DB.loginUsers.filter(u=>u.active!==false).length} total staff</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">⚠️ Errors</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#e11d48">${DB.errors.length}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#e11d48" id="dashErrorsCnt">${DB.errors.length}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">
         <button onclick="showPage('errorreport')" style="background:none;border:none;color:#4d79ff;cursor:pointer;font-size:11px;padding:0;text-decoration:underline">View all →</button>
       </div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">📊 Total Records</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)">${totalAll.toLocaleString()}</div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--primary)" id="dashTotalAll">${totalAll.toLocaleString()}</div>
       <div style="font-size:11px;color:#7b92d2;margin-top:4px">all tasks combined</div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🔖 Profile Code</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e">${(stats._pcYes||0).toLocaleString()}</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48">${(stats._pcNo||0).toLocaleString()} ❌ No</span></div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e" id="dashPcYes">${(stats._pcYes||0).toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48"><span id="dashPcNo">${(stats._pcNo||0).toLocaleString()}</span> ❌ No</span></div>
     </div>
     <div class="dash-ed-panel" style="padding:14px 16px">
       <div style="font-size:10px;font-weight:700;color:#7b92d2;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">✍️ Double Sign</div>
-      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length.toLocaleString()}</div>
-      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length.toLocaleString()} ❌ No</span></div>
+      <div style="font-size:28px;font-weight:900;font-family:var(--mono);color:#17a00e" id="dashDsYes">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='yes').length.toLocaleString()}</div>
+      <div style="font-size:11px;color:#7b92d2;margin-top:4px">✅ Yes &nbsp;·&nbsp; <span style="color:#e11d48"><span id="dashDsNo">${DB.audit.filter(a=>(a.doubleSign||'').toLowerCase()==='no').length.toLocaleString()}</span> ❌ No</span></div>
     </div>
   </div>
 
@@ -11664,7 +11842,7 @@ function renderDashboard(c){
             const s=stats[d.key];
             const tp=s.tatR+s.tatN?Math.round(s.tatR/(s.tatR+s.tatN)*100):0;
             const tc=tp>=80?'#34d399':tp>=50?'#fbbf24':'#fb7185';
-            return`<tr>
+            return`<tr data-taskrow="${d.key}">
               <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${d.color};margin-right:7px"></span><span style="font-weight:700">${d.label}</span></td>
               <td class="mono" style="text-align:center;color:var(--primary-lt);font-weight:700">${s.total.toLocaleString()}</td>
               <td class="mono" style="text-align:center;color:var(--text3)">${s.todayCnt}</td>
@@ -16602,10 +16780,10 @@ function renderCOMP(c){
   </div>
   <div class="sg">
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Total Records</div><div class="sv" id="compTotalCard">${window._trueCounts&&window._trueCounts['comp']?window._trueCounts['comp'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">✔️</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div><div class="sf">Resolved</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔄</div><div class="sl">Pending</div><div class="sv">${all.filter(r=>r.status==='Pending').length}</div><div class="sf">In progress</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="compTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✔️</div><div class="sl">Completed</div><div class="sv" id="compCompletedCard">${all.filter(r=>r.status==='Completed').length}</div><div class="sf">Resolved</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="compHoldCard">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔄</div><div class="sl">Pending</div><div class="sv" id="compPendingCard">${all.filter(r=>r.status==='Pending').length}</div><div class="sf">In progress</div></div>
     ${(()=>{
       // TAT filter: handle both normalized ('reached'/'not-reached') and legacy ('TAT Reached'/'TAT Not Reached') values
       const _tatReached = r => { const t=(r.tat||'').toLowerCase(); return t==='tat reached'||t==='reached'; };
@@ -16615,11 +16793,11 @@ function renderCOMP(c){
       const tatReachedPH=tatReachedAll.filter(r=>r.status==='Pending'||r.status==='Hold');
       return`<div class="sc-tat" style="min-width:240px"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (24-hr rule)</div>
         <div class="sc-tat-row">
-          <div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tatReachedAll.length}</div><div class="sc-tat-lbl">✅ TAT Reached</div></div>
+          <div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="compTatReachedCard">${tatReachedAll.length}</div><div class="sc-tat-lbl">✅ TAT Reached</div></div>
           <div class="sc-tat-divider"></div>
-          <div class="sc-tat-item tat-no"><div class="sc-tat-val">${tatNotReachedAll.length}</div><div class="sc-tat-lbl">❌ Not Reached</div></div>
+          <div class="sc-tat-item tat-no"><div class="sc-tat-val" id="compTatNotCard">${tatNotReachedAll.length}</div><div class="sc-tat-lbl">❌ Not Reached</div></div>
         </div>
-        <div style="font-size:10px;color:var(--text3);padding:4px 6px 0;text-align:center">Incl. Pending/Hold within 24hr: <b style="color:var(--emerald)">${tatReachedPH.length}</b></div>
+        <div style="font-size:10px;color:var(--text3);padding:4px 6px 0;text-align:center">Incl. Pending/Hold within 24hr: <b style="color:var(--emerald)" id="compTatInclCard">${tatReachedPH.length}</b></div>
       </div>`;
     })()}
   </div>
@@ -16957,8 +17135,8 @@ function renderPARSDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="pdTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -17420,8 +17598,8 @@ function renderOceanDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="odTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -17699,8 +17877,8 @@ function renderPartLot(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="plTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -18012,17 +18190,17 @@ function renderRelease2(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{
       // Profile Code stats — visible to all Release roles
       const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
       const pcNo=all.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
       const pcNone=all.filter(r=>!r.profileCode||r.profileCode==='—').length;
       return`
-        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv">${pcYes}</div><div class="sf">Yes</div></div>
-        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv">${pcNo}</div><div class="sf">No</div></div>`;
+        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv" id="rlPcYesCard">${pcYes}</div><div class="sf">Yes</div></div>
+        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv" id="rlPcNoCard">${pcNo}</div><div class="sf">No</div></div>`;
     })()}
     ${(()=>{
       if(!(CU&&CU.role==='Team Lead'&&CU.task==='Release'))return'';
@@ -18033,9 +18211,9 @@ function renderRelease2(c){
       const todayAudited=_auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length;
       const pct=all.length?Math.round(auditDone/all.length*100):0;
       return`
-        <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv">${_auditedInAll.length}</div><div class="sf">${pct}% audited</div></div>
-        <div class="sc c-sky"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Audit Pending</div><div class="sv">${auditPending}</div><div class="sf">Not yet audited</div></div>
-        <div class="sc c-blue"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Audited Today</div><div class="sv">${todayAudited}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>`;
+        <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv" id="rlAuditDoneCard">${_auditedInAll.length}</div><div class="sf" id="rlAuditPctCard">${pct}% audited</div></div>
+        <div class="sc c-sky"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Audit Pending</div><div class="sv" id="rlAuditPendCard">${auditPending}</div><div class="sf">Not yet audited</div></div>
+        <div class="sc c-blue"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Audited Today</div><div class="sv" id="rlAuditTodayCard">${todayAudited}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>`;
     })()}
   </div>
   <div class="fb">
@@ -21784,10 +21962,10 @@ function renderOceanTT(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard">${window._trueCounts&&window._trueCounts['ocean_tt']?window._trueCounts['ocean_tt'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv">${all.filter(r=>r.destination==='Toronto').length}</div></div>
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Montreal</div><div class="sv">${all.filter(r=>r.destination==='Montreal').length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="ottTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="ottTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="ottTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv" id="ottTorontoCard">${all.filter(r=>r.destination==='Toronto').length}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Montreal</div><div class="sv" id="ottMontrealCard">${all.filter(r=>r.destination==='Montreal').length}</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
@@ -22013,10 +22191,10 @@ function renderB2Entries(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
-    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv">${all.filter(r=>r.tasktype==='Project').length}</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv">${all.filter(r=>r.tasktype==='Individual').length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="b2TodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="b2ReadyCard">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="b2HoldCard">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv" id="b2ProjectCard">${all.filter(r=>r.tasktype==='Project').length}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv" id="b2IndivCard">${all.filter(r=>r.tasktype==='Individual').length}</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
