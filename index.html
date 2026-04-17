@@ -3604,7 +3604,18 @@ function _makeSupaClient(){
       in(c,vals){_filters.push(c+'=in.('+vals.map(v=>encodeURIComponent(v)).join(',')+')');return builder;},
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
-      limit(n){_to=(_from||0)+n-1;return builder;},
+      limit(n){
+        // BUG FIX: previously this set only `_to` and left `_from = null`,
+        // which meant the Range header was never sent (because the emitter
+        // only adds Range when _from !== null). Net effect: .limit(N) was a
+        // silent no-op and server-side db-max-rows was applied instead.
+        // That broke keyset pagination in _fetchAllForExport — pages got
+        // capped below the requested limit and the short-page exit triggered
+        // early, dropping ~1,500 rows on the Release export.
+        if(_from === null) _from = 0;
+        _to = _from + n - 1;
+        return builder;
+      },
       single(){
         _to=(_from||0);  // limit 1
         const origThen = builder.then.bind(builder);
