@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5211,6 +5212,15 @@ function _applyRealtimeRow(table, row, eventType){
       _sortAllTaskArrays();
       if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
         if(window._rlTrueCount) window._rlTrueCount++; }
+      else {
+        // ── FIX: keep cached true-counts in sync for ALL task tables ──
+        // Dashboard KPI cards read window._trueCounts[table]; previously only
+        // Release was bumped (via _rlTrueCount), so LVS / Classifier /
+        // Compliance / PARS / Ocean Docs / Part Lot / Ocean T&T / B2 cards
+        // stayed frozen at the login-time value until the user logged back in.
+        window._trueCounts = window._trueCounts || {};
+        if(typeof window._trueCounts[table] === 'number') window._trueCounts[table]++;
+      }
   if(table==='audit') _rebuildAuditMap();
   window._perf && window._perf.rtEvents++;
     }
@@ -5226,6 +5236,10 @@ function _applyRealtimeRow(table, row, eventType){
       if(idx>=0) arr.splice(idx,1);
     }
     if(table==='release' && window._rlTrueCount) window._rlTrueCount--;
+    else if(window._trueCounts && typeof window._trueCounts[table]==='number' && window._trueCounts[table]>0){
+      // ── FIX: decrement cached true-count on delete for all tables ──
+      window._trueCounts[table]--;
+    }
   }
 
   // Re-index if needed
@@ -11463,7 +11477,14 @@ function renderDashboard(c){
     const _tcKey = _tcKeyMap[d.key];
     const _tc = _tcKey && window._trueCounts && window._trueCounts[_tcKey];
     const _rl = d.key==='release2' && window._rlTrueCount;
-    const total = _rl ? window._rlTrueCount : (_tc || d.db.length);
+    // ── FIX: fall back to local DB length whenever it's larger than the cached
+    // true count. Previously non-Release cards were frozen at the login-time
+    // _trueCounts value until the user logged out/in, because _trueCounts was
+    // never updated on local insert. Using Math.max guarantees the card
+    // reflects new rows immediately after save (before realtime confirms).
+    const total = _rl
+      ? Math.max(window._rlTrueCount||0, d.db.length)
+      : Math.max(_tc||0, d.db.length);
     if(d.key==='release2'){ stats._pcYes=pcYes; stats._pcNo=pcNo; }
     stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
   });
@@ -23551,5 +23572,6 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
