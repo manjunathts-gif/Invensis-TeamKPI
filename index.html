@@ -13530,18 +13530,71 @@ function _exportStripClientName(headers, rows){
 
 // ── Report Export Date Filter Helper ─────────────────────────────────
 // ── Fetch ALL records from DB for full export (bypasses 30-day local cache) ──
+// Robust keyset-pagination + HEAD-count verification. Previous version used
+// offset pagination with "data.length < PAGE ⇒ done" as the termination rule.
+// That is unsafe because PostgREST may return fewer rows than requested (hitting
+// db-max-rows, response-size ceilings, or transient partial responses), which
+// made the loop exit early and silently drop records — e.g. Release was
+// returning 5,325 of 6,858, missing 1,533 rows.
 async function _fetchAllForExport(table, mapFn){
   showToast('⏳ Fetching all records for export...');
+  const client = _supaAdmin || _supa; // prefer service key to bypass any RLS
   const PAGE = 1000;
-  let all = [], offset = 0, done = false;
-  while(!done){
-    const {data, error} = await _supa.from(table)
-      .select('*').order('id',{ascending:true})
-      .range(offset, offset+PAGE-1);
-    if(error || !data) break;
-    all = all.concat(data);
-    if(data.length < PAGE) done = true;
-    else offset += PAGE;
+
+  // 1. HEAD call → authoritative total row count
+  let expectedTotal = null;
+  try{
+    const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
+    const res = await fetch(SUPA_URL + '/rest/v1/' + table + '?select=id', {
+      method:'HEAD',
+      headers:{apikey:_rawKey,'Authorization':'Bearer '+_rawKey,'Prefer':'count=exact'}
+    });
+    const cr = res.headers.get('Content-Range');
+    if(cr){ const n = parseInt(cr.split('/')[1]); if(!isNaN(n)) expectedTotal = n; }
+  }catch(_e){}
+
+  const all = [];
+  const seen = new Set();                // de-dup guard against any retry overlap
+  let lastId = 0;
+  let safety = 0;
+  const HARD_CAP = 500; // max pagination iterations (500 × 1000 = 500k rows)
+
+  while(safety++ < HARD_CAP){
+    // Keyset pagination: `id > lastId` + limit. Immune to server-side max-rows
+    // partial-response quirks that broke offset pagination.
+    const {data, error} = await client.from(table)
+      .select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
+
+    if(error){
+      console.warn('[export] page error on', table, error.message);
+      // Soft retry once
+      await new Promise(r=>setTimeout(r,400));
+      continue;
+    }
+    if(!data || data.length === 0) break;
+
+    for(const row of data){
+      const rid = row && row.id;
+      if(rid!=null && !seen.has(rid)){ seen.add(rid); all.push(row); }
+    }
+    lastId = data[data.length-1].id;
+
+    // Progress toast every 5 pages
+    if(safety % 5 === 0){
+      const pct = expectedTotal ? Math.round(all.length/expectedTotal*100) : null;
+      showToast('⏳ Exporting '+table+': '+all.length.toLocaleString()+(pct!==null?' / '+expectedTotal.toLocaleString()+' ('+pct+'%)':''));
+    }
+
+    // Natural end: fewer than PAGE AND we've reached/exceeded expected count
+    if(data.length < PAGE){
+      if(expectedTotal === null || all.length >= expectedTotal) break;
+      // Otherwise keep going — server returned a short page but there are more rows
+    }
+  }
+
+  if(expectedTotal !== null && all.length < expectedTotal){
+    console.warn('[export]', table, 'fetched', all.length, 'of', expectedTotal, '— '+(expectedTotal-all.length)+' missing');
+    showToast('⚠️ '+table+': '+all.length+' of '+expectedTotal+' fetched', true);
   }
   return mapFn ? all.map(mapFn) : all;
 }
