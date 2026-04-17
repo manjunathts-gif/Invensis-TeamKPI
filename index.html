@@ -13375,6 +13375,7 @@ async function exportAllTasksXLSX(){
     // ── 1. Summary ──
     const {d1:_xd1, d2:_xd2, label:_xlabel, display:_xdisplay} = _getReportDateRange();
     const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
+    const _hasDateFilter = !!(_xd1||_xd2);
     showToast('⏳ Fetching all records for export... please wait');
     // When no date filter: fetch ALL records from DB for accurate export
     let lvsAll,clsAll,compAll,parsAll,oceanAll,partAll,relAll,ottAll,b2All,auditAll;
@@ -13413,7 +13414,6 @@ async function exportAllTasksXLSX(){
       'Release':window._rlTrueCount||_tc.release,'Ocean TT':_tc.ocean_tt,
       'B2 Entries':_tc.b2_entries,'Audit':_tc.audit
     };
-    const _hasDateFilter = !!(_xd1||_xd2);
     const summaryRows=[
       ['KPI Production Report - All Tasks'],
       ['Generated Date:', today],
