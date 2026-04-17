@@ -4943,6 +4943,40 @@ const PAGE_TABLE_MAP = {
   'audit':       ['audit'],
 };
 
+// ── Universal stat card updater — called after every RT event ──
+function _updateStatCards(){
+  const today = todayDateStringET();
+  const setEl = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
+  const _tc = window._trueCounts || {};
+  const cards = [
+    {prefix:'lvs',     db:DB.lvs,       key:'lvs'},
+    {prefix:'cls',     db:DB.cls,       key:'cls'},
+    {prefix:'comp',    db:DB.comp,      key:'comp'},
+    {prefix:'pars',    db:DB.parsDocs,  key:'pars_docs'},
+    {prefix:'oceanDocs',db:DB.oceanDocs,key:'ocean_docs'},
+    {prefix:'partLot', db:DB.partLot,   key:'part_lot'},
+    {prefix:'ott',     db:DB.oceanTT,   key:'ocean_tt'},
+    {prefix:'b2',      db:DB.b2entries, key:'b2_entries'},
+  ];
+  cards.forEach(({prefix, db, key}) => {
+    if(!document.getElementById(prefix+'TodayCard')) return;
+    const all = db || [];
+    let tc=0,tr=0,tn=0,th=0;
+    all.forEach(r => {
+      if(String(r._created||'').slice(0,10)===today) tc++;
+      const tv=(r.tat||'').toLowerCase();
+      if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'))) tr++;
+      else if(tv.includes('not reached')) tn++;
+      if((r.status||'')==='Hold') th++;
+    });
+    setEl(prefix+'TodayCard', tc);
+    setEl(prefix+'TatReachedCard', tr);
+    setEl(prefix+'TatNotCard', tn);
+    setEl(prefix+'HoldCard', th);
+    setEl(prefix+'TotalCard', (_tc[key]||all.length));
+  });
+}
+
 function _updateLastRefreshed(pingMs){
   const badge = document.getElementById('lastUpdatedBadge');
   if(!badge) return;
@@ -5171,6 +5205,16 @@ function stopBgPoll(){
 
 // ── Realtime state ──
 let _rtConnected = false;
+// Fix indicator if it shows wrong state — check every 5s
+setInterval(()=>{
+  const ind = document.getElementById('realtimeIndicator');
+  if(!ind) return;
+  if(_rtConnected && ind.textContent.includes('SYNC')){
+    _setRTIndicator('live');
+  } else if(!_rtConnected && ind.textContent.includes('LIVE')){
+    _setRTIndicator('polling');
+  }
+}, 5000);
 let _rtFallbackTimer = null;
 const RT_FALLBACK_MS = 20000; // if no WS connection in 20s → fall back to bgPoll
 
@@ -5259,6 +5303,7 @@ function _applyRealtimeRow(table, row, eventType){
   const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
   _updateLastRefreshed(0);
+  _updateStatCards();
 }
 
 function setupRealtime(){
@@ -10349,7 +10394,7 @@ function renderLVS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayR=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayR=all.filter(r=>(String(r._created||'').slice(0,10)===today);
   const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
   const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
@@ -10363,7 +10408,7 @@ function renderLVS(c){
   </div>
   <div class="sg">
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="lvsTodayCard">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
     <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
@@ -10891,7 +10936,7 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayC=all.filter(r=>(String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -10901,7 +10946,7 @@ function renderCLS(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="clsTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
@@ -12628,7 +12673,7 @@ function renderClientDashboard(c){
     const myRecs = clientNo
       ? t.db.filter(r=>String(r[t.client_field]||r.client||r.clientNo||'')===clientNo)
       : t.db;
-    const todayCnt = myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+    const todayCnt = myRecs.filter(r=>(String(r._created||'').slice(0,10)===todayStr).length;
     const tatR = myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const tatN = myRecs.filter(r=>(r.tat||'').toLowerCase().includes('not reached')).length;
     const tatPct = (tatR+tatN) ? Math.round(tatR/(tatR+tatN)*100) : 0;
@@ -14892,15 +14937,15 @@ function renderMyStatus(c){
   // Team member stats (TL only)
   const memberStats=usersArr.map((u,ui)=>{
     const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
-    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
-    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
+    const uToday=uRecs.filter(r=>(String(r._created||'').slice(0,10)===todayDateStringET()).length;
+    const uMonth=uRecs.filter(r=>{const s=String(r._created||'').slice(0,7);const y=+s.slice(0,4),m=+s.slice(5,7)-1;return y===now.getFullYear()&&m===now.getMonth();}).length;
     const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
     const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
+    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(String(r._created||'').slice(0,10)===todayDateStringET()).length),1);
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -17171,7 +17216,7 @@ function renderCOMP(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayC=all.filter(r=>(String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -17181,7 +17226,7 @@ function renderCOMP(c){
   </div>
   <div class="sg">
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Total Records</div><div class="sv" id="compTotalCard">${window._trueCounts&&window._trueCounts['comp']?window._trueCounts['comp'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="compTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✔️</div><div class="sl">Completed</div><div class="sv">${all.filter(r=>r.status==='Completed').length}</div><div class="sf">Resolved</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔄</div><div class="sl">Pending</div><div class="sv">${all.filter(r=>r.status==='Pending').length}</div><div class="sf">In progress</div></div>
@@ -17536,7 +17581,7 @@ function renderPARSDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="parsTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -17999,7 +18044,7 @@ function renderOceanDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="oceanDocsTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18278,7 +18323,7 @@ function renderPartLot(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="partLotTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18568,13 +18613,31 @@ function saveTLReleaseEdit(){
 
 
 function renderRelease2(c){
-  // Smart re-render: if already on this page, only refresh the table rows
+  // Smart re-render: if already on this page, refresh table rows AND stat cards
   if(c.querySelector('#rlTbody') && !window._forceRefresh){
     const pc=document.getElementById('pc');
     const _sy=pc?pc.scrollTop:0;
     const _d=_scopeByUser(DB.release2,'user');
     pgSetData('rl',_d); renderRLRows(pgSlice('rl')); pgRender('rl','pg_rl','pgGoRL');
     if(_restoreFilter('rl')) applyRLFilter();
+    // ── Also refresh stat cards so TODAY/TAT/Hold stay accurate ──
+    const _all2 = (!isSuperLead()&&CU.task&&CU.task!=='Manager')
+      ? DB.release2.filter(r=>r.user===CU.name) : DB.release2;
+    const _td2 = todayDateStringET();
+    let _tr=0,_tn=0,_th=0,_tc2=0;
+    _all2.forEach(r=>{
+      if(String(r._created||'').slice(0,10)===_td2) _tc2++;
+      const tv=(r.tat||'').toLowerCase();
+      if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'))) _tr++;
+      else if(tv.includes('not reached')||tv.includes('not-reached')) _tn++;
+      if((r.status||'')==='Hold') _th++;
+    });
+    const _setTxt=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    _setTxt('rlTodayCard',_tc2);
+    _setTxt('rlTatReachedCard',_tr);
+    _setTxt('rlTatNotCard',_tn);
+    _setTxt('rlHoldCard',_th);
+    _setTxt('rlTotalCard',(isSuperLead()&&(window._rlTrueCount??0)>_all2.length)?(window._rlTrueCount):_all2.length);
     requestAnimationFrame(()=>{ if(pc) pc.scrollTop=_sy; });
     return;
   }
@@ -18591,9 +18654,9 @@ function renderRelease2(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${all.filter(r=>r.status==='Hold').length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${(()=>{const _td=todayDateStringET();let n=0;all.forEach(r=>{if(String(r._created||'').slice(0,10)===_td)n++;});return n;})()}</div></div>
+    ${(()=>{let tr=0,tn=0,th=0;all.forEach(r=>{const tv=(r.tat||'').toLowerCase();if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not')))tr++;else if(tv.includes('not reached')||tv.includes('not-reached'))tn++;if((r.status||'')==='Hold')th++;});return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${th}</div></div>`;})()}
     ${(()=>{
       // Profile Code stats — visible to all Release roles
       const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
@@ -18814,7 +18877,7 @@ function renderTATIssue(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${all.length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
   </div>
   <div class="fb">
@@ -18961,7 +19024,7 @@ function renderDCIssue(c){
   }).length;
   const totalIssues = all.length;
   const todayStr = new Date().toDateString();
-  const todayCount = all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+  const todayCount = all.filter(r=>(String(r._created||'').slice(0,10)===todayStr).length;
   const withDelay = all.filter(r=>r._delayMins!==null);
   const avgDelay = withDelay.length ? Math.round(withDelay.reduce((s,r)=>s+r._delayMins,0)/withDelay.length) : 0;
   const over2h = all.filter(r=>r._delayMins!==null&&r._delayMins>120).length;
@@ -22363,8 +22426,9 @@ function renderOceanTT(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard">${window._trueCounts&&window._trueCounts['ocean_tt']?window._trueCounts['ocean_tt'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
+    ${(()=>{let _tc2=0,_tr=0,_tn=0;const _td=today;all.forEach(r=>{if(String(r._created||'').slice(0,10)===_td)_tc2++;const tv=(r.tat||'').toLowerCase();if(tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not')))_tr++;else if(tv.includes('not reached'))_tn++;});return`
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="ottTodayCard">${_tc2}</div></div>
+    <div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="ottTatReachedCard">${_tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="ottTatNotCard">${_tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv">${all.filter(r=>r.destination==='Toronto').length}</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Montreal</div><div class="sv">${all.filter(r=>r.destination==='Montreal').length}</div></div>
   </div>
@@ -22592,7 +22656,7 @@ function renderB2Entries(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="b2TodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{
       let ready=0,hold=0,proj=0,indiv=0;
       all.forEach(r=>{
