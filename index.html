@@ -5385,9 +5385,13 @@ function _applyRealtimeRow(table, row, eventType){
   const rtEntry = REALTIME_MAP.find(e=>e.table===table);
   if(!rtEntry) return;
 
-  // Skip if panel open — don't interrupt active form entry
-  // (audit_notifications are already handled above and never reach here)
-  if(isPanelOpen()){ window._pendingPageRefresh = _currentPage; return; }
+  // ── DATA MUTATION RUNS ALWAYS (even when a panel is open) ──
+  // Previously this function early-returned if isPanelOpen() was true,
+  // which dropped every realtime event while any form was open and made
+  // live sync appear delayed (counts / tables only refreshed after the
+  // user closed the panel, and even then the data arrays were stale).
+  // Now we apply the INSERT/UPDATE/DELETE to the in-memory array right
+  // away and only DEFER the visual refresh when a panel is open.
 
   const arr = rtEntry.arr();
   if(!arr) return;
@@ -5450,6 +5454,14 @@ function _applyRealtimeRow(table, row, eventType){
 
   // Re-index if needed
   if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
+
+  // ── Defer ONLY the visual page refresh if a panel is open ──
+  // Data mutation has already happened above, so when the panel closes the
+  // deferred _silentRefreshPage call will render fully-current state.
+  if(isPanelOpen()){
+    window._pendingPageRefresh = _currentPage;
+    return;
+  }
 
   // Refresh visible pages using TABLE_TO_PAGES map
   const pages = TABLE_TO_PAGES[table]||[];
@@ -24639,5 +24651,6 @@ if('serviceWorker' in navigator){
 <!-- Cloudflare Web Analytics beacon removed: /cdn-cgi/rum endpoint returns 404
      on this Pages deployment. Re-add only after enabling Web Analytics in the
      Cloudflare dashboard for invensis.myteamkpi.com. -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
