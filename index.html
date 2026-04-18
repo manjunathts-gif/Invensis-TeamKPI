@@ -1377,6 +1377,11 @@ body.role-client [data-col="clientname"]{
 @keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,.5);}50%{box-shadow:0 0 0 6px rgba(52,211,153,0);}}
 @keyframes livePulseAmber{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.5);}50%{box-shadow:0 0 0 6px rgba(245,158,11,0);}}
 @keyframes livePulseRose{0%,100%{box-shadow:0 0 0 0 rgba(225,29,72,.5);}50%{box-shadow:0 0 0 6px rgba(225,29,72,0);}}
+@keyframes iaeBlink{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.75);}}
+@keyframes iaeBadgePulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45);}50%{box-shadow:0 0 0 6px rgba(220,38,38,0);}}
+.iae-blink-dot{animation:iaeBlink 1s ease-in-out infinite;}
+.iae-blink-badge{animation:iaeBadgePulse 1.4s ease-in-out infinite;}
+.iae-blink-badge:hover{background:rgba(239,68,68,.2)!important;}
 @keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}}
 @keyframes countUp{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes newRow{0%{background:rgba(111,66,193,.15);transform:translateX(-8px);}100%{background:transparent;transform:translateX(0);}}
@@ -2157,6 +2162,51 @@ body.style-modern .fs2:focus{
     <button id="rlErrAckBtn" onclick="_rlErrConfirm()" disabled
       style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
       &#10003; Acknowledged — Continue to Form
+    </button>
+  </div>
+</div>
+<!-- ═══ INTERNAL AUDIT ERROR POPUP ═══ -->
+<div id="iaePopupOverlay" onclick="_closeIAEPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:498;backdrop-filter:blur(2px);"></div>
+<div id="iaePopup" style="display:none;position:fixed;top:50%;left:50%;width:520px;max-width:96vw;max-height:86vh;z-index:499;
+  background:#fff;flex-direction:column;overflow:hidden;border-radius:14px;
+  border:2px solid #dc2626;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);
+  transform:translate(-50%,-50%) scale(.92);opacity:0;transition:transform .25s cubic-bezier(.4,0,.2,1),opacity .2s;">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:18px 22px 14px;flex-shrink:0;position:relative;overflow:hidden;">
+    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="display:flex;align-items:center;gap:12px;position:relative;">
+      <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">&#9888;&#65039;</div>
+      <div style="flex:1">
+        <div style="font-size:17px;font-weight:900;color:#fff;letter-spacing:-.2px;line-height:1.2">Internal Audit — Error Reported</div>
+        <div id="iaePopupSub" style="font-size:12px;color:rgba(255,255,255,.8);margin-top:3px;font-weight:500;">Loading...</div>
+      </div>
+      <button id="iaePopupCloseX" onclick="_closeIAEPopup()" disabled
+        style="background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);border-radius:10px;width:32px;height:32px;cursor:not-allowed;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;" title="Submit acknowledgement to enable close">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div id="iaePopupBody" style="flex:1;overflow-y:auto;padding:18px 22px;background:#fafafa;">
+    <!-- Filled dynamically -->
+  </div>
+
+  <!-- Footer -->
+  <div style="flex-shrink:0;padding:14px 22px 18px;background:#fff;border-top:2px solid rgba(220,38,38,.15);">
+    <div style="margin-bottom:10px;">
+      <label for="iaeUserComments" style="font-size:12px;font-weight:700;color:#1f2937;display:block;margin-bottom:6px;">
+        Your comments <span style="color:#dc2626;font-weight:900">*</span>
+        <span style="font-size:10px;color:#6b7280;font-weight:500;margin-left:6px;">(required to close)</span>
+      </label>
+      <textarea id="iaeUserComments" rows="3" oninput="_iaeCommentsChanged()"
+        placeholder="Acknowledge the audit feedback and explain how you'll address it..."
+        style="width:100%;padding:10px 12px;border:1.5px solid rgba(220,38,38,.25);border-radius:10px;font-family:var(--font);font-size:13px;resize:vertical;min-height:64px;box-sizing:border-box;outline:none;transition:border-color .15s;"
+        onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='rgba(220,38,38,.25)'"></textarea>
+    </div>
+    <button id="iaeSubmitBtn" onclick="submitInternalAuditErrorAck()" disabled
+      style="width:100%;padding:12px;border-radius:10px;border:none;background:#e5e7eb;color:#9ca3af;font-size:14px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
+      &#10003; Submit Acknowledgement
     </button>
   </div>
 </div>
@@ -10233,6 +10283,8 @@ function showPage(id){
   else renderComing(c);
   // After page renders, show error alert banner for users with unacknowledged errors
   setTimeout(injectErrAlertBanner, 80);
+  // Check for pending internal audit errors (respects open-form rule)
+  setTimeout(()=>{ try{ if(typeof _checkPendingIAE==='function') _checkPendingIAE(); }catch(e){} }, 120);
 }
 
 // ── Sync-refresh: re-renders active page + dashboard + status after any local DB change ──
@@ -15139,6 +15191,38 @@ function renderErrorReport(c){
     ${(canUpload||isTLRole)?`<div class="sc c-sky"><div class="sc-top"></div><div class="si">👥</div><div class="sl">Users Affected</div><div class="sv">${new Set(allErrors.map(e=>e.userName)).size}</div></div>`:''}
   </div>
 
+  ${(!canUpload && !isTLRole && !_isClientRole)?(()=>{
+    // ── BATCH 2: Team Member 50/50 split card — Internal Audit vs Client Error ──
+    const _iaeCount = visibleErrors.filter(e=>e.sourceOfError==='Internal Audit').length;
+    const _cliCount = visibleErrors.filter(e=>e.sourceOfError!=='Internal Audit').length;
+    const _iaeUnacked = visibleErrors.filter(e=>e.sourceOfError==='Internal Audit'&&!e.acknowledgedAt).length;
+    const _cliUnacked = visibleErrors.filter(e=>e.sourceOfError!=='Internal Audit'&&!e.acknowledgedAt).length;
+    return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:var(--surface)">
+      <div style="padding:18px 20px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border-right:1px solid var(--border);position:relative">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:36px;height:36px;border-radius:10px;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">🔍</div>
+          <div style="font-size:11px;font-weight:800;color:#991b1b;letter-spacing:.04em;text-transform:uppercase">Internal Audit Error</div>
+        </div>
+        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:#991b1b;line-height:1">${_iaeCount}</div>
+        <div style="font-size:11px;color:#7f1d1d;margin-top:6px;font-weight:600">
+          ${_iaeUnacked>0?`<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800">⚠️ ${_iaeUnacked} unacked</span>`:'<span style="color:#15803d">✅ All acknowledged</span>'}
+        </div>
+      </div>
+      <div style="padding:18px 20px;background:linear-gradient(135deg,#fff7ed,#ffedd5);position:relative">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:36px;height:36px;border-radius:10px;background:#ea580c;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">🏢</div>
+          <div style="font-size:11px;font-weight:800;color:#9a3412;letter-spacing:.04em;text-transform:uppercase">Client Error</div>
+        </div>
+        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:#9a3412;line-height:1">${_cliCount}</div>
+        <div style="font-size:11px;color:#7c2d12;margin-top:6px;font-weight:600">
+          ${_cliUnacked>0?`<span style="background:#ea580c;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800">⚠️ ${_cliUnacked} unacked</span>`:'<span style="color:#15803d">✅ All acknowledged</span>'}
+        </div>
+      </div>
+    </div>
+    `;
+  })():''}
+
   ${canUpload ? buildPendingAckPanel(allErrors) : isTLRole ? buildPendingAckPanel(allErrors) : buildUserAckStatus(allErrors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase())))}
 
   <div class="fb">
@@ -16843,6 +16927,98 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
+function _createInternalAuditError(rlRec, info){
+  // info = {errorType, score, auditor, auditorComments}
+  // Check for duplicate — don't insert if one already exists for this txn from Internal Audit
+  const existing = (DB.errors||[]).find(e =>
+    String(e.txn)===String(rlRec.txn) &&
+    e.sourceOfError==='Internal Audit' &&
+    e.errorType===info.errorType
+  );
+  if(existing) return;
+
+  const pct = String(info.score!=null ? info.score : '');
+  const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
+  const dateStr = (typeof todayDateStringET==='function') ? todayDateStringET() : new Date().toISOString().slice(0,10);
+
+  const _errRow = {
+    date:             dateStr,
+    txn:              rlRec.txn,
+    client:           rlRec.client || null,
+    client_name:      rlRec.clientname || null,
+    team:             rlRec.team || null,
+    user_name:        rlRec.user || null,
+    error_type:       info.errorType,
+    percentage:       pct,
+    mode:             rlRec.mode || null,
+    source_of_error:  'Internal Audit',
+    client_comments:  info.auditorComments || `Score ${info.score}% — flagged via internal audit.`,
+    user_comments:    null,
+    created_by:       info.auditor || 'Audit System',
+    task:             'Release',
+    tl_comments:      null
+  };
+
+  const _localRec = {
+    txn:             rlRec.txn,
+    date:            dateStr,
+    client:          rlRec.client || null,
+    clientName:      rlRec.clientname || null,
+    team:            rlRec.team || null,
+    userName:        rlRec.user || null,
+    errorType:       info.errorType,
+    percentage:      pct,
+    mode:            rlRec.mode || null,
+    sourceOfError:   'Internal Audit',
+    clientComments:  _errRow.client_comments,
+    userComments:    null,
+    createdBy:       info.auditor || 'Audit System',
+    task:            'Release',
+    acknowledgedAt:  null,
+    acknowledgedBy:  null,
+    tlComments:      null,
+    _created:        nowIso
+  };
+
+  if(window._supa && typeof dbInsert==='function'){
+    dbInsert('client_errors', _errRow).then(r => {
+      if(r && r.id){
+        const mapped = mapError(r);
+        DB.errors.push(mapped);
+        DB.errors.forEach((e,i)=>e._idx=i);
+      } else {
+        DB.errors.push(_localRec);
+        DB.errors.forEach((e,i)=>e._idx=i);
+      }
+      _notifyInternalAuditError(_localRec);
+    }).catch(err => {
+      console.warn('[Internal Audit Error] insert failed:', err);
+      DB.errors.push(_localRec);
+      DB.errors.forEach((e,i)=>e._idx=i);
+      _notifyInternalAuditError(_localRec);
+    });
+  } else {
+    DB.errors.push(_localRec);
+    DB.errors.forEach((e,i)=>e._idx=i);
+    _notifyInternalAuditError(_localRec);
+  }
+}
+
+function _notifyInternalAuditError(rec){
+  // If the affected team member is currently logged in, show a toast
+  if(CU && CU.name && rec.userName===CU.name){
+    if(typeof showToast==='function'){
+      showToast(`⚠️ New audit error reported on Txn ${rec.txn} — please review in Release`, true);
+    }
+    // Refresh the release table if currently viewed, so blinking badge appears
+    const isOnRelease = document.querySelector('#pg_release2:not([style*="display:none"])') ||
+                        document.querySelector('#pg_release2[style*="display:block"]');
+    if(isOnRelease && typeof refreshRelease2Table==='function'){
+      try{ refreshRelease2Table(); }catch(e){}
+    }
+  }
+}
+
 function submitAudit(){
   // Always resolve by txn (stable) — auditActiveIdx can drift after background refresh
   if(!auditActiveTxn && auditActiveIdx===null){showToast('⚠️ No record selected',true);return;}
@@ -16896,6 +17072,21 @@ function submitAudit(){
     if(rlRec) rlRec.qualityScore=score;
     // Also update quality_score in Supabase release row
     if(_supa&&rlRec?._dbid) dbUpdate('release',rlRec._dbid,{quality_score:score});
+
+    // ── BATCH 2: Auto-create Internal Audit Error ──
+    // If errorType is anything other than "Good Job" OR score < 100, create an error record
+    // that flows to the team member's Error Report and triggers a popup
+    const _isRealError = errorType && errorType!=='Good Job' && errorType!=='None' && errorType!=='—' && errorType!=='';
+    const _isLowScore  = score < 100;
+    if((_isRealError || _isLowScore) && rlRec){
+      _createInternalAuditError(rlRec, {
+        errorType: _isRealError ? errorType : 'Score Below 100',
+        score,
+        auditor,
+        auditorComments: document.getElementById('audit_comments')?.value||''
+      });
+    }
+
     closeAuditPanel();
     showToast(`✅ Audit complete — Error: ${errorType} → Score: ${score}%`);
     window._auditReturnTo=null;
@@ -18511,7 +18702,31 @@ function renderRLRows(data){
   tbody.innerHTML=data.map((r,i)=>{
     const ar=_auditMap.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
+    // ── BATCH 2: Check for unacknowledged internal audit errors on this txn ──
+    const _iaeRec = (DB.errors||[]).find(e =>
+      String(e.txn)===String(r.txn) &&
+      e.sourceOfError==='Internal Audit'
+    );
+    const _iaeUnacked = _iaeRec && !_iaeRec.acknowledgedAt;
+    const _iaeAcked   = _iaeRec && _iaeRec.acknowledgedAt;
     const qCell=(()=>{
+      // If there's an unacked internal audit error, show blinking badge
+      if(_iaeUnacked){
+        return `<td style="text-align:center">
+          <span class="iae-blink-badge" onclick="openInternalAuditErrorPopup('${String(r.txn).replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.12);color:#b91c1c;border:1px solid #fca5a5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap" title="Internal audit error — click to view & acknowledge">
+            <span class="iae-blink-dot" style="width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block"></span>
+            Error — view
+          </span>
+        </td>`;
+      }
+      // If acked internal audit error, show static muted badge (no blink)
+      if(_iaeAcked){
+        return `<td style="text-align:center">
+          <span onclick="openInternalAuditErrorPopup('${String(r.txn).replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:5px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap" title="Internal audit error — acknowledged">
+            ⚠️ Ack'd${sc!=null&&!isNaN(sc)?' · '+sc+'%':''}
+          </span>
+        </td>`;
+      }
       if(sc==null||isNaN(sc))return'<td style="text-align:center;color:var(--text3);font-size:11px">—</td>';
       const col=sc>=95?'#166534':sc>=80?'#b45309':sc>=70?'#d97706':'#991b1b';
       const bg=sc>=95?'#dcfce7':sc>=80?'#fef9c3':sc>=70?'#ffedd5':'#fee2e2';
@@ -19365,12 +19580,13 @@ function _buildRlErrPopup(clientNo){
       const ackBy     = e.acknowledgedBy || '';
       const ackAt     = e.acknowledgedAt || '';
 
-      html += `<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid #dc2626;overflow:hidden;">`;
+      html += `<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid ${srcErr==='Internal Audit'?'#7c3aed':'#dc2626'};overflow:hidden;">`;
 
       // Card header
       html += `<div style="padding:9px 13px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;border-bottom:1px solid rgba(220,38,38,.1);">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;">${errType}</span>
+          ${srcErr==='Internal Audit'?`<span style="background:linear-gradient(135deg,#7c3aed,#9333ea);color:#fff;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">🔍 INTERNAL AUDIT</span>`:''}
+          <span style="background:${srcErr==='Internal Audit'?'#7c3aed':'#dc2626'};color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;">${errType}</span>
           <span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${mode}</span>
           ${task&&task!=='—'?`<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${task}</span>`:''}
           ${pct?`<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${pct}%</span>`:''}
@@ -19535,6 +19751,344 @@ function _closeRlErrPopup(){
   popup.style.transform='translateX(100%)';
   if(overlay) overlay.style.display='none';
   setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INTERNAL AUDIT ERROR POPUP — Batch 2
+// ═══════════════════════════════════════════════════════════════════
+window._iaeActiveTxn = null;
+window._iaeActiveRec = null;
+
+function openInternalAuditErrorPopup(txn){
+  const rec = (DB.errors||[]).find(e =>
+    String(e.txn)===String(txn) &&
+    e.sourceOfError==='Internal Audit'
+  );
+  if(!rec){
+    if(typeof showToast==='function') showToast('⚠️ Error record not found', true);
+    return;
+  }
+  window._iaeActiveTxn = String(txn);
+  window._iaeActiveRec = rec;
+
+  const rlRec = (DB.release2||[]).find(r => String(r.txn)===String(txn));
+  const auditRec = (DB.audit||[]).find(a => String(a.txn)===String(txn));
+
+  // Header sub
+  const sub = document.getElementById('iaePopupSub');
+  if(sub){
+    const dt = (rec._created||'').toString().slice(0,16).replace('T',' ');
+    sub.textContent = `Txn ${rec.txn} · audited ${dt}`;
+  }
+
+  // Body — field list
+  const body = document.getElementById('iaePopupBody');
+  if(body){
+    const score = rec.percentage || auditRec?.score || '—';
+    const scoreDisplay = score!=='—' ? (score+'%') : '—';
+    const scoreColor = (parseFloat(score)>=95) ? '#166534' : (parseFloat(score)>=80) ? '#b45309' : '#991b1b';
+    const isAcked = !!rec.acknowledgedAt;
+    body.innerHTML = `
+      <div style="background:#fff;border:1px solid #fecaca;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Txn</span>
+          <span style="color:#111827;font-weight:800;font-family:var(--mono)">${rec.txn||'—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Client</span>
+          <span style="color:#111827;font-weight:700">${rec.clientName||rec.client||'—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Mode</span>
+          <span style="color:#111827;font-weight:700">${rec.mode||'—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Error type</span>
+          <span style="color:#b91c1c;font-weight:800">${rec.errorType||'—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Audit score</span>
+          <span style="color:${scoreColor};font-weight:900;font-family:var(--mono)">${scoreDisplay}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
+          <span style="color:#6b7280;font-weight:600">Auditor</span>
+          <span style="color:#111827;font-weight:700">${rec.createdBy||auditRec?.auditor||'—'}</span>
+        </div>
+        <div style="padding:8px 0 2px;font-size:13px;">
+          <div style="color:#6b7280;font-weight:600;margin-bottom:6px">Auditor comments</div>
+          <div style="color:#111827;background:#fef2f2;border-left:3px solid #dc2626;padding:8px 10px;border-radius:4px;font-size:12px;line-height:1.5;white-space:pre-wrap;">${rec.clientComments||auditRec?.comments||'No additional comments from auditor.'}</div>
+        </div>
+      </div>
+      ${isAcked?`
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;font-size:12px;color:#166534;line-height:1.55">
+          <div style="font-weight:800;margin-bottom:4px;">&#9989; Already acknowledged</div>
+          <div>on ${(rec.acknowledgedAt||'').toString().slice(0,16).replace('T',' ')}${rec.acknowledgedBy?' by '+rec.acknowledgedBy:''}</div>
+          ${rec.userComments?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #bbf7d0"><b>Your comments:</b> ${rec.userComments}</div>`:''}
+        </div>
+      `:`
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;line-height:1.5;font-weight:600">
+          &#9432; Please review the feedback above and submit your acknowledgement with comments below.
+        </div>
+      `}
+    `;
+  }
+
+  // Reset comments field & button state
+  const ta = document.getElementById('iaeUserComments');
+  const btn = document.getElementById('iaeSubmitBtn');
+  const closeX = document.getElementById('iaePopupCloseX');
+  if(ta){
+    ta.value = rec.userComments || '';
+    ta.disabled = !!rec.acknowledgedAt;
+    ta.style.background = rec.acknowledgedAt ? '#f3f4f6' : '#fff';
+  }
+  if(btn){
+    if(rec.acknowledgedAt){
+      btn.textContent = '✓ Already Acknowledged';
+      btn.disabled = true;
+      btn.style.background = '#d1fae5';
+      btn.style.color = '#065f46';
+      btn.style.cursor = 'default';
+    } else {
+      btn.textContent = '✓ Submit Acknowledgement';
+      btn.disabled = true;
+      btn.style.background = '#e5e7eb';
+      btn.style.color = '#9ca3af';
+      btn.style.cursor = 'not-allowed';
+    }
+  }
+  if(closeX){
+    if(rec.acknowledgedAt){
+      closeX.disabled = false;
+      closeX.style.cursor = 'pointer';
+      closeX.style.background = 'rgba(255,255,255,.2)';
+      closeX.style.color = '#fff';
+      closeX.title = 'Close';
+    } else {
+      closeX.disabled = true;
+      closeX.style.cursor = 'not-allowed';
+      closeX.style.background = 'rgba(255,255,255,.1)';
+      closeX.style.color = 'rgba(255,255,255,.4)';
+      closeX.title = 'Submit acknowledgement to close';
+    }
+  }
+
+  _iaeCommentsChanged();
+
+  // Show popup
+  const popup = document.getElementById('iaePopup');
+  const overlay = document.getElementById('iaePopupOverlay');
+  if(popup){
+    popup.style.display = 'flex';
+    if(overlay) overlay.style.display = 'block';
+    requestAnimationFrame(()=>{
+      popup.style.transform = 'translate(-50%,-50%) scale(1)';
+      popup.style.opacity = '1';
+    });
+  }
+}
+
+function _iaeCommentsChanged(){
+  const ta = document.getElementById('iaeUserComments');
+  const btn = document.getElementById('iaeSubmitBtn');
+  if(!ta || !btn) return;
+  // Don't override disabled state if already acked
+  if(window._iaeActiveRec && window._iaeActiveRec.acknowledgedAt) return;
+  const hasText = ta.value.trim().length >= 5;
+  btn.disabled = !hasText;
+  if(hasText){
+    btn.style.background = 'linear-gradient(135deg,#b91c1c,#dc2626)';
+    btn.style.color = '#fff';
+    btn.style.cursor = 'pointer';
+    btn.style.boxShadow = '0 4px 14px rgba(220,38,38,.3)';
+  } else {
+    btn.style.background = '#e5e7eb';
+    btn.style.color = '#9ca3af';
+    btn.style.cursor = 'not-allowed';
+    btn.style.boxShadow = 'none';
+  }
+}
+
+function _closeIAEPopup(){
+  // Only allow close if already acked
+  const rec = window._iaeActiveRec;
+  if(rec && !rec.acknowledgedAt){
+    if(typeof showToast==='function') showToast('⚠️ Please submit your acknowledgement with comments before closing', true);
+    return;
+  }
+  const popup = document.getElementById('iaePopup');
+  const overlay = document.getElementById('iaePopupOverlay');
+  if(!popup) return;
+  popup.style.transform = 'translate(-50%,-50%) scale(.92)';
+  popup.style.opacity = '0';
+  if(overlay) overlay.style.display = 'none';
+  setTimeout(()=>{
+    if(popup.style.opacity === '0') popup.style.display = 'none';
+    window._iaeActiveTxn = null;
+    window._iaeActiveRec = null;
+  }, 260);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SMART PENDING-ERROR CHECKER — Batch 2
+// ═══════════════════════════════════════════════════════════════════
+// Finds unacked internal audit errors for current user. Respects "don't
+// interrupt during add form" rule. Shows a persistent header pill + opens
+// popup when safe. Chains errors so user clears them all in one flow.
+// ═══════════════════════════════════════════════════════════════════
+function _getMyUnackedIAE(){
+  if(!CU || !CU.name) return [];
+  const myNameLC = String(CU.name||'').trim().toLowerCase();
+  return (DB.errors||[]).filter(e =>
+    e.sourceOfError==='Internal Audit' &&
+    !e.acknowledgedAt &&
+    String(e.userName||'').trim().toLowerCase() === myNameLC
+  );
+}
+
+function _isAddFormOpen(){
+  // Check any open add/edit panel — don't interrupt the user mid-entry
+  const panelIds = ['rlPanel','lvsPanel','clsPanel','compPanel','parsPanel','oceanPanel',
+                    'partLotPanel','ottPanel','b2Panel','auditPanel','errPanel'];
+  for(const id of panelIds){
+    const el = document.getElementById(id);
+    if(el && el.style && el.style.display && el.style.display!=='none') return true;
+  }
+  // Also check the IAE popup itself — don't double-open
+  const iae = document.getElementById('iaePopup');
+  if(iae && iae.style.display === 'flex') return true;
+  return false;
+}
+
+function _updateIAENavPill(){
+  const unacked = _getMyUnackedIAE();
+  let pill = document.getElementById('iaeNavPill');
+  if(!unacked.length){
+    if(pill) pill.remove();
+    return;
+  }
+  if(!pill){
+    // Inject pill into top bar — try common header locations
+    const host = document.getElementById('topBar') ||
+                 document.querySelector('.top-bar') ||
+                 document.querySelector('header') ||
+                 document.querySelector('.topbar') ||
+                 document.body;
+    if(!host) return;
+    pill = document.createElement('button');
+    pill.id = 'iaeNavPill';
+    pill.type = 'button';
+    pill.title = 'Audit errors pending your acknowledgement';
+    pill.style.cssText = 'position:fixed;top:14px;right:14px;z-index:300;' +
+      'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#b91c1c,#dc2626);' +
+      'color:#fff;border:none;border-radius:22px;padding:8px 14px 8px 10px;font-size:12px;font-weight:800;' +
+      'cursor:pointer;box-shadow:0 6px 18px rgba(220,38,38,.35);font-family:var(--font);letter-spacing:.2px;' +
+      'animation:iaeBadgePulse 1.4s ease-in-out infinite;';
+    pill.onclick = () => {
+      const list = _getMyUnackedIAE();
+      if(list.length) openInternalAuditErrorPopup(list[0].txn);
+    };
+    document.body.appendChild(pill);
+  }
+  pill.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:#fff;display:inline-block;animation:iaeBlink 1s ease-in-out infinite"></span>` +
+                   `<span>${unacked.length} audit error${unacked.length>1?'s':''} — click to review</span>`;
+}
+
+function _checkPendingIAE(opts){
+  opts = opts || {};
+  _updateIAENavPill();
+
+  const unacked = _getMyUnackedIAE();
+  if(!unacked.length) return;
+
+  // Rule: never interrupt during an open add form (unless chain-mode, which
+  // means the user just acked one and we want the next to appear immediately)
+  if(!opts.chain && _isAddFormOpen()) return;
+
+  // Pick the oldest unacked error first
+  const sorted = [...unacked].sort((a,b)=>
+    new Date(a._created||a.date||0) - new Date(b._created||b.date||0)
+  );
+  openInternalAuditErrorPopup(sorted[0].txn);
+}
+
+// Watch for audit inserts from realtime — if a new error arrives for the
+// current user, schedule a check. Uses simple count-based delta so we only
+// trigger on genuinely new rows (not on initial load).
+window._iaeLastCount = -1;
+function _iaeWatchNew(){
+  if(!CU || !CU.name) return;
+  const cur = _getMyUnackedIAE().length;
+  if(window._iaeLastCount === -1){
+    // First pass — just record, don't pop up (avoids surprise on fresh login)
+    window._iaeLastCount = cur;
+    _updateIAENavPill();
+    return;
+  }
+  if(cur > window._iaeLastCount){
+    // New unacked error arrived
+    window._iaeLastCount = cur;
+    _checkPendingIAE();
+  } else if(cur < window._iaeLastCount){
+    window._iaeLastCount = cur;
+    _updateIAENavPill();
+  } else {
+    _updateIAENavPill();
+  }
+}
+// Poll every 5 seconds as a safety net (realtime sync already updates DB.errors)
+setInterval(()=>{ try{ _iaeWatchNew(); }catch(e){} }, 5000);
+
+function submitInternalAuditErrorAck(){
+  const rec = window._iaeActiveRec;
+  if(!rec){
+    if(typeof showToast==='function') showToast('⚠️ No active error record', true);
+    return;
+  }
+  if(rec.acknowledgedAt){
+    if(typeof showToast==='function') showToast('Already acknowledged', false);
+    return;
+  }
+  const comments = (document.getElementById('iaeUserComments')?.value||'').trim();
+  if(comments.length < 5){
+    if(typeof showToast==='function') showToast('⚠️ Please enter meaningful comments (at least 5 characters)', true);
+    return;
+  }
+
+  const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
+  const ackBy = (CU && CU.name) || 'User';
+
+  // Optimistic local update
+  rec.userComments = comments;
+  rec.acknowledgedAt = nowIso;
+  rec.acknowledgedBy = ackBy;
+
+  // Persist to DB if supabase available
+  if(window._supa && typeof dbUpdate==='function' && rec._dbid){
+    dbUpdate('client_errors', rec._dbid, {
+      user_comments: comments,
+      acknowledged_at: nowIso,
+      acknowledged_by: ackBy
+    }).catch(err => {
+      console.warn('[IAE] ack update failed:', err);
+    });
+  }
+
+  if(typeof showToast==='function') showToast('✅ Acknowledgement submitted — thank you!');
+
+  // Close popup (now allowed because acknowledgedAt is set)
+  _closeIAEPopup();
+
+  // Refresh the release table so the badge stops blinking and turns muted
+  if(typeof pgSlice==='function' && typeof renderRLRows==='function'){
+    try{ renderRLRows(pgSlice('rl')); }catch(e){}
+  }
+
+  // After acknowledging, check if there are MORE unacked errors — chain them
+  // so the user clears them all in one flow
+  setTimeout(()=>{
+    if(typeof _checkPendingIAE==='function') _checkPendingIAE({chain:true});
+  }, 350);
 }
 
 // ── Wire up rl_client field: hide badge + reset when number cleared ──
