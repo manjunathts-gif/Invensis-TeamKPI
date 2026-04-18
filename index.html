@@ -9881,6 +9881,7 @@ function buildNav(){
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
+      {id:'audit',l:'🔍 Audit',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'tatanalyzer',l:'🎯 TAT Analyzer',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
@@ -9938,13 +9939,8 @@ function buildNav(){
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
       {id:'qualityanalytics',l:'🏆 Quality Analytics',g:'reports'},
-      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
-      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
-      {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
-      {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       errItem,
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
-      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(isTeamLead){
     // TL nav: dashboard + their task + status + reports
@@ -9971,13 +9967,8 @@ function buildNav(){
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
       {id:'kpidashboard',l:'📊 KPI Dashboard',g:'reports'},
-      {id:'tatissue',l:'🚨 TAT Issue',g:'reports'},
-      {id:'dcissue',l:'📬 DC TAT Issue',g:'reports'},
       errItem,
-      {id:'idlelog',l:'⏸️ Idle Log',g:'admin'},
-      {id:'errorreport',l:'⚠️ Client Errors',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
-      {id:'huddle',l:'👥 Daily Huddle',g:'main'},
     ];
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
@@ -11664,6 +11655,34 @@ function renderDashboard(c){
     s.pct=s.total?Math.round(s.done/s.total*100):0;
   });
 
+  // ── Auditor × Hourly data (for Team Lead dashboard & admin) ──
+  const dashAuditHours=['06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22'];
+  const dashAuditorsList=[...new Set(DB.audit.map(a=>a.auditor))].filter(Boolean).sort();
+  const dashTodayAuditRecs=DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD);
+  const dashAuditorRows=dashAuditorsList.map(aud=>{
+    const myTotal=DB.audit.filter(a=>a.auditor===aud).length;
+    const myToday=dashTodayAuditRecs.filter(a=>a.auditor===aud);
+    const cells=dashAuditHours.map(h=>{
+      const cnt=myToday.filter(a=>{
+        const dt=parseAppDate(a._created)||new Date(0);
+        return String(dt.getHours()).padStart(2,'0')===h;
+      }).length;
+      if(!cnt) return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;
+      const bg=cnt>=5?'#065f46':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
+      return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;
+    }).join('');
+    return`<tr>
+      <td style="font-weight:700;padding:7px 12px;white-space:nowrap;font-size:12px;border-left:3px solid #22c55e">${aud}${aud===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 5px">you</span>':''}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;padding:7px 8px">${myTotal}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  const dashAuditorTotalRow=`<tr style="border-top:2px solid #16a34a">
+    <td style="font-weight:800;padding:7px 12px;color:#065f46;border-left:3px solid #059669;background:#f0fdf4;font-size:12px">✅ Done today</td>
+    <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${dashTodayAuditRecs.length}</td>
+    ${dashAuditHours.map(h=>{const cnt=dashTodayAuditRecs.filter(a=>{const dt=parseAppDate(a._created)||new Date(0);return String(dt.getHours()).padStart(2,'0')===h;}).length;if(!cnt)return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;const bg=cnt>=5?'#065f46':cnt>=3?'#059669':cnt>=2?'#16a34a':'#22c55e';return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;}).join('')}
+  </tr>`;
+
   // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
   const _existingDash = c.querySelector('.dash-ed');
   if(_existingDash && !window._forceRefresh){
@@ -11855,6 +11874,7 @@ function renderDashboard(c){
         </tbody>
       </table>
       <div style="padding:14px 14px 6px">
+        ${(!isTL||isMgr)?`
         <div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.05em;margin-bottom:10px">📊 VOLUME BY TASK</div>
         ${visibleDefs.map(d=>{
           const pct=totalAll?Math.max(2,Math.round(stats[d.key].total/totalAll*100)):2;
@@ -11866,6 +11886,7 @@ function renderDashboard(c){
             <div style="width:40px;font-size:11px;font-weight:800;color:${d.color};text-align:right;flex-shrink:0">${stats[d.key].total}</div>
           </div>`;
         }).join('')}
+        `:''}
       </div>
     </div>
 
@@ -11902,6 +11923,23 @@ function renderDashboard(c){
       </table>
     </div>`:''}
   </div>
+
+  <!-- HOURLY AUDIT ACTIVITY — AUDITOR WISE (Today) -->
+  ${(isTL||isMgr||isAdmin()||CU.role==='Supervisor')?`
+  <div class="dash-ed-panel">
+    <div class="dash-ed-panel-hdr">
+      <div class="dash-ed-panel-title">⏰ Hourly Audit Activity — Auditor Wise (Today)</div>
+      <div class="dash-ed-panel-badge">${dashTodayAuditRecs.length} audits today</div>
+    </div>
+    ${dashAuditorRows?`<div style="overflow-x:auto"><table class="dash-ed-table">
+      <thead><tr>
+        <th style="min-width:130px">Auditor</th>
+        <th style="text-align:center;background:#dcfce7;color:#166534">✅ Total</th>
+        ${dashAuditHours.map(h=>`<th style="text-align:center;min-width:36px;font-size:10px;padding:5px 2px">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${dashAuditorRows}${dashAuditorTotalRow}</tbody>
+    </table></div>`:'<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No audits today yet</div>'}
+  </div>`:''}
 
   <!-- TASK HEATMAP -->
   <div class="dash-ed-panel">
@@ -16432,32 +16470,43 @@ function renderAudit(c){
     </div>`;
   }).join('');
 
-  // ── Hourly auditor activity (today only, compact) ──
-  const auditHours=['06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22'];
-  const auditors=[...new Set(DB.audit.filter(a=>teamTxnSet.has(String(a.txn))).map(a=>a.auditor))].filter(Boolean).sort();
-  const todayAudits=DB.audit.filter(a=>teamTxnSet.has(String(a.txn))&&(parseAppDate(a._created)||new Date(0)).toDateString()===todayStr);
-  const auditorRows=auditors.map(aud=>{
-    const myTotal=DB.audit.filter(a=>a.auditor===aud&&teamTxnSet.has(String(a.txn))).length;
-    const myToday=todayAudits.filter(a=>a.auditor===aud);
-    const cells=auditHours.map(h=>{
-      const cnt=myToday.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;
-      if(!cnt) return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;
-      const bg=cnt>=5?'#065f46':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
-      return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;
-    }).join('');
-    return`<tr>
-      <td style="font-weight:700;padding:7px 12px;white-space:nowrap;font-size:12px;border-left:3px solid #22c55e">${aud}${aud===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 5px">you</span>':''}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;padding:7px 8px">${myTotal}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#991b1b;padding:7px 8px">${pending.length}</td>
-      ${cells}
+  // ── Audit Analytics: Error Type × Count + User × Error Count ──
+  const auditErrRecs = DB.audit.filter(a=>teamTxnSet.has(String(a.txn))&&a.errorType&&a.errorType!=='Good Job'&&a.errorType!=='None'&&a.errorType!=='—'&&a.errorType!=='');
+  const errTypeMap = {};
+  auditErrRecs.forEach(a=>{ errTypeMap[a.errorType]=(errTypeMap[a.errorType]||0)+1; });
+  const errTypeSorted = Object.entries(errTypeMap).sort((a,b)=>b[1]-a[1]);
+  const errTypeMax = errTypeSorted.length?errTypeSorted[0][1]:1;
+  const errTypeBars = errTypeSorted.map(([type,cnt])=>{
+    const pct = Math.max(5, Math.round(cnt/errTypeMax*100));
+    const color = cnt>=5?'#dc2626':cnt>=3?'#ea580c':cnt>=2?'#f59e0b':'#fbbf24';
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:180px;font-size:12px;font-weight:700;color:#374151;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${type}">${type}</div>
+      <div style="flex:1;height:22px;background:#f3f4f6;border-radius:4px;overflow:hidden;position:relative">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${color},${color}dd);border-radius:4px;transition:width .4s"></div>
+        <div style="position:absolute;top:0;left:8px;line-height:22px;font-size:11px;font-weight:800;color:#1f2937">${cnt}</div>
+      </div>
+      <div style="width:50px;font-size:11px;font-weight:800;color:${color};text-align:right;flex-shrink:0">${cnt}</div>
+    </div>`;
+  }).join('');
+
+  // User × Error count breakdown
+  const userErrMap = {};
+  auditErrRecs.forEach(a=>{
+    const u=a.user||a.user_name||'—';
+    if(!userErrMap[u]) userErrMap[u]={total:0,types:{}};
+    userErrMap[u].total++;
+    userErrMap[u].types[a.errorType]=(userErrMap[u].types[a.errorType]||0)+1;
+  });
+  const userErrSorted = Object.entries(userErrMap).sort((a,b)=>b[1].total-a[1].total);
+  const userErrRows = userErrSorted.map(([user,data])=>{
+    const topType = Object.entries(data.types).sort((a,b)=>b[1]-a[1])[0];
+    const sev = data.total>=5?'#dc2626':data.total>=3?'#ea580c':data.total>=2?'#f59e0b':'#16a34a';
+    return `<tr>
+      <td style="padding:8px 12px;font-weight:700;border-left:3px solid ${sev}">${user}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${sev};font-size:14px">${data.total}</td>
+      <td style="padding:8px 12px;font-size:12px;color:#374151">${topType?`${topType[0]} <span style="color:var(--text3);font-size:10px">(${topType[1]})</span>`:'—'}</td>
     </tr>`;
   }).join('');
-  const totalRow=`<tr style="border-top:2px solid #16a34a">
-    <td style="font-weight:800;padding:7px 12px;color:#065f46;border-left:3px solid #059669;background:#f0fdf4;font-size:12px">✅ Done today</td>
-    <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${todayDone}</td>
-    <td style="background:#f0fdf4;text-align:center;color:var(--text3)">—</td>
-    ${auditHours.map(h=>{const cnt=todayAudits.filter(a=>pad((parseAppDate(a._created)||new Date(0)).getHours())===h).length;if(!cnt)return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;const bg=cnt>=5?'#065f46':cnt>=3?'#059669':cnt>=2?'#16a34a':'#22c55e';return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;}).join('')}
-  </tr>`;
 
   c.innerHTML=`
   <div class="ph">
@@ -16488,22 +16537,8 @@ function renderAudit(c){
     <div style="padding:14px;display:flex;gap:12px;flex-wrap:wrap">${modeCards||'<div style="color:var(--text3);padding:10px">No records</div>'}</div>
   </div>
 
-  <!-- Hourly auditor activity -->
+  <!-- Audit record table (moved up — directly below mode-wise cards) -->
   <div class="tw" style="margin-bottom:14px">
-    <div class="th2"><div class="tt">⏰ Hourly Audit Activity — Auditor Wise (Today)</div></div>
-    ${auditorRows?`<div style="overflow-x:auto"><table class="dt">
-      <thead><tr>
-        <th style="min-width:130px">Auditor</th>
-        <th style="text-align:center;background:#dcfce7;color:#166534">✅ Total</th>
-        <th style="text-align:center;background:#fee2e2;color:#991b1b">⏳ Pending</th>
-        ${auditHours.map(h=>`<th style="text-align:center;min-width:36px;font-size:10px;padding:5px 2px">${h}</th>`).join('')}
-      </tr></thead>
-      <tbody>${auditorRows}${totalRow}</tbody>
-    </table></div>`:'<div style="padding:20px;text-align:center;color:var(--text3);font-style:italic">No audits today yet</div>'}
-  </div>
-
-  <!-- Audit record table -->
-  <div class="tw">
     <div style="padding:10px 14px 0;border-bottom:1px solid var(--border)">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
         <span class="flbl" style="font-size:11px">🔍 Filter</span>
@@ -16529,6 +16564,42 @@ function renderAudit(c){
       </div>
     </div>
     <div id="auditTabContent"></div>
+  </div>
+
+  <!-- Audit Analytics — Error Type × No. of Errors + User breakdown -->
+  <div class="tw" style="margin-bottom:14px">
+    <div class="th2">
+      <div class="tt">📊 Audit Analytics</div>
+      <div class="tc">Error type distribution &amp; users with most errors</div>
+    </div>
+    <div style="padding:16px">
+      ${errTypeSorted.length===0?`
+        <div style="padding:24px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">✅ No errors recorded yet — all audits are Good Job!</div>
+      `:`
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="dash-ed-two">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#374151;letter-spacing:.04em;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:6px;font-size:11px">⚠️ ERROR TYPE × COUNT</span>
+              <span style="color:var(--text3);font-size:10px;font-weight:600">${auditErrRecs.length} total errors</span>
+            </div>
+            ${errTypeBars}
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#374151;letter-spacing:.04em;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              <span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-size:11px">👤 USERS WITH MOST ERRORS</span>
+            </div>
+            ${userErrRows?`<div style="overflow-x:auto"><table class="dt" style="font-size:12px">
+              <thead><tr>
+                <th style="min-width:130px">User</th>
+                <th style="text-align:center">Errors</th>
+                <th>Most Common Error</th>
+              </tr></thead>
+              <tbody>${userErrRows}</tbody>
+            </table></div>`:'<div style="color:var(--text3);font-style:italic;padding:10px">No user errors to report</div>'}
+          </div>
+        </div>
+      `}
+    </div>
   </div>`;
 
   window._auditTeamRecords=teamRecords;
