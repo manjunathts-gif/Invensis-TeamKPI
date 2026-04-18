@@ -4042,6 +4042,30 @@ async function dbLoadRecent(table, days=30){
 
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
+// ─────────────────────────────────────────────────────────────────
+// Scoped loader — fetch only a specific user's client_errors rows.
+// Team members don't need (and shouldn't download) the entire errors
+// table for the whole organization. Uses server-side filter on user_name.
+// ─────────────────────────────────────────────────────────────────
+async function dbLoadMyErrors(userName){
+  if(!_supa || !userName) return [];
+  try{
+    const {data, error} = await _supa.from('client_errors')
+      .select('*')
+      .eq('user_name', userName)
+      .order('id', {ascending:false})
+      .limit(500);
+    if(error){
+      console.warn('[dbLoadMyErrors] filter failed, falling back to full load:', error.message);
+      return await dbLoadRecent('client_errors');
+    }
+    return data || [];
+  } catch(e){
+    console.warn('[dbLoadMyErrors] threw, falling back:', e.message);
+    return await dbLoadRecent('client_errors');
+  }
+}
+
 const OPTIONAL_TABLES=['idle_log','tat_reasons','attendance_log']; // productivity_log + eta_assignments removed — features disabled
 // Track which missing-table warnings already shown
 const _missingTableWarned={};
@@ -4620,10 +4644,14 @@ async function loadAllFromSupabase(){
       // Regular user: own task table + errors + clients + login_users (for user dropdown autofill)
       const tbl=taskTableMap[userTask];
       setDetail('Loading your '+(userTask||'task')+' data...');
-      // Load clients first in array so it resolves quickly for fillClient
+      // SPEED FIX: regular team members only fetch their OWN errors (server-side
+      // filter) instead of the full client_errors table. Cuts login download from
+      // potentially thousands of rows to a handful. dbLoadMyErrors falls back to
+      // the full load if the filtered query errors out.
+      const _myName = CU?.name || CU?.empName || '';
       const fetches=tbl
-        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')]
-        : [dbLoad('clients'), dbLoadRecent('client_errors'), dbLoad('login_users'), dbLoad('instructions')];
+        ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadMyErrors(_myName), dbLoad('login_users'), dbLoad('instructions')]
+        : [dbLoad('clients'), dbLoadMyErrors(_myName), dbLoad('login_users'), dbLoad('instructions')];
       const results=await Promise.all(fetches);
       // clients is index 0, task table is index 1, etc.
       if(results[0]) DB.clients=results[0].map(mapClient); // clients FIRST — needed for autofill
@@ -5136,7 +5164,12 @@ async function globalRefresh(){
         else if(t==='ocean_tt')   DB.oceanTT   = _grf(rows.map(mapOceanTT));
         else if(t==='b2_entries') DB.b2entries = _grf(rows.map(mapB2));
         else if(t==='audit')      DB.audit     = _grf(rows.map(mapAudit));
-        else if(t==='client_errors'){ DB.errors = _grf(rows.map(mapError)); DB.errors.forEach((e,i)=>e._idx=i); }
+        else if(t==='client_errors'){
+          DB.errors = _grf(rows.map(mapError));
+          DB.errors.forEach((e,i)=>e._idx=i);
+          // Batch 2: immediate check for new internal audit errors — don't wait for the poll
+          if(typeof _iaeWatchNew==='function'){ try{ _iaeWatchNew(); }catch(e){} }
+        }
         else if(t==='login_users')  DB.loginUsers = rows.map(mapLoginUser);
       }
       // Fix indices
@@ -14805,68 +14838,138 @@ function renderMyStatus(c){
 
   const today=todayDateStringET();
   const now=new Date();
+  const todayKey = now.toDateString();
+  const curYear  = now.getFullYear();
+  const curMonth = now.getMonth();
   const myName=CU.name||CU.empName||CU.username||'';
-  const myRecs=(tm.db||[]).filter(r=>r[tm.fld]===myName);
-  const todayRecs=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const monthRecs=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const holdRecs=myRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const tatOkArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
-  const tatMissArr=myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
-  const tatPct=(tatOkArr.length+tatMissArr.length)?Math.round(tatOkArr.length/(tatOkArr.length+tatMissArr.length)*100):0;
+
+  // ── SPEED FIX: single pass per record. parseAppDate runs ONCE per row
+  // (cached on row._dateCache), then reused across today/month/daily/hourly
+  // aggregations. Prior code ran parseAppDate 5× per record per My Status
+  // render. On 5000 rows that was 25000 parses.
+  const _getDate = (r) => {
+    if(r._dateCache) return r._dateCache;
+    const d = parseAppDate(r._created) || new Date(0);
+    r._dateCache = d;
+    r._dateKey   = d.toDateString();
+    r._dateYM    = d.getFullYear()*100 + d.getMonth();
+    r._dateHr    = String(d.getHours()).padStart(2,'0');
+    return d;
+  };
+
+  // Pre-build a Map<dateKey, count> for the last 7 days so daily rows is O(n)
+  const myRecs=[];
+  const dailyBucket = new Map(); // toDateString() → count (for user)
+  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
+  const hourCounts={}; hours.forEach(h=>hourCounts[h]=0);
+
+  let todayCnt=0, monthCnt=0, holdCnt=0, tatOkCnt=0, tatMissCnt=0;
+  const curYM = curYear*100 + curMonth;
+  const myFld = tm.fld;
+
+  for(const r of (tm.db||[])){
+    if(r[myFld] !== myName) continue;
+    myRecs.push(r);
+    _getDate(r);
+    if(r._dateKey === todayKey){
+      todayCnt++;
+      if(hourCounts[r._dateHr]!==undefined) hourCounts[r._dateHr]++;
+    }
+    if(r._dateYM === curYM) monthCnt++;
+    const st = (r.status||'').toLowerCase();
+    if(st==='hold') holdCnt++;
+    const tv = (r.tat||'').toLowerCase();
+    if(tv==='tat reached') tatOkCnt++;
+    else if(tv==='tat not reached') tatMissCnt++;
+    // Bucket by date key — used by daily rows below
+    dailyBucket.set(r._dateKey, (dailyBucket.get(r._dateKey)||0) + 1);
+  }
+
+  const tatPct=(tatOkCnt+tatMissCnt)?Math.round(tatOkCnt/(tatOkCnt+tatMissCnt)*100):0;
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
-  // Team data (TL only)
+  // Team data (TL only) — also single-pass using cached date fields
   const teamRecs=tm.db||[];
-  const teamTodayRecs=teamRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString());
-  const teamMonthRecs=teamRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();});
-  const teamHold=teamRecs.filter(r=>(r.status||'').toLowerCase()==='hold');
-  const teamTatOk=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached');
-  const teamTatMiss=teamRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached');
-  const teamTatPct=(teamTatOk.length+teamTatMiss.length)?Math.round(teamTatOk.length/(teamTatOk.length+teamTatMiss.length)*100):0;
+  let teamTodayCnt=0, teamMonthCnt=0, teamHoldCnt=0, teamTatOkCnt=0, teamTatMissCnt=0;
+  for(const r of teamRecs){
+    _getDate(r);
+    if(r._dateKey === todayKey) teamTodayCnt++;
+    if(r._dateYM === curYM) teamMonthCnt++;
+    const st = (r.status||'').toLowerCase();
+    if(st==='hold') teamHoldCnt++;
+    const tv = (r.tat||'').toLowerCase();
+    if(tv==='tat reached') teamTatOkCnt++;
+    else if(tv==='tat not reached') teamTatMissCnt++;
+  }
+  const teamTatPct=(teamTatOkCnt+teamTatMissCnt)?Math.round(teamTatOkCnt/(teamTatOkCnt+teamTatMissCnt)*100):0;
   const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
 
+  // Backwards-compat aliases used further down in the render HTML (only a few
+  // usages remain — cheapest to alias than hunt them all down)
+  const todayRecs = { length: todayCnt };
+  const monthRecs = { length: monthCnt };
+  const holdRecs  = { length: holdCnt };
+  const tatOkArr   = { length: tatOkCnt };
+  const tatMissArr = { length: tatMissCnt };
+  const teamTodayRecs = { length: teamTodayCnt };
+  const teamMonthRecs = { length: teamMonthCnt };
+  const teamHold      = { length: teamHoldCnt };
+  const teamTatOk     = { length: teamTatOkCnt };
+  const teamTatMiss   = { length: teamTatMissCnt };
+
   // Hourly heatmap (today)
-  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
-  const hourCounts={};hours.forEach(h=>hourCounts[h]=0);
-  todayRecs.forEach(r=>{const d=parseAppDate(r._created)||new Date(0);const h=String(d.getHours()).padStart(2,'0');if(hourCounts[h]!==undefined)hourCounts[h]++;});
   const nowH=String(now.getHours()).padStart(2,'0');
   const hourCells=hours.map(h=>`<th style="text-align:center;min-width:34px;padding:5px 2px;font-size:10px;${h===nowH?'background:var(--primary);color:#fff;border-radius:4px;':''}">${h}${h===nowH?'★':''}</th>`).join('');
   const dataCells=hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return `<td class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('');
 
-  // Daily rows (last 7)
+  // Daily rows (last 7) — now an O(1) map lookup per day, not a filter
   const dailyRows=[];
   for(let d=0;d<7;d++){
     const dd=new Date(now);dd.setDate(dd.getDate()-d);
-    const cnt=myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===dd.toDateString()).length;
+    const cnt = dailyBucket.get(dd.toDateString()) || 0;
     if(cnt>0||d<3){
-      dailyRows.push(`<tr><td style="padding:8px 14px;font-weight:${d===0?800:600};font-size:12px;color:${d===0?'var(--text1)':'var(--text2)'}">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${cnt}</td><td style="padding:8px 14px;min-width:80px"><div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/Math.max(todayRecs.length,1)*100):0)}%"></div></td></tr>`);
+      dailyRows.push(`<tr><td style="padding:8px 14px;font-weight:${d===0?800:600};font-size:12px;color:${d===0?'var(--text1)':'var(--text2)'}">${dd.toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${cnt}</td><td style="padding:8px 14px;min-width:80px"><div style="height:6px;background:var(--primary);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/Math.max(todayCnt,1)*100):0)}%"></div></td></tr>`);
     }
   }
 
-  // Recent records (last 20)
+  // Recent records table removed per user request — was "My <Task> Records — Recent 20"
   const palColors=['#7c3aed','#2563eb','#059669','#e11d48','#0891b2','#d97706','#4f46e5'];
-  const recentRecs=myRecs.slice(0,20);
-  const recRows=recentRecs.map((r,i)=>{
-    const tat=r.tat||'';
-    const tatB=tat.toLowerCase().includes('not reached')?'<span style="font-size:10px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 7px;border-radius:20px">❌ Not Reached</span>':tat.toLowerCase().includes('reached')?'<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 7px;border-radius:20px">✅ Reached</span>':'<span style="color:var(--text3);font-size:11px">—</span>';
-    const stB=(r.status||'').toLowerCase()==='completed'?'<span style="font-size:10px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 7px;border-radius:20px">Completed</span>':(r.status||'').toLowerCase()==='hold'?'<span style="font-size:10px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 7px;border-radius:20px">Hold</span>':`<span style="font-size:11px;color:var(--text2)">${_esc(r.status||'—')}</span>`;
-    const dateDisp=(parseAppDate(r._created)||new Date(0)).toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
-    return `<tr><td style="color:var(--text3);font-size:11px;padding:9px 12px">${i+1}</td><td style="font-family:var(--mono);font-weight:700;color:#0891b2;font-size:12px;padding:9px 12px;white-space:nowrap">${_esc(String(r.txn||r.subject||'—'))}</td><td style="font-size:12px;padding:9px 12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(String(r.clientName||r.clientname||r.client||'—'))}</td><td style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:9px 12px;white-space:nowrap">${dateDisp}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text3);padding:9px 12px;white-space:nowrap">${r.submittedTime||r.submitted||r.created||'—'}</td><td style="font-family:var(--mono);font-size:12px;padding:9px 12px">${r.duration||'—'}</td><td style="padding:9px 12px">${stB}</td><td style="padding:9px 12px">${tatB}</td></tr>`;
-  }).join('');
 
-  // Team member stats (TL only)
+  // Team member stats (TL only) — SPEED FIX: single pass builds a
+  // per-user aggregate map (today/month/hold/tat counts). Prior version
+  // did O(users²) work because inside each user's row it computed
+  // Math.max(...usersArr.map(...)) which re-scanned the whole task table.
+  const _userAgg = new Map(); // user name → { today, month, hold, tatOk, tatMiss }
+  for(const u of usersArr){
+    _userAgg.set(u, { today:0, month:0, hold:0, tatOk:0, tatMiss:0 });
+  }
+  for(const r of teamRecs){
+    const u = r[myFld];
+    if(!u) continue;
+    const agg = _userAgg.get(u);
+    if(!agg) continue;
+    _getDate(r); // ensures date cache is populated (usually already is)
+    if(r._dateKey === todayKey) agg.today++;
+    if(r._dateYM === curYM) agg.month++;
+    const st = (r.status||'').toLowerCase();
+    if(st==='hold') agg.hold++;
+    const tv = (r.tat||'').toLowerCase();
+    if(tv==='tat reached') agg.tatOk++;
+    else if(tv==='tat not reached') agg.tatMiss++;
+  }
+  // Max today-count across all users — O(users) instead of O(users × records)
+  let _maxToday = 1;
+  for(const a of _userAgg.values()){ if(a.today > _maxToday) _maxToday = a.today; }
+
   const memberStats=usersArr.map((u,ui)=>{
-    const uRecs=(tm.db||[]).filter(r=>r[tm.fld]===u);
-    const uToday=uRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length;
-    const uMonth=uRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();}).length;
-    const uHold=uRecs.filter(r=>(r.status||'').toLowerCase()==='hold').length;
-    const uTatOk=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
-    const uTatMiss=uRecs.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+    const agg = _userAgg.get(u) || { today:0, month:0, hold:0, tatOk:0, tatMiss:0 };
+    const uToday = agg.today, uMonth = agg.month, uHold = agg.hold;
+    const uTatOk = agg.tatOk, uTatMiss = agg.tatMiss;
     const uTatPct=(uTatOk+uTatMiss)?Math.round(uTatOk/(uTatOk+uTatMiss)*100):0;
     const isMe=u===myName;
     const col=palColors[ui%palColors.length];
-    const maxT=Math.max(...usersArr.map(x=>(tm.db||[]).filter(r=>r[tm.fld]===x).filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===now.toDateString()).length),1);
+    const maxT=_maxToday;
     const tb=uTatPct>=90?`<span style="font-size:11px;font-weight:700;background:var(--em-bg);color:var(--emerald);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:uTatPct>=70?`<span style="font-size:11px;font-weight:700;background:var(--am-bg);color:var(--amber);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`:`<span style="font-size:11px;font-weight:700;background:var(--ro-bg);color:var(--rose);padding:2px 8px;border-radius:20px">${uTatPct}%</span>`;
     return `<tr style="background:${isMe?'#eff6ff':''}"><td style="padding:10px 14px"><div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:${col};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;flex-shrink:0">${(u||'?')[0].toUpperCase()}</div><div style="font-weight:${isMe?800:600};font-size:13px">${_esc(u)}${isMe?` <span style="font-size:10px;background:var(--primary);color:#fff;padding:1px 6px;border-radius:10px;vertical-align:middle">Me</span>`:''}</div></div></td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--primary);font-size:15px">${uToday}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;font-size:13px">${uMonth}</td><td style="text-align:center;font-family:var(--mono);color:var(--amber)">${uHold||'—'}</td><td style="text-align:center">${tb}</td><td style="padding:10px 14px"><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px"><div style="height:100%;background:${col};border-radius:3px;width:${Math.round(uToday/maxT*100)}%"></div></div></td></tr>`;
   }).join('');
@@ -14965,15 +15068,6 @@ function renderMyStatus(c){
       <tbody>${(()=>{const rows=[];for(let m=0;m<4;m++){const mDate=new Date(now.getFullYear(),now.getMonth()-m,1);const cnt=myRecs.filter(r=>{const d=parseAppDate(r._created)||new Date(0);return d.getMonth()===mDate.getMonth()&&d.getFullYear()===mDate.getFullYear();}).length;rows.push(`<tr><td style="padding:8px 14px;font-weight:${m===0?700:500};font-size:12px;color:${m===0?'var(--text1)':'var(--text2)'}">${mDate.toLocaleDateString('en-IN',{month:'short',year:'numeric'})}</td><td style="text-align:center;font-family:var(--mono);font-weight:800;color:var(--indigo);font-size:15px">${cnt}</td><td style="padding:8px 14px"><div style="height:6px;background:var(--indigo);border-radius:3px;width:${Math.min(100,cnt?Math.round(cnt/200*100):0)}%"></div></td></tr>`);}return rows.join('');})()}</tbody>
       </table>
     </div>
-  </div>
-
-  <!-- Recent Records -->
-  <div class="tw">
-    <div class="th2"><div class="tt">📋 My ${tm.label} Records — Recent 20</div><div class="tc">${myRecs.length} total records</div></div>
-    <div style="overflow-x:auto"><table class="dt">
-      <thead><tr><th>#</th><th>TXN / Subject</th><th>Client</th><th>Date</th><th>Submitted</th><th>Duration</th><th>Status</th><th>TAT</th></tr></thead>
-      <tbody>${recRows||'<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text3)">No records yet — submit your first entry!</td></tr>'}</tbody>
-    </table></div>
   </div>
 
   ${myErrors.length>0?`
@@ -16982,15 +17076,21 @@ function _createInternalAuditError(rlRec, info){
 
   if(window._supa && typeof dbInsert==='function'){
     dbInsert('client_errors', _errRow).then(r => {
-      if(r && r.id){
-        const mapped = mapError(r);
+      // dbInsert returns the data array from Supabase: [{...insertedRow}]
+      // Pick the first element when present.
+      const savedRow = Array.isArray(r) ? r[0] : r;
+      if(savedRow && savedRow.id){
+        const mapped = mapError(savedRow);
         DB.errors.push(mapped);
         DB.errors.forEach((e,i)=>e._idx=i);
+        _notifyInternalAuditError(mapped);
       } else {
+        // Insert did not return an ID — keep local copy so auditor still sees it
+        console.warn('[Internal Audit Error] dbInsert returned no id:', r);
         DB.errors.push(_localRec);
         DB.errors.forEach((e,i)=>e._idx=i);
+        _notifyInternalAuditError(_localRec);
       }
-      _notifyInternalAuditError(_localRec);
     }).catch(err => {
       console.warn('[Internal Audit Error] insert failed:', err);
       DB.errors.push(_localRec);
@@ -17005,16 +17105,24 @@ function _createInternalAuditError(rlRec, info){
 }
 
 function _notifyInternalAuditError(rec){
-  // If the affected team member is currently logged in, show a toast
+  // Update the IAE nav pill count live for the affected user (even if it's
+  // not them logged in, this is a no-op because the filter is by CU.name).
+  if(typeof _updateIAENavPill==='function'){
+    try{ _updateIAENavPill(); }catch(e){}
+  }
+  // If the affected team member is currently logged in, show a toast + refresh the
+  // release table so the blinking badge appears without waiting for a poll tick.
   if(CU && CU.name && rec.userName===CU.name){
     if(typeof showToast==='function'){
-      showToast(`⚠️ New audit error reported on Txn ${rec.txn} — please review in Release`, true);
+      showToast(`⚠️ New audit error reported on Txn ${rec.txn} — please review`, true);
     }
-    // Refresh the release table if currently viewed, so blinking badge appears
-    const isOnRelease = document.querySelector('#pg_release2:not([style*="display:none"])') ||
-                        document.querySelector('#pg_release2[style*="display:block"]');
-    if(isOnRelease && typeof refreshRelease2Table==='function'){
-      try{ refreshRelease2Table(); }catch(e){}
+    // Refresh release table rows if currently rendered
+    if(document.getElementById('rlTbody') && typeof pgSlice==='function' && typeof renderRLRows==='function'){
+      try{ renderRLRows(pgSlice('rl')); }catch(e){ console.warn('[IAE notify] render failed:',e); }
+    }
+    // Also surface the popup immediately if safe
+    if(typeof _checkPendingIAE==='function'){
+      setTimeout(()=>{ try{ _checkPendingIAE(); }catch(e){} }, 200);
     }
   }
 }
