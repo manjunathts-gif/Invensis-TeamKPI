@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v7-audit-source">
+<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v7.1-count-audittab">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5476,6 +5476,11 @@ function _applyRealtimeRow(table, row, eventType){
 
   // Re-index if needed
   if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
+
+  // ── v7: keep audit lookup Map fresh on any realtime change to audit ──
+  if(table==='audit' && typeof _rebuildAuditMap==='function'){
+    try{ _rebuildAuditMap(); }catch(_e){}
+  }
 
   // ── BATCH 3 / v7: Trigger Internal Audit popup from `audit` table ──
   // When an audit INSERT arrives targeting the current team member and it
@@ -15347,10 +15352,23 @@ function renderErrorReport(c){
   </div>
 
   ${(!canUpload && !isTLRole && !_isClientRole)?(()=>{
-    // ── BATCH 2: Team Member 50/50 split card — Internal Audit vs Client Error ──
-    const _iaeCount = visibleErrors.filter(e=>e.sourceOfError==='Internal Audit').length;
-    const _cliCount = visibleErrors.filter(e=>e.sourceOfError!=='Internal Audit').length;
-    const _iaeUnacked = visibleErrors.filter(e=>e.sourceOfError==='Internal Audit'&&!e.acknowledgedAt).length;
+    // ── v7: Team Member split card — Internal Audit (from audit table) vs Client Error ──
+    const _myNamesLC = new Set();
+    const _add = v => { if(v) _myNamesLC.add(String(v).trim().toLowerCase()); };
+    _add(CU?.name); _add(CU?.empName); _add(CU?.username);
+    // Internal Audit Errors come from DB.audit for this user that qualify as errors
+    const _myAudits = (DB.audit||[]).filter(a => _myNamesLC.has(String(a.user||'').trim().toLowerCase()));
+    const _myAuditErrs = _myAudits.filter(a => {
+      const et = a.errorType || '';
+      const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
+      const isRealErr = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
+      const isLowSc = sc!=null && sc<100;
+      return isRealErr || isLowSc;
+    });
+    const _iaeCount   = _myAuditErrs.length;
+    const _iaeUnacked = _myAuditErrs.filter(a => !a.userAckAt).length;
+    // Client Errors still come from client_errors (external feedback) — excluding any legacy Internal Audit rows
+    const _cliCount   = visibleErrors.filter(e=>e.sourceOfError!=='Internal Audit').length;
     const _cliUnacked = visibleErrors.filter(e=>e.sourceOfError!=='Internal Audit'&&!e.acknowledgedAt).length;
     return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:var(--surface)">
@@ -15359,9 +15377,9 @@ function renderErrorReport(c){
           <div style="width:36px;height:36px;border-radius:10px;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">🔍</div>
           <div style="font-size:11px;font-weight:800;color:#991b1b;letter-spacing:.04em;text-transform:uppercase">Internal Audit Error</div>
         </div>
-        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:#991b1b;line-height:1">${_iaeCount}</div>
+        <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:#991b1b;line-height:1" data-testid="iae-count">${_iaeCount}</div>
         <div style="font-size:11px;color:#7f1d1d;margin-top:6px;font-weight:600">
-          ${_iaeUnacked>0?`<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800">⚠️ ${_iaeUnacked} unacked</span>`:'<span style="color:#15803d">✅ All acknowledged</span>'}
+          ${_iaeUnacked>0?`<span style="background:#dc2626;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800" data-testid="iae-unacked">⚠️ ${_iaeUnacked} unacked</span>`:_iaeCount>0?'<span style="color:#15803d">✅ All acknowledged</span>':'<span style="color:#6b7280">No audit errors yet</span>'}
         </div>
       </div>
       <div style="padding:18px 20px;background:linear-gradient(135deg,#fff7ed,#ffedd5);position:relative">
@@ -15371,7 +15389,7 @@ function renderErrorReport(c){
         </div>
         <div style="font-size:32px;font-weight:900;font-family:var(--mono);color:#9a3412;line-height:1">${_cliCount}</div>
         <div style="font-size:11px;color:#7c2d12;margin-top:6px;font-weight:600">
-          ${_cliUnacked>0?`<span style="background:#ea580c;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800">⚠️ ${_cliUnacked} unacked</span>`:'<span style="color:#15803d">✅ All acknowledged</span>'}
+          ${_cliUnacked>0?`<span style="background:#ea580c;color:#fff;padding:2px 8px;border-radius:10px;margin-right:6px;font-weight:800">⚠️ ${_cliUnacked} unacked</span>`:_cliCount>0?'<span style="color:#15803d">✅ All acknowledged</span>':'<span style="color:#6b7280">No client errors yet</span>'}
         </div>
       </div>
     </div>
@@ -17094,7 +17112,7 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
-console.log('%c[BUILD] V7_AUDIT_TABLE_2026-04-19 — audit-iae-v7-audit-source loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
+console.log('%c[BUILD] V7_1_AUDIT_TABLE_2026-04-19 — audit-iae-v7.1-count-audittab loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
 function _createInternalAuditError(rlRec, info){
   // ── v7: NO-OP ──
   // Previously this wrote a duplicate row to `client_errors`. The audit
@@ -17350,15 +17368,18 @@ function submitAudit(){
         DB.audit.push(_localAuditRec);
         console.warn('[KPI] Audit insert returned null — using local record');
       }
+      // ── v7 FIX: rebuild the txn→audit lookup Map so Audited tab picks up the new row instantly
+      if(typeof _rebuildAuditMap==='function'){ try{ _rebuildAuditMap(); }catch(_e){} }
       _finishAudit();
     }).catch(err=>{
       console.error('[KPI] Audit insert threw:', err);
       showToast('⚠️ Audit save failed: '+err.message, true);
       DB.audit.push(_localAuditRec);
+      if(typeof _rebuildAuditMap==='function'){ try{ _rebuildAuditMap(); }catch(_e){} }
       _finishAudit();
     });
   }
-  else{ DB.audit.push(_localAuditRec); _finishAudit(); }
+  else{ DB.audit.push(_localAuditRec); if(typeof _rebuildAuditMap==='function'){ try{ _rebuildAuditMap(); }catch(_e){} } _finishAudit(); }
 }
 
 
