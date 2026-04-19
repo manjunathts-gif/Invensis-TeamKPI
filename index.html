@@ -1,5 +1,6 @@
+
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="BATCH3_AUDIT_IAE_STATUS_2026-04-19" data-build-id="audit-iae-v6-status-rt">
+<html lang="en" data-build-stamp="V6_PERF_FIX_2026-04-19" data-build-id="audit-iae-v6.1-perf-rt">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5089,7 +5090,7 @@ const TABLE_TO_PAGES={
   'release':['release2','dashboard','status','reports','audit','perfmon'],
   'ocean_tt':['oceantt','dashboard','status','reports','perfmon'],
   'b2_entries':['b2entries','dashboard','status','reports','perfmon'],
-  'client_errors':['errorreport','dashboard','perfmon','release2'],
+  'client_errors':['errorreport','dashboard','perfmon'],
   'instructions':['instructions'],
   'audit':['audit','dashboard','release2','perfmon'],
   'login_users':['loginusers'],
@@ -9519,6 +9520,9 @@ function bootApp(){
   restoreSidebarState();
   // ── Start Realtime WebSocket — falls back to bgPoll automatically if WS unavailable ──
   if(_supa) setupRealtime();
+  // ── v6: IAE popup safety-net heartbeat (every 45s) — catches audit errors
+  //        even if Supabase Realtime drops briefly or replication is off on client_errors
+  if(_supa && typeof _startIAEHeartbeat==='function') _startIAEHeartbeat();
   // Check for break violation alerts (admin/TL only)
   setTimeout(_checkBreakAlerts, 2000);
   if(_supa) startKeepAlive(); // prevent Supabase cold start
@@ -9908,6 +9912,7 @@ function doLogout(){
 
   // ── Stop background poll on logout ──
   stopBgPoll();
+  if(typeof _stopIAEHeartbeat==='function') _stopIAEHeartbeat();
   if(typeof _rtFallbackTimer!=='undefined' && _rtFallbackTimer){ clearTimeout(_rtFallbackTimer); _rtFallbackTimer=null; }
   if(typeof _rtConnected!=='undefined') _rtConnected=false;
 
@@ -18905,6 +18910,20 @@ function renderRLRows(data){
   const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const _auditMap = window._auditByTxn || new Map();
+  // ── FIX v6: prebuild IAE (Internal Audit Error) lookup Map once per render ──
+  // Was: O(rows × errors) .find() per row → ~100k ops × many renders = 3s freezes
+  // Now: O(errors) once + O(1) lookup per row
+  const _iaeMap = new Map();
+  const _errArr = DB.errors || [];
+  for(let _i=0;_i<_errArr.length;_i++){
+    const _e = _errArr[_i];
+    if(_e && _e.sourceOfError==='Internal Audit' && _e.txn!=null){
+      const _k = String(_e.txn);
+      // Prefer unacknowledged record if there are duplicates
+      const _prev = _iaeMap.get(_k);
+      if(!_prev || (_prev.acknowledgedAt && !_e.acknowledgedAt)) _iaeMap.set(_k, _e);
+    }
+  }
   const _canEdit = canEditData();
   const _isAdm = isAdmin();
   const _isTLRel = CU&&CU.role==='Team Lead'&&CU.task==='Release'&&_canEdit;
@@ -18918,11 +18937,8 @@ function renderRLRows(data){
   tbody.innerHTML=data.map((r,i)=>{
     const ar=_auditMap.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
-    // ── BATCH 2: Check for unacknowledged internal audit errors on this txn ──
-    const _iaeRec = (DB.errors||[]).find(e =>
-      String(e.txn)===String(r.txn) &&
-      e.sourceOfError==='Internal Audit'
-    );
+    // ── BATCH 2 / FIX v6: O(1) IAE lookup via prebuilt map (was O(rows × errors) find)
+    const _iaeRec = _iaeMap.get(String(r.txn));
     const _iaeUnacked = _iaeRec && !_iaeRec.acknowledgedAt;
     const _iaeAcked   = _iaeRec && _iaeRec.acknowledgedAt;
     const qCell=(()=>{
@@ -20223,6 +20239,61 @@ function _showInternalAuditAlert(){
     new Date(a._created||a.date||0) - new Date(b._created||b.date||0)
   );
   openInternalAuditErrorPopup(sorted[0].txn);
+}
+
+// ── v6 SAFETY-NET: periodic DB poll for unacked IAE errors ──
+// Realtime is the primary trigger, but Supabase WebSocket may drop briefly,
+// or the replication flag might be off on client_errors. This keeps the
+// popup reliable for team members even under those conditions. Light
+// payload: only the user's own recent unacked internal-audit errors.
+window._iaeHeartbeat = window._iaeHeartbeat || null;
+async function _iaeSafetyPoll(){
+  try{
+    if(!CU || !window._supa) return;
+    // Skip if popup or any form panel open — don't pull data while user is busy
+    if(document.getElementById('iaePopup')?.style.display === 'flex') return;
+    if(typeof isPanelOpen==='function' && isPanelOpen()) return;
+    // Fetch ONLY my unacked internal audit errors (last 30 days)
+    const since = new Date(Date.now() - 30*24*3600*1000).toISOString();
+    const myName = (CU.name||'').trim();
+    if(!myName) return;
+    const {data: rows, error} = await _supa.from('client_errors').select('*')
+      .eq('source_of_error','Internal Audit')
+      .eq('user_name', myName)
+      .is('acknowledged_at', null)
+      .gte('created_at', since)
+      .order('created_at', {ascending:false})
+      .limit(20);
+    if(error){ console.warn('[IAE poll] query error:', error.message); return; }
+    if(!Array.isArray(rows) || !rows.length) return;
+    // Merge any new ones into DB.errors if not already present
+    let added = 0;
+    rows.forEach(r=>{
+      const exists = (DB.errors||[]).some(e=>String(e._dbid||e.id||'')===String(r.id));
+      if(!exists){
+        const mapped = mapError(r);
+        DB.errors.unshift(mapped);
+        added++;
+      }
+    });
+    if(added>0){
+      DB.errors.forEach((e,i)=>e._idx=i);
+      console.log('[IAE poll] merged', added, 'new internal audit error(s)');
+    }
+    // Fire the popup if there is any unacked one for me
+    _showInternalAuditAlert();
+  }catch(_e){
+    console.warn('[IAE poll] failed:', _e && _e.message);
+  }
+}
+function _startIAEHeartbeat(){
+  if(window._iaeHeartbeat) return; // already running
+  window._iaeHeartbeat = setInterval(_iaeSafetyPoll, 45000); // every 45s
+  // First run after 4s so initial page load is not competing for resources
+  setTimeout(_iaeSafetyPoll, 4000);
+}
+function _stopIAEHeartbeat(){
+  if(window._iaeHeartbeat){ clearInterval(window._iaeHeartbeat); window._iaeHeartbeat = null; }
 }
 
 // Back-compat shims — old callsites still invoke these names.
