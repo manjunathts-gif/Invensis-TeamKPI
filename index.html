@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-build-stamp="BATCH2_AUDIT_FIX_2026-04-19" data-build-id="audit-iae-v3">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -17032,6 +17032,7 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
+console.log('%c[BUILD] BATCH2_AUDIT_FIX_2026-04-19 — audit-iae-v3 loaded','background:#b91c1c;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
 function _createInternalAuditError(rlRec, info){
   // info = {errorType, score, auditor, auditorComments}
   // Check for duplicate — don't insert if one already exists for this txn from Internal Audit
@@ -17200,14 +17201,21 @@ function submitAudit(){
     // that flows to the team member's Error Report and triggers a popup
     const _isRealError = errorType && errorType!=='Good Job' && errorType!=='None' && errorType!=='—' && errorType!=='';
     const _isLowScore  = score < 100;
-    if((_isRealError || _isLowScore) && rlRec){
-      console.log('[Audit→IAE] Attempting to create internal audit error. errorType=', errorType, 'score=', score, 'user=', rlRec.user);
-      if(typeof _createInternalAuditError !== 'function'){
+    console.log('[Audit→IAE] check: errorType=', errorType, '| score=', score, '| isRealError=', _isRealError, '| isLowScore=', _isLowScore, '| rlRec=', !!rlRec, '| r=', !!r);
+    if(_isRealError || _isLowScore){
+      // Use rlRec (refreshed lookup) or fall back to r (original closure capture)
+      // Either one has what we need for the error record.
+      const _rec = rlRec || r;
+      if(!_rec){
+        console.error('[Audit→IAE] Cannot create error record — neither rlRec nor r is available');
+        if(typeof showToast==='function') showToast('⚠️ Internal audit error: release record not found', true);
+      } else if(typeof _createInternalAuditError !== 'function'){
         console.error('[Audit→IAE] _createInternalAuditError function does not exist! File is outdated.');
         if(typeof showToast==='function') showToast('⚠️ Internal audit error function missing — outdated file deployed. Nothing saved to client_errors.', true);
       } else {
+        console.log('[Audit→IAE] Creating error for user:', _rec.user, 'txn:', _rec.txn);
         try{
-          _createInternalAuditError(rlRec, {
+          _createInternalAuditError(_rec, {
             errorType: _isRealError ? errorType : 'Score Below 100',
             score,
             auditor,
@@ -17218,6 +17226,8 @@ function submitAudit(){
           if(typeof showToast==='function') showToast('⚠️ Internal audit error creation failed: '+(_iaeErr&&_iaeErr.message||'unknown'), true);
         }
       }
+    } else {
+      console.log('[Audit→IAE] Skipped — no real error and score >= 100');
     }
 
     closeAuditPanel();
