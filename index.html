@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V6_PERF_FIX_2026-04-19" data-build-id="audit-iae-v6.1-perf-rt">
+<html lang="en" data-build-stamp="V6_PERF_CU_FIX_2026-04-19" data-build-id="audit-iae-v6.2-perf-rt-cu">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3755,8 +3755,13 @@ function _makeSupaClient(){
       return;
     }
 
-    // Restore CU
-    CU = cu;
+    // Restore CU — use window.CU to avoid TDZ with the later `let CU=null` declaration.
+    // The `let CU` at ~line 5717 runs after this IIFE, so direct `CU = cu` throws
+    // "Cannot access 'CU' before initialization" in modern browsers. window.CU is
+    // safe and the `let CU=null, ...` line later will read from it on first use.
+    window.CU = cu;
+    // Keep a pending session so the real `CU` binding can adopt it once declared.
+    window._pendingSessionCU = cu;
     // Restore cached DB data
     const cLU = localStorage.getItem('kpi_lu_cache');
     const cU  = localStorage.getItem('kpi_users_cache');
@@ -5715,7 +5720,8 @@ const AUDIT_ERROR_SCORES = {
 function getAuditScore(errorType){ return AUDIT_ERROR_SCORES[errorType]??null; }
 
 
-let CU=null, selectedTask='', lvsStart=null, clsStart=null, compStart=null, compStarted=false,
+let CU = (typeof window!=='undefined' && window._pendingSessionCU) ? window._pendingSessionCU : null;
+let selectedTask='', lvsStart=null, clsStart=null, compStart=null, compStarted=false,
     parsDocsStart=null, oceanDocsStart=null, partLotStart=null, releaseStart=null,
     ottStart=null, b2Start=null;
 
