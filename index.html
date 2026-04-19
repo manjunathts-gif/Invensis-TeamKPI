@@ -4043,16 +4043,27 @@ async function dbLoadRecent(table, days=30){
 // Paginated fetch — gets ALL rows even if > 1000
 // Tables that are optional/new and should fail silently if not yet created in Supabase
 // ─────────────────────────────────────────────────────────────────
-// Scoped loader — fetch only a specific user's client_errors rows.
-// Team members don't need (and shouldn't download) the entire errors
-// table for the whole organization. Uses server-side filter on user_name.
+// Scoped loader — fetch the current user's client_errors rows.
+// Matches against display name, emp_name, and username variants so an
+// insert written under any of those spellings is still picked up.
 // ─────────────────────────────────────────────────────────────────
 async function dbLoadMyErrors(userName){
-  if(!_supa || !userName) return [];
+  if(!_supa) return [];
+  // Build a set of all plausible name variants for this user
+  const variants = new Set();
+  const add = v => { if(v && String(v).trim()) variants.add(String(v).trim()); };
+  add(userName);
+  if(CU){
+    add(CU.name); add(CU.empName); add(CU.username);
+    add(CU.loginName);
+  }
+  if(variants.size === 0) return [];
   try{
+    // PostgREST `.in()` gives us an exact-match any-of filter on user_name
+    const names = [...variants];
     const {data, error} = await _supa.from('client_errors')
       .select('*')
-      .eq('user_name', userName)
+      .in('user_name', names)
       .order('id', {ascending:false})
       .limit(500);
     if(error){
@@ -20038,114 +20049,47 @@ function _closeIAEPopup(){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// SMART PENDING-ERROR CHECKER — Batch 2
+// INTERNAL AUDIT ALERT — simple and reliable
 // ═══════════════════════════════════════════════════════════════════
-// Finds unacked internal audit errors for current user. Respects "don't
-// interrupt during add form" rule. Shows a persistent header pill + opens
-// popup when safe. Chains errors so user clears them all in one flow.
+// One function. Finds any unacked internal audit error for the current
+// user. If one exists and no popup is already open, shows it. Called
+// from showPage(), realtime updates, and after each ack (to chain).
 // ═══════════════════════════════════════════════════════════════════
+
 function _getMyUnackedIAE(){
-  if(!CU || !CU.name) return [];
-  const myNameLC = String(CU.name||'').trim().toLowerCase();
+  if(!CU) return [];
+  // Build a set of every plausible identifier this user is known by.
+  // We normalize (trim + lowercase) so minor casing/whitespace diffs in
+  // the DB do not silently hide errors.
+  const myNames = new Set();
+  const add = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
+  add(CU.name); add(CU.empName); add(CU.username); add(CU.loginName);
+  if(myNames.size === 0) return [];
   return (DB.errors||[]).filter(e =>
     e.sourceOfError==='Internal Audit' &&
     !e.acknowledgedAt &&
-    String(e.userName||'').trim().toLowerCase() === myNameLC
+    myNames.has(String(e.userName||'').trim().toLowerCase())
   );
 }
 
-function _isAddFormOpen(){
-  // Check any open add/edit panel — don't interrupt the user mid-entry
-  const panelIds = ['rlPanel','lvsPanel','clsPanel','compPanel','parsPanel','oceanPanel',
-                    'partLotPanel','ottPanel','b2Panel','auditPanel','errPanel'];
-  for(const id of panelIds){
-    const el = document.getElementById(id);
-    if(el && el.style && el.style.display && el.style.display!=='none') return true;
-  }
-  // Also check the IAE popup itself — don't double-open
-  const iae = document.getElementById('iaePopup');
-  if(iae && iae.style.display === 'flex') return true;
-  return false;
-}
-
-function _updateIAENavPill(){
-  const unacked = _getMyUnackedIAE();
-  let pill = document.getElementById('iaeNavPill');
-  if(!unacked.length){
-    if(pill) pill.remove();
-    return;
-  }
-  if(!pill){
-    // Inject pill into top bar — try common header locations
-    const host = document.getElementById('topBar') ||
-                 document.querySelector('.top-bar') ||
-                 document.querySelector('header') ||
-                 document.querySelector('.topbar') ||
-                 document.body;
-    if(!host) return;
-    pill = document.createElement('button');
-    pill.id = 'iaeNavPill';
-    pill.type = 'button';
-    pill.title = 'Audit errors pending your acknowledgement';
-    pill.style.cssText = 'position:fixed;top:14px;right:14px;z-index:300;' +
-      'display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#b91c1c,#dc2626);' +
-      'color:#fff;border:none;border-radius:22px;padding:8px 14px 8px 10px;font-size:12px;font-weight:800;' +
-      'cursor:pointer;box-shadow:0 6px 18px rgba(220,38,38,.35);font-family:var(--font);letter-spacing:.2px;' +
-      'animation:iaeBadgePulse 1.4s ease-in-out infinite;';
-    pill.onclick = () => {
-      const list = _getMyUnackedIAE();
-      if(list.length) openInternalAuditErrorPopup(list[0].txn);
-    };
-    document.body.appendChild(pill);
-  }
-  pill.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:#fff;display:inline-block;animation:iaeBlink 1s ease-in-out infinite"></span>` +
-                   `<span>${unacked.length} audit error${unacked.length>1?'s':''} — click to review</span>`;
-}
-
-function _checkPendingIAE(opts){
-  opts = opts || {};
-  _updateIAENavPill();
-
+function _showInternalAuditAlert(){
+  // Don't double-open
+  const existing = document.getElementById('iaePopup');
+  if(existing && existing.style.display === 'flex') return;
   const unacked = _getMyUnackedIAE();
   if(!unacked.length) return;
-
-  // Rule: never interrupt during an open add form (unless chain-mode, which
-  // means the user just acked one and we want the next to appear immediately)
-  if(!opts.chain && _isAddFormOpen()) return;
-
-  // Pick the oldest unacked error first
+  // Show the oldest first
   const sorted = [...unacked].sort((a,b)=>
     new Date(a._created||a.date||0) - new Date(b._created||b.date||0)
   );
   openInternalAuditErrorPopup(sorted[0].txn);
 }
 
-// Watch for audit inserts from realtime — if a new error arrives for the
-// current user, schedule a check. Uses simple count-based delta so we only
-// trigger on genuinely new rows (not on initial load).
-window._iaeLastCount = -1;
-function _iaeWatchNew(){
-  if(!CU || !CU.name) return;
-  const cur = _getMyUnackedIAE().length;
-  if(window._iaeLastCount === -1){
-    // First pass — just record, don't pop up (avoids surprise on fresh login)
-    window._iaeLastCount = cur;
-    _updateIAENavPill();
-    return;
-  }
-  if(cur > window._iaeLastCount){
-    // New unacked error arrived
-    window._iaeLastCount = cur;
-    _checkPendingIAE();
-  } else if(cur < window._iaeLastCount){
-    window._iaeLastCount = cur;
-    _updateIAENavPill();
-  } else {
-    _updateIAENavPill();
-  }
-}
-// Poll every 5 seconds as a safety net (realtime sync already updates DB.errors)
-setInterval(()=>{ try{ _iaeWatchNew(); }catch(e){} }, 5000);
+// Back-compat shims — old callsites still invoke these names.
+function _checkPendingIAE(){ _showInternalAuditAlert(); }
+function _iaeWatchNew(){ _showInternalAuditAlert(); }
+function _updateIAENavPill(){ /* nav pill removed — using popup-only UX */ }
+function _isAddFormOpen(){ return false; }
 
 function submitInternalAuditErrorAck(){
   const rec = window._iaeActiveRec;
