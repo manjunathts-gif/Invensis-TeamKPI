@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="BATCH2_AUDIT_FIX_2026-04-19" data-build-id="audit-iae-v5-dup-fix">
+<html lang="en" data-build-stamp="BATCH3_AUDIT_IAE_STATUS_2026-04-19" data-build-id="audit-iae-v6-status-rt">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -2194,17 +2194,32 @@ body.style-modern .fs2:focus{
 
   <!-- Footer -->
   <div style="flex-shrink:0;padding:14px 22px 18px;background:#fff;border-top:2px solid rgba(220,38,38,.15);">
+    <div style="margin-bottom:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:160px;">
+        <label for="iaeUserStatus" data-testid="iae-status-label" style="font-size:12px;font-weight:700;color:#1f2937;display:block;margin-bottom:6px;">
+          Status <span style="color:#dc2626;font-weight:900">*</span>
+        </label>
+        <select id="iaeUserStatus" data-testid="iae-status-select" onchange="_iaeCommentsChanged()"
+          style="width:100%;padding:10px 12px;border:1.5px solid rgba(220,38,38,.25);border-radius:10px;font-family:var(--font);font-size:13px;background:#fff;box-sizing:border-box;outline:none;transition:border-color .15s;cursor:pointer;"
+          onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='rgba(220,38,38,.25)'">
+          <option value="">— Select —</option>
+          <option value="Acknowledged">Acknowledged</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Resolved">Resolved</option>
+        </select>
+      </div>
+    </div>
     <div style="margin-bottom:10px;">
       <label for="iaeUserComments" style="font-size:12px;font-weight:700;color:#1f2937;display:block;margin-bottom:6px;">
-        Your comments <span style="color:#dc2626;font-weight:900">*</span>
+        Action Plan / Comments <span style="color:#dc2626;font-weight:900">*</span>
         <span style="font-size:10px;color:#6b7280;font-weight:500;margin-left:6px;">(required to close)</span>
       </label>
-      <textarea id="iaeUserComments" rows="3" oninput="_iaeCommentsChanged()"
+      <textarea id="iaeUserComments" data-testid="iae-user-comments" rows="3" oninput="_iaeCommentsChanged()"
         placeholder="Acknowledge the audit feedback and explain how you'll address it..."
         style="width:100%;padding:10px 12px;border:1.5px solid rgba(220,38,38,.25);border-radius:10px;font-family:var(--font);font-size:13px;resize:vertical;min-height:64px;box-sizing:border-box;outline:none;transition:border-color .15s;"
         onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='rgba(220,38,38,.25)'"></textarea>
     </div>
-    <button id="iaeSubmitBtn" onclick="submitInternalAuditErrorAck()" disabled
+    <button id="iaeSubmitBtn" data-testid="iae-submit-btn" onclick="submitInternalAuditErrorAck()" disabled
       style="width:100%;padding:12px;border-radius:10px;border:none;background:#e5e7eb;color:#9ca3af;font-size:14px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
       &#10003; Submit Acknowledgement
     </button>
@@ -5074,7 +5089,7 @@ const TABLE_TO_PAGES={
   'release':['release2','dashboard','status','reports','audit','perfmon'],
   'ocean_tt':['oceantt','dashboard','status','reports','perfmon'],
   'b2_entries':['b2entries','dashboard','status','reports','perfmon'],
-  'client_errors':['errorreport','dashboard','perfmon'],
+  'client_errors':['errorreport','dashboard','perfmon','release2'],
   'instructions':['instructions'],
   'audit':['audit','dashboard','release2','perfmon'],
   'login_users':['loginusers'],
@@ -5457,6 +5472,27 @@ function _applyRealtimeRow(table, row, eventType){
   // Re-index if needed
   if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
 
+  // ── BATCH 3: Trigger Internal Audit Error popup for current team member ──
+  // When a client_errors INSERT arrives via realtime, if it's an Internal Audit
+  // error targeting the currently logged-in user, surface the popup immediately.
+  if(table==='client_errors' && eventType==='INSERT' && row && CU){
+    try{
+      const src = row.source_of_error || row.sourceOfError || '';
+      if(src==='Internal Audit'){
+        const myNames = new Set();
+        const addN = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
+        addN(CU.name); addN(CU.empName); addN(CU.username); addN(CU.loginName);
+        const targetName = String(row.user_name||'').trim().toLowerCase();
+        if(targetName && myNames.has(targetName) && !row.acknowledged_at){
+          if(typeof showToast==='function'){
+            showToast(`⚠️ New audit error reported on Txn ${row.txn} — please review`, true);
+          }
+          setTimeout(()=>{ try{ if(typeof _showInternalAuditAlert==='function') _showInternalAuditAlert(); }catch(_e){} }, 250);
+        }
+      }
+    }catch(_e){ console.warn('[RT IAE] trigger failed:', _e); }
+  }
+
   // Refresh visible pages using TABLE_TO_PAGES map
   const pages = TABLE_TO_PAGES[table]||[];
   if(pages.includes(_currentPage)) _silentRefreshPage(_currentPage);
@@ -5490,12 +5526,12 @@ function setupRealtime(){
     'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
   }[CU.task]||null) : null;
 
-  // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task only
+  // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task + client_errors (to receive internal audit error popups live)
   const tables = isMgrRT || isSupRT
     ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
     : isTLRT
     ? [taskTbl,'audit','login_users','client_errors'].filter(Boolean)
-    : [taskTbl,'login_users'].filter(Boolean);
+    : [taskTbl,'login_users','client_errors'].filter(Boolean);
 
   _realtimeChannel = _supaRT
     .channel('kpi-live-'+((CU&&CU.username)||'anon'))
@@ -15448,7 +15484,19 @@ function renderErrorRows(data,canUpload){
     <td>${e.mode||'—'}</td>
     <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.sourceOfError||'').replace(/"/g,"'")}">${e.sourceOfError||'—'}</td>
     <td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.clientComments||'').replace(/"/g,"'")}">${e.clientComments||'—'}</td>
-    <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(e.userComments||'').replace(/"/g,"'")}">${e.userComments||'—'}</td>
+    <td style="font-size:11px;max-width:160px" title="${(e.userComments||'').replace(/"/g,"'")}">${(()=>{
+      const _uc = e.userComments||'';
+      if(!_uc) return '—';
+      const _m = _uc.match(/^\[Status:\s*(Acknowledged|In Progress|Resolved)\]\s*([\s\S]*)$/i);
+      if(_m){
+        const _s = _m[1], _t = (_m[2]||'').trim();
+        const _c = _s==='Resolved' ? {bg:'#dcfce7',fg:'#166534'}
+                  : _s==='In Progress' ? {bg:'#fef9c3',fg:'#854d0e'}
+                  : {bg:'#dbeafe',fg:'#1e40af'};
+        return `<span style="display:inline-block;background:${_c.bg};color:${_c.fg};border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;margin-right:4px">${_s}</span><span style="display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom">${_t||'—'}</span>`;
+      }
+      return `<span style="display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_uc}</span>`;
+    })()}</td>
     ${(canUpload||isTLRole)?`<td style="font-size:11px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary)" title="${(e.tlComments||'').replace(/"/g,"'")}">${e.tlComments||'—'}</td>`:''}
     ${(canUpload||isTLRole)?`<td style="font-size:11px;color:var(--text3)">${e.createdBy||'—'}</td>`:''}
     <td style="text-align:center;min-width:90px">
@@ -19815,6 +19863,15 @@ function rlCheckClientErrors(){
     return;
   }
 
+  // ── BATCH 3: Surface any unacked Internal Audit errors for the current user ──
+  // Per spec: "once client number entered, popup screen the error must be shown" and
+  // show ALL unacknowledged errors for that user regardless of client.
+  try{
+    if(clientNo && String(clientNo).length>=3 && typeof _showInternalAuditAlert==='function'){
+      setTimeout(()=>{ try{ _showInternalAuditAlert(); }catch(_e){} }, 250);
+    }
+  }catch(_e){}
+
   // Debounce — avoid firing on every keystroke
   clearTimeout(window._rlClientCheckTimer);
   window._rlClientCheckTimer = setTimeout(function(){
@@ -19991,11 +20048,28 @@ function openInternalAuditErrorPopup(txn){
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;font-size:12px;color:#166534;line-height:1.55">
           <div style="font-weight:800;margin-bottom:4px;">&#9989; Already acknowledged</div>
           <div>on ${(rec.acknowledgedAt||'').toString().slice(0,16).replace('T',' ')}${rec.acknowledgedBy?' by '+rec.acknowledgedBy:''}</div>
-          ${rec.userComments?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #bbf7d0"><b>Your comments:</b> ${rec.userComments}</div>`:''}
+          ${(() => {
+            const _rawUc = rec.userComments || '';
+            const _mm = _rawUc.match(/^\[Status:\s*(Acknowledged|In Progress|Resolved)\]\s*([\s\S]*)$/i);
+            const _stVal = _mm ? _mm[1] : '';
+            const _txtVal = _mm ? _mm[2].trim() : _rawUc;
+            const _stColor = _stVal==='Resolved' ? {bg:'#dcfce7',fg:'#166534',bd:'#bbf7d0'}
+                           : _stVal==='In Progress' ? {bg:'#fef9c3',fg:'#854d0e',bd:'#fde68a'}
+                           : _stVal==='Acknowledged' ? {bg:'#dbeafe',fg:'#1e40af',bd:'#bfdbfe'}
+                           : null;
+            let _html = '';
+            if(_stColor){
+              _html += `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #bbf7d0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>Status:</b> <span style="background:${_stColor.bg};color:${_stColor.fg};border:1px solid ${_stColor.bd};border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800">${_stVal}</span></div>`;
+            }
+            if(_txtVal){
+              _html += `<div style="margin-top:6px;padding-top:${_stColor?'4px':'6px'};${_stColor?'':'border-top:1px solid #bbf7d0'}"><b>Your action plan / comments:</b> ${_txtVal.replace(/</g,'&lt;')}</div>`;
+            }
+            return _html;
+          })()}
         </div>
       `:`
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;line-height:1.5;font-weight:600">
-          &#9432; Please review the feedback above and submit your acknowledgement with comments below.
+          &#9432; Please review the feedback above, select a status, and submit your action plan / comments below.
         </div>
       `}
     `;
@@ -20005,10 +20079,24 @@ function openInternalAuditErrorPopup(txn){
   const ta = document.getElementById('iaeUserComments');
   const btn = document.getElementById('iaeSubmitBtn');
   const closeX = document.getElementById('iaePopupCloseX');
+  const st = document.getElementById('iaeUserStatus');
+  // Parse status-prefixed user_comments: "[Status: Resolved] text"
+  const _parseIaeUserComments = (raw) => {
+    if(!raw) return { status:'', text:'' };
+    const m = String(raw).match(/^\[Status:\s*(Acknowledged|In Progress|Resolved)\]\s*([\s\S]*)$/i);
+    if(m) return { status:m[1], text:m[2].trim() };
+    return { status:'', text:String(raw) };
+  };
+  const _parsed = _parseIaeUserComments(rec.userComments);
   if(ta){
-    ta.value = rec.userComments || '';
+    ta.value = _parsed.text || '';
     ta.disabled = !!rec.acknowledgedAt;
     ta.style.background = rec.acknowledgedAt ? '#f3f4f6' : '#fff';
+  }
+  if(st){
+    st.value = _parsed.status || '';
+    st.disabled = !!rec.acknowledgedAt;
+    st.style.background = rec.acknowledgedAt ? '#f3f4f6' : '#fff';
   }
   if(btn){
     if(rec.acknowledgedAt){
@@ -20059,12 +20147,15 @@ function openInternalAuditErrorPopup(txn){
 function _iaeCommentsChanged(){
   const ta = document.getElementById('iaeUserComments');
   const btn = document.getElementById('iaeSubmitBtn');
+  const st = document.getElementById('iaeUserStatus');
   if(!ta || !btn) return;
   // Don't override disabled state if already acked
   if(window._iaeActiveRec && window._iaeActiveRec.acknowledgedAt) return;
-  const hasText = ta.value.trim().length >= 5;
-  btn.disabled = !hasText;
-  if(hasText){
+  const hasText   = ta.value.trim().length >= 5;
+  const hasStatus = !!(st && st.value);
+  const ok = hasText && hasStatus;
+  btn.disabled = !ok;
+  if(ok){
     btn.style.background = 'linear-gradient(135deg,#b91c1c,#dc2626)';
     btn.style.color = '#fff';
     btn.style.cursor = 'pointer';
@@ -20151,23 +20242,30 @@ function submitInternalAuditErrorAck(){
     return;
   }
   const comments = (document.getElementById('iaeUserComments')?.value||'').trim();
+  const status   = (document.getElementById('iaeUserStatus')?.value||'').trim();
+  if(!status){
+    if(typeof showToast==='function') showToast('⚠️ Please select a status (Acknowledged / In Progress / Resolved)', true);
+    return;
+  }
   if(comments.length < 5){
-    if(typeof showToast==='function') showToast('⚠️ Please enter meaningful comments (at least 5 characters)', true);
+    if(typeof showToast==='function') showToast('⚠️ Please enter a meaningful action plan / comments (at least 5 characters)', true);
     return;
   }
 
   const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
   const ackBy = (CU && CU.name) || 'User';
+  // Persist status as structured prefix inside user_comments (no schema change needed)
+  const combined = `[Status: ${status}] ${comments}`;
 
   // Optimistic local update
-  rec.userComments = comments;
+  rec.userComments = combined;
   rec.acknowledgedAt = nowIso;
   rec.acknowledgedBy = ackBy;
 
   // Persist to DB if supabase available
   if(window._supa && typeof dbUpdate==='function' && rec._dbid){
     dbUpdate('client_errors', rec._dbid, {
-      user_comments: comments,
+      user_comments: combined,
       acknowledged_at: nowIso,
       acknowledged_by: ackBy
     }).catch(err => {
@@ -20175,7 +20273,7 @@ function submitInternalAuditErrorAck(){
     });
   }
 
-  if(typeof showToast==='function') showToast('✅ Acknowledgement submitted — thank you!');
+  if(typeof showToast==='function') showToast(`✅ Acknowledgement submitted (${status}) — thank you!`);
 
   // Close popup (now allowed because acknowledgedAt is set)
   _closeIAEPopup();
@@ -24685,5 +24783,6 @@ if('serviceWorker' in navigator){
 <!-- Cloudflare Web Analytics beacon removed: /cdn-cgi/rum endpoint returns 404
      on this Pages deployment. Re-add only after enabling Web Analytics in the
      Cloudflare dashboard for invensis.myteamkpi.com. -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
