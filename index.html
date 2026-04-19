@@ -17201,12 +17201,23 @@ function submitAudit(){
     const _isRealError = errorType && errorType!=='Good Job' && errorType!=='None' && errorType!=='—' && errorType!=='';
     const _isLowScore  = score < 100;
     if((_isRealError || _isLowScore) && rlRec){
-      _createInternalAuditError(rlRec, {
-        errorType: _isRealError ? errorType : 'Score Below 100',
-        score,
-        auditor,
-        auditorComments: document.getElementById('audit_comments')?.value||''
-      });
+      console.log('[Audit→IAE] Attempting to create internal audit error. errorType=', errorType, 'score=', score, 'user=', rlRec.user);
+      if(typeof _createInternalAuditError !== 'function'){
+        console.error('[Audit→IAE] _createInternalAuditError function does not exist! File is outdated.');
+        if(typeof showToast==='function') showToast('⚠️ Internal audit error function missing — outdated file deployed. Nothing saved to client_errors.', true);
+      } else {
+        try{
+          _createInternalAuditError(rlRec, {
+            errorType: _isRealError ? errorType : 'Score Below 100',
+            score,
+            auditor,
+            auditorComments: document.getElementById('audit_comments')?.value||''
+          });
+        } catch(_iaeErr){
+          console.error('[Audit→IAE] threw:', _iaeErr);
+          if(typeof showToast==='function') showToast('⚠️ Internal audit error creation failed: '+(_iaeErr&&_iaeErr.message||'unknown'), true);
+        }
+      }
     }
 
     closeAuditPanel();
