@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="BATCH2_AUDIT_FIX_2026-04-19" data-build-id="audit-iae-v3">
+<html lang="en" data-build-stamp="BATCH2_AUDIT_FIX_2026-04-19" data-build-id="audit-iae-v5-dup-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -17032,16 +17032,40 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
-console.log('%c[BUILD] BATCH2_AUDIT_FIX_2026-04-19 — audit-iae-v3 loaded','background:#b91c1c;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
+console.log('%c[BUILD] BATCH2_AUDIT_FIX_2026-04-19 — audit-iae-v5-dup-fix loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
 function _createInternalAuditError(rlRec, info){
   // info = {errorType, score, auditor, auditorComments}
-  // Check for duplicate — don't insert if one already exists for this txn from Internal Audit
-  const existing = (DB.errors||[]).find(e =>
+  console.log('[IAE-Create] Called with txn:', rlRec?.txn, 'user:', rlRec?.user, 'errorType:', info?.errorType, 'score:', info?.score);
+
+  // Duplicate guard — only skip if there's an EXISTING DB-persisted row (with _dbid)
+  // for the same txn + errorType. Previously this skipped on any local match too,
+  // which masked failed DB inserts: the audit would look successful but no row
+  // ever reached the database.
+  const existingDbRow = (DB.errors||[]).find(e =>
     String(e.txn)===String(rlRec.txn) &&
     e.sourceOfError==='Internal Audit' &&
-    e.errorType===info.errorType
+    e.errorType===info.errorType &&
+    e._dbid // only count it as a duplicate if Supabase confirmed the save
   );
-  if(existing) return;
+  if(existingDbRow){
+    console.log('[IAE-Create] Skip — DB already has this internal audit error (id:', existingDbRow._dbid, ')');
+    if(typeof showToast==='function') showToast('ℹ️ Internal audit error already recorded for this txn');
+    return;
+  }
+  // Also clear any stale local-only duplicates (from previous failed saves)
+  // so DB.errors doesn't keep growing phantom entries:
+  if(DB.errors){
+    const before = DB.errors.length;
+    DB.errors = DB.errors.filter(e => !(
+      String(e.txn)===String(rlRec.txn) &&
+      e.sourceOfError==='Internal Audit' &&
+      e.errorType===info.errorType &&
+      !e._dbid
+    ));
+    if(DB.errors.length < before){
+      console.log('[IAE-Create] Removed', before - DB.errors.length, 'stale local-only duplicate(s)');
+    }
+  }
 
   const pct = (info.score!=null && !isNaN(parseFloat(info.score))) ? parseFloat(info.score) : null;
   const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
@@ -17087,6 +17111,7 @@ function _createInternalAuditError(rlRec, info){
   };
 
   if(window._supa && typeof dbInsert==='function'){
+    console.log('[IAE-Create] Calling dbInsert with payload:', JSON.parse(JSON.stringify(_errRow)));
     dbInsert('client_errors', _errRow).then(r => {
       // dbInsert returns the data array from Supabase: [{...insertedRow}]
       // Pick the first element when present.
