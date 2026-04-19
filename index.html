@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V6_SW_HEAL_2026-04-19" data-build-id="audit-iae-v6.3-sw-heal">
+<html lang="en" data-build-stamp="V7_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v7-audit-source">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4426,7 +4426,7 @@ function mapB2(r){
   const dur=resolveDuration(r.duration, startDisp, compDisp);
   return{id:r.id,txn:r.txn,source:r.source,assigneddate:r.assigned_date,adjtype:r.adj_type,tasktype:r.task_type,lines:r.lines,status:r.status,user:r.user_name,comments:r.comments,start:startDisp,completed:compDisp,completedB2:compDisp,duration:dur,tat:r.tat||'',_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
-function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,_created:r.submitted||r.created_at,_dbid:r.id};}
+function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,qualityScore:r.quality_score,errorDetail:r.error_detail,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||null,userAckAt:r.user_ack_at||null,_created:r.submitted||r.created_at,_dbid:r.id};}
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
@@ -5477,23 +5477,27 @@ function _applyRealtimeRow(table, row, eventType){
   // Re-index if needed
   if(rtEntry.idx) arr.forEach((r,i)=>r._idx=i);
 
-  // ── BATCH 3: Trigger Internal Audit Error popup for current team member ──
-  // When a client_errors INSERT arrives via realtime, if it's an Internal Audit
-  // error targeting the currently logged-in user, surface the popup immediately.
-  if(table==='client_errors' && eventType==='INSERT' && row && CU){
+  // ── BATCH 3 / v7: Trigger Internal Audit popup from `audit` table ──
+  // When an audit INSERT arrives targeting the current team member and it
+  // qualifies as an error (score<100 OR errorType != 'Good Job'), surface
+  // the popup immediately. Also handles UPDATE in case the audit row is
+  // edited after creation.
+  if(table==='audit' && (eventType==='INSERT' || eventType==='UPDATE') && row && CU){
     try{
-      const src = row.source_of_error || row.sourceOfError || '';
-      if(src==='Internal Audit'){
-        const myNames = new Set();
-        const addN = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
-        addN(CU.name); addN(CU.empName); addN(CU.username); addN(CU.loginName);
-        const targetName = String(row.user_name||'').trim().toLowerCase();
-        if(targetName && myNames.has(targetName) && !row.acknowledged_at){
-          if(typeof showToast==='function'){
-            showToast(`⚠️ New audit error reported on Txn ${row.txn} — please review`, true);
-          }
-          setTimeout(()=>{ try{ if(typeof _showInternalAuditAlert==='function') _showInternalAuditAlert(); }catch(_e){} }, 250);
+      const myNames = new Set();
+      const addN = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
+      addN(CU.name); addN(CU.empName); addN(CU.username); addN(CU.loginName);
+      const targetName = String(row.user_name||'').trim().toLowerCase();
+      const errType = row.error_type || '';
+      const sc = (row.score!=null && !isNaN(parseFloat(row.score))) ? parseFloat(row.score) : null;
+      const isRealError = errType && errType!=='Good Job' && errType!=='None' && errType!=='—' && errType!=='';
+      const isLowScore = sc!=null && sc<100;
+      const notAcked = !row.user_ack_at;
+      if(targetName && myNames.has(targetName) && notAcked && (isRealError || isLowScore)){
+        if(typeof showToast==='function'){
+          showToast(`⚠️ New audit error reported on Txn ${row.txn} — please review`, true);
         }
+        setTimeout(()=>{ try{ if(typeof _showInternalAuditAlert==='function') _showInternalAuditAlert(); }catch(_e){} }, 250);
       }
     }catch(_e){ console.warn('[RT IAE] trigger failed:', _e); }
   }
@@ -5531,12 +5535,12 @@ function setupRealtime(){
     'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
   }[CU.task]||null) : null;
 
-  // Manager/Supervisor: subscribe to all | TL: own task + audit + login_users | User: own task + client_errors (to receive internal audit error popups live)
+  // Manager/Supervisor: subscribe to all | TL: own task + audit + client_errors | User: own task + audit + client_errors (to receive internal audit popups live)
   const tables = isMgrRT || isSupRT
     ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
     : isTLRT
     ? [taskTbl,'audit','login_users','client_errors'].filter(Boolean)
-    : [taskTbl,'login_users','client_errors'].filter(Boolean);
+    : [taskTbl,'login_users','audit','client_errors'].filter(Boolean);
 
   _realtimeChannel = _supaRT
     .channel('kpi-live-'+((CU&&CU.username)||'anon'))
@@ -17090,10 +17094,23 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
-console.log('%c[BUILD] V6_SW_HEAL_2026-04-19 — audit-iae-v6.3-sw-heal loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
+console.log('%c[BUILD] V7_AUDIT_TABLE_2026-04-19 — audit-iae-v7-audit-source loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
 function _createInternalAuditError(rlRec, info){
-  // info = {errorType, score, auditor, auditorComments}
-  console.log('[IAE-Create] Called with txn:', rlRec?.txn, 'user:', rlRec?.user, 'errorType:', info?.errorType, 'score:', info?.score);
+  // ── v7: NO-OP ──
+  // Previously this wrote a duplicate row to `client_errors`. The audit
+  // table row itself is now the single source of truth for internal audit
+  // errors (user's request). The popup reads directly from DB.audit and
+  // the team member's acknowledgement updates `user_response`, `user_acknowledged`,
+  // and `user_ack_at` on the same audit row.
+  console.log('[IAE-Create v7] No-op — audit row IS the error record. txn:', rlRec?.txn, 'user:', rlRec?.user, 'errorType:', info?.errorType, 'score:', info?.score);
+  // Still notify the team member immediately via local event (faster than
+  // waiting for realtime round-trip from their session's perspective).
+  if(typeof _notifyInternalAuditError==='function'){
+    try{ _notifyInternalAuditError({txn: rlRec?.txn, userName: rlRec?.user, errorType: info?.errorType, percentage: info?.score}); }catch(_e){}
+  }
+  return;
+}
+function _legacy_createInternalAuditError_unused(rlRec, info){
 
   // Duplicate guard — only skip if there's an EXISTING DB-persisted row (with _dbid)
   // for the same txn + errorType. Previously this skipped on any local match too,
@@ -18915,19 +18932,23 @@ function renderRLRows(data){
   const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const _auditMap = window._auditByTxn || new Map();
-  // ── FIX v6: prebuild IAE (Internal Audit Error) lookup Map once per render ──
-  // Was: O(rows × errors) .find() per row → ~100k ops × many renders = 3s freezes
-  // Now: O(errors) once + O(1) lookup per row
+  // ── v7: IAE now lives in the audit table itself ──
+  // Build a Map of txn → audit rec WHERE it qualifies as an error
+  // (score < 100 OR errorType != 'Good Job'). O(audit) once; O(1) per row.
   const _iaeMap = new Map();
-  const _errArr = DB.errors || [];
-  for(let _i=0;_i<_errArr.length;_i++){
-    const _e = _errArr[_i];
-    if(_e && _e.sourceOfError==='Internal Audit' && _e.txn!=null){
-      const _k = String(_e.txn);
-      // Prefer unacknowledged record if there are duplicates
-      const _prev = _iaeMap.get(_k);
-      if(!_prev || (_prev.acknowledgedAt && !_e.acknowledgedAt)) _iaeMap.set(_k, _e);
-    }
+  const _audArr = DB.audit || [];
+  for(let _i=0;_i<_audArr.length;_i++){
+    const _a = _audArr[_i];
+    if(!_a || _a.txn==null) continue;
+    const _et = _a.errorType || '';
+    const _sc = (_a.score!=null && !isNaN(parseFloat(_a.score))) ? parseFloat(_a.score) : null;
+    const _isRealErr = _et && _et!=='Good Job' && _et!=='None' && _et!=='—' && _et!=='';
+    const _isLowSc   = _sc!=null && _sc<100;
+    if(!_isRealErr && !_isLowSc) continue;
+    const _k = String(_a.txn);
+    // Prefer unacknowledged record if multiple audits exist for same txn
+    const _prev = _iaeMap.get(_k);
+    if(!_prev || (_prev.userAckAt && !_a.userAckAt)) _iaeMap.set(_k, _a);
   }
   const _canEdit = canEditData();
   const _isAdm = isAdmin();
@@ -18942,10 +18963,10 @@ function renderRLRows(data){
   tbody.innerHTML=data.map((r,i)=>{
     const ar=_auditMap.get(String(r.txn));
     const sc=ar?parseFloat(ar.score):(r.qualityScore!=null?parseFloat(r.qualityScore):null);
-    // ── BATCH 2 / FIX v6: O(1) IAE lookup via prebuilt map (was O(rows × errors) find)
+    // ── v7: IAE is now an audit row itself
     const _iaeRec = _iaeMap.get(String(r.txn));
-    const _iaeUnacked = _iaeRec && !_iaeRec.acknowledgedAt;
-    const _iaeAcked   = _iaeRec && _iaeRec.acknowledgedAt;
+    const _iaeUnacked = _iaeRec && !_iaeRec.userAckAt;
+    const _iaeAcked   = _iaeRec && _iaeRec.userAckAt;
     const qCell=(()=>{
       // If there's an unacked internal audit error, show blinking badge
       if(_iaeUnacked){
@@ -20006,19 +20027,35 @@ window._iaeActiveTxn = null;
 window._iaeActiveRec = null;
 
 function openInternalAuditErrorPopup(txn){
-  const rec = (DB.errors||[]).find(e =>
-    String(e.txn)===String(txn) &&
-    e.sourceOfError==='Internal Audit'
-  );
-  if(!rec){
-    if(typeof showToast==='function') showToast('⚠️ Error record not found', true);
+  // v7: audit table is the single source of truth
+  const auditRec = (DB.audit||[]).find(a => String(a.txn)===String(txn));
+  if(!auditRec){
+    if(typeof showToast==='function') showToast('⚠️ Audit record not found', true);
     return;
   }
+  // Build a lightweight "rec" view that keeps old body-render code compatible
+  const sc  = (auditRec.score!=null && !isNaN(parseFloat(auditRec.score))) ? parseFloat(auditRec.score) : null;
+  const rec = {
+    txn:            auditRec.txn,
+    client:         auditRec.client,
+    clientName:     auditRec.clientname,
+    mode:           auditRec.mode,
+    errorType:      auditRec.errorType,
+    percentage:     sc,
+    createdBy:      auditRec.auditor,
+    clientComments: auditRec.comments,
+    userComments:   auditRec.userResponse || null,   // action plan text
+    userStatus:     auditRec.userAcknowledged || null, // status enum
+    acknowledgedAt: auditRec.userAckAt || null,
+    acknowledgedBy: auditRec.user || null,
+    _dbid:          auditRec._dbid || auditRec.id,
+    _created:       auditRec._created || auditRec.endTime || auditRec.startTime || ''
+  };
   window._iaeActiveTxn = String(txn);
   window._iaeActiveRec = rec;
+  window._iaeActiveAudit = auditRec; // keep direct reference for update
 
   const rlRec = (DB.release2||[]).find(r => String(r.txn)===String(txn));
-  const auditRec = (DB.audit||[]).find(a => String(a.txn)===String(txn));
 
   // Header sub
   const sub = document.getElementById('iaePopupSub');
@@ -20030,7 +20067,7 @@ function openInternalAuditErrorPopup(txn){
   // Body — field list
   const body = document.getElementById('iaePopupBody');
   if(body){
-    const score = rec.percentage || auditRec?.score || '—';
+    const score = rec.percentage!=null ? rec.percentage : '—';
     const scoreDisplay = score!=='—' ? (score+'%') : '—';
     const scoreColor = (parseFloat(score)>=95) ? '#166534' : (parseFloat(score)>=80) ? '#b45309' : '#991b1b';
     const isAcked = !!rec.acknowledgedAt;
@@ -20058,11 +20095,11 @@ function openInternalAuditErrorPopup(txn){
         </div>
         <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f3f4f6;">
           <span style="color:#6b7280;font-weight:600">Auditor</span>
-          <span style="color:#111827;font-weight:700">${rec.createdBy||auditRec?.auditor||'—'}</span>
+          <span style="color:#111827;font-weight:700">${rec.createdBy||'—'}</span>
         </div>
         <div style="padding:8px 0 2px;font-size:13px;">
           <div style="color:#6b7280;font-weight:600;margin-bottom:6px">Auditor comments</div>
-          <div style="color:#111827;background:#fef2f2;border-left:3px solid #dc2626;padding:8px 10px;border-radius:4px;font-size:12px;line-height:1.5;white-space:pre-wrap;">${rec.clientComments||auditRec?.comments||'No additional comments from auditor.'}</div>
+          <div style="color:#111827;background:#fef2f2;border-left:3px solid #dc2626;padding:8px 10px;border-radius:4px;font-size:12px;line-height:1.5;white-space:pre-wrap;">${rec.clientComments||'No additional comments from auditor.'}</div>
         </div>
       </div>
       ${isAcked?`
@@ -20070,10 +20107,8 @@ function openInternalAuditErrorPopup(txn){
           <div style="font-weight:800;margin-bottom:4px;">&#9989; Already acknowledged</div>
           <div>on ${(rec.acknowledgedAt||'').toString().slice(0,16).replace('T',' ')}${rec.acknowledgedBy?' by '+rec.acknowledgedBy:''}</div>
           ${(() => {
-            const _rawUc = rec.userComments || '';
-            const _mm = _rawUc.match(/^\[Status:\s*(Acknowledged|In Progress|Resolved)\]\s*([\s\S]*)$/i);
-            const _stVal = _mm ? _mm[1] : '';
-            const _txtVal = _mm ? _mm[2].trim() : _rawUc;
+            const _stVal = rec.userStatus || '';
+            const _txtVal = (rec.userComments||'').trim();
             const _stColor = _stVal==='Resolved' ? {bg:'#dcfce7',fg:'#166534',bd:'#bbf7d0'}
                            : _stVal==='In Progress' ? {bg:'#fef9c3',fg:'#854d0e',bd:'#fde68a'}
                            : _stVal==='Acknowledged' ? {bg:'#dbeafe',fg:'#1e40af',bd:'#bfdbfe'}
@@ -20101,21 +20136,13 @@ function openInternalAuditErrorPopup(txn){
   const btn = document.getElementById('iaeSubmitBtn');
   const closeX = document.getElementById('iaePopupCloseX');
   const st = document.getElementById('iaeUserStatus');
-  // Parse status-prefixed user_comments: "[Status: Resolved] text"
-  const _parseIaeUserComments = (raw) => {
-    if(!raw) return { status:'', text:'' };
-    const m = String(raw).match(/^\[Status:\s*(Acknowledged|In Progress|Resolved)\]\s*([\s\S]*)$/i);
-    if(m) return { status:m[1], text:m[2].trim() };
-    return { status:'', text:String(raw) };
-  };
-  const _parsed = _parseIaeUserComments(rec.userComments);
   if(ta){
-    ta.value = _parsed.text || '';
+    ta.value = rec.userComments || '';
     ta.disabled = !!rec.acknowledgedAt;
     ta.style.background = rec.acknowledgedAt ? '#f3f4f6' : '#fff';
   }
   if(st){
-    st.value = _parsed.status || '';
+    st.value = rec.userStatus || '';
     st.disabled = !!rec.acknowledgedAt;
     st.style.background = rec.acknowledgedAt ? '#f3f4f6' : '#fff';
   }
@@ -20219,18 +20246,22 @@ function _closeIAEPopup(){
 
 function _getMyUnackedIAE(){
   if(!CU) return [];
-  // Build a set of every plausible identifier this user is known by.
-  // We normalize (trim + lowercase) so minor casing/whitespace diffs in
-  // the DB do not silently hide errors.
+  // v7: read from DB.audit (audit table is source of truth)
   const myNames = new Set();
   const add = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
   add(CU.name); add(CU.empName); add(CU.username); add(CU.loginName);
   if(myNames.size === 0) return [];
-  return (DB.errors||[]).filter(e =>
-    e.sourceOfError==='Internal Audit' &&
-    !e.acknowledgedAt &&
-    myNames.has(String(e.userName||'').trim().toLowerCase())
-  );
+  return (DB.audit||[]).filter(a => {
+    if(!a) return false;
+    const userMatch = myNames.has(String(a.user||'').trim().toLowerCase());
+    if(!userMatch) return false;
+    if(a.userAckAt) return false; // already acknowledged
+    const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
+    const et = a.errorType || '';
+    const isRealError = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
+    const isLowScore = sc!=null && sc<100;
+    return isRealError || isLowScore;
+  });
 }
 
 function _showInternalAuditAlert(){
@@ -20258,37 +20289,45 @@ async function _iaeSafetyPoll(){
     // Skip if popup or any form panel open — don't pull data while user is busy
     if(document.getElementById('iaePopup')?.style.display === 'flex') return;
     if(typeof isPanelOpen==='function' && isPanelOpen()) return;
-    // Fetch ONLY my unacked internal audit errors (last 30 days)
+    // v7: Fetch my unacked AUDIT rows from the last 30 days
     const since = new Date(Date.now() - 30*24*3600*1000).toISOString();
     const myName = (CU.name||'').trim();
     if(!myName) return;
-    const {data: rows, error} = await _supa.from('client_errors').select('*')
-      .eq('source_of_error','Internal Audit')
+    const {data: rows, error} = await _supa.from('audit').select('*')
       .eq('user_name', myName)
-      .is('acknowledged_at', null)
+      .is('user_ack_at', null)
       .gte('created_at', since)
       .order('created_at', {ascending:false})
-      .limit(20);
-    if(error){ console.warn('[IAE poll] query error:', error.message); return; }
+      .limit(30);
+    if(error){ console.warn('[IAE poll v7] query error:', error.message); return; }
     if(!Array.isArray(rows) || !rows.length) return;
-    // Merge any new ones into DB.errors if not already present
+    // Keep only audit rows that qualify as errors (score<100 OR errorType != Good Job)
+    const errs = rows.filter(r=>{
+      const et = r.error_type || '';
+      const sc = (r.score!=null && !isNaN(parseFloat(r.score))) ? parseFloat(r.score) : null;
+      const isRealError = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
+      const isLowScore = sc!=null && sc<100;
+      return isRealError || isLowScore;
+    });
+    if(!errs.length) return;
+    // Merge any new ones into DB.audit if not already present
     let added = 0;
-    rows.forEach(r=>{
-      const exists = (DB.errors||[]).some(e=>String(e._dbid||e.id||'')===String(r.id));
+    errs.forEach(r=>{
+      const exists = (DB.audit||[]).some(a=>String(a._dbid||a.id||'')===String(r.id));
       if(!exists){
-        const mapped = mapError(r);
-        DB.errors.unshift(mapped);
+        const mapped = mapAudit(r);
+        DB.audit.unshift(mapped);
         added++;
       }
     });
     if(added>0){
-      DB.errors.forEach((e,i)=>e._idx=i);
-      console.log('[IAE poll] merged', added, 'new internal audit error(s)');
+      if(typeof _rebuildAuditMap==='function') _rebuildAuditMap();
+      console.log('[IAE poll v7] merged', added, 'new audit error(s) into DB.audit');
     }
     // Fire the popup if there is any unacked one for me
     _showInternalAuditAlert();
   }catch(_e){
-    console.warn('[IAE poll] failed:', _e && _e.message);
+    console.warn('[IAE poll v7] failed:', _e && _e.message);
   }
 }
 function _startIAEHeartbeat(){
@@ -20309,8 +20348,9 @@ function _isAddFormOpen(){ return false; }
 
 function submitInternalAuditErrorAck(){
   const rec = window._iaeActiveRec;
-  if(!rec){
-    if(typeof showToast==='function') showToast('⚠️ No active error record', true);
+  const auditRec = window._iaeActiveAudit;
+  if(!rec || !auditRec){
+    if(typeof showToast==='function') showToast('⚠️ No active audit record', true);
     return;
   }
   if(rec.acknowledgedAt){
@@ -20329,24 +20369,45 @@ function submitInternalAuditErrorAck(){
   }
 
   const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
-  const ackBy = (CU && CU.name) || 'User';
-  // Persist status as structured prefix inside user_comments (no schema change needed)
-  const combined = `[Status: ${status}] ${comments}`;
+  const ackBy  = (CU && CU.name) || 'User';
+  const dbId   = auditRec._dbid || auditRec.id;
 
-  // Optimistic local update
-  rec.userComments = combined;
-  rec.acknowledgedAt = nowIso;
-  rec.acknowledgedBy = ackBy;
+  // Optimistic local update on the audit record
+  auditRec.userResponse     = comments;
+  auditRec.userAcknowledged = status;
+  auditRec.userAckAt        = nowIso;
+  rec.userComments    = comments;
+  rec.userStatus      = status;
+  rec.acknowledgedAt  = nowIso;
+  rec.acknowledgedBy  = ackBy;
 
-  // Persist to DB if supabase available
-  if(window._supa && typeof dbUpdate==='function' && rec._dbid){
-    dbUpdate('client_errors', rec._dbid, {
-      user_comments: combined,
-      acknowledged_at: nowIso,
-      acknowledged_by: ackBy
-    }).catch(err => {
-      console.warn('[IAE] ack update failed:', err);
-    });
+  // Persist to DB: UPDATE the audit row (v7 flow)
+  if(window._supa && dbId){
+    const updatePayload = {
+      user_response:     comments,
+      user_acknowledged: status,
+      user_ack_at:       nowIso
+    };
+    console.log('[IAE-Ack v7] UPDATE audit id', dbId, 'payload:', updatePayload);
+    if(typeof dbUpdate==='function'){
+      dbUpdate('audit', dbId, updatePayload).then(r => {
+        console.log('[IAE-Ack v7] UPDATE result:', r);
+      }).catch(err => {
+        console.warn('[IAE-Ack v7] UPDATE failed:', err);
+        if(typeof showToast==='function') showToast('⚠️ Ack saved locally but DB update failed: '+(err?.message||'unknown'), true);
+      });
+    } else {
+      // Direct Supabase fallback
+      _supa.from('audit').update(updatePayload).eq('id', dbId).then(res => {
+        console.log('[IAE-Ack v7] direct update result:', res);
+        if(res && res.error){
+          console.warn('[IAE-Ack v7] direct update error:', res.error);
+          if(typeof showToast==='function') showToast('⚠️ DB update error: '+res.error.message, true);
+        }
+      }).catch(err => {
+        console.warn('[IAE-Ack v7] direct update threw:', err);
+      });
+    }
   }
 
   if(typeof showToast==='function') showToast(`✅ Acknowledgement submitted (${status}) — thank you!`);
@@ -20360,7 +20421,6 @@ function submitInternalAuditErrorAck(){
   }
 
   // After acknowledging, check if there are MORE unacked errors — chain them
-  // so the user clears them all in one flow
   setTimeout(()=>{
     if(typeof _checkPendingIAE==='function') _checkPendingIAE({chain:true});
   }, 350);
