@@ -17042,14 +17042,14 @@ function _createInternalAuditError(rlRec, info){
   );
   if(existing) return;
 
-  const pct = String(info.score!=null ? info.score : '');
+  const pct = (info.score!=null && !isNaN(parseFloat(info.score))) ? parseFloat(info.score) : null;
   const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
   const dateStr = (typeof todayDateStringET==='function') ? todayDateStringET() : new Date().toISOString().slice(0,10);
 
   const _errRow = {
     date:             dateStr,
-    txn:              rlRec.txn,
-    client:           rlRec.client || null,
+    txn:              rlRec.txn || null,
+    client:           rlRec.client ? (parseInt(rlRec.client)||null) : null,
     client_name:      rlRec.clientname || null,
     team:             rlRec.team || null,
     user_name:        rlRec.user || null,
@@ -17057,11 +17057,11 @@ function _createInternalAuditError(rlRec, info){
     percentage:       pct,
     mode:             rlRec.mode || null,
     source_of_error:  'Internal Audit',
-    client_comments:  info.auditorComments || `Score ${info.score}% — flagged via internal audit.`,
+    client_comments:  info.auditorComments || (`Score ${info.score}% — flagged via internal audit.`),
     user_comments:    null,
-    created_by:       info.auditor || 'Audit System',
-    task:             'Release',
-    tl_comments:      null
+    tl_comments:      null,
+    created_by:       info.auditor || (CU&&CU.name) || 'Audit System',
+    task:             'Release'
   };
 
   const _localRec = {
@@ -17094,16 +17094,19 @@ function _createInternalAuditError(rlRec, info){
         const mapped = mapError(savedRow);
         DB.errors.push(mapped);
         DB.errors.forEach((e,i)=>e._idx=i);
+        if(typeof showToast==='function') showToast(`📋 Internal audit error logged for ${mapped.userName||'user'}`);
         _notifyInternalAuditError(mapped);
       } else {
         // Insert did not return an ID — keep local copy so auditor still sees it
-        console.warn('[Internal Audit Error] dbInsert returned no id:', r);
+        console.warn('[Internal Audit Error] dbInsert returned no id — payload was:', _errRow, 'response:', r);
+        if(typeof showToast==='function') showToast('⚠️ Internal audit error save failed — kept local only. Check console.', true);
         DB.errors.push(_localRec);
         DB.errors.forEach((e,i)=>e._idx=i);
         _notifyInternalAuditError(_localRec);
       }
     }).catch(err => {
-      console.warn('[Internal Audit Error] insert failed:', err);
+      console.warn('[Internal Audit Error] insert failed:', err, 'payload was:', _errRow);
+      if(typeof showToast==='function') showToast('⚠️ Internal audit error DB insert threw: '+(err&&err.message||'unknown'), true);
       DB.errors.push(_localRec);
       DB.errors.forEach((e,i)=>e._idx=i);
       _notifyInternalAuditError(_localRec);
