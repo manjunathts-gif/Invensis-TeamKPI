@@ -4695,20 +4695,16 @@ async function loadAllFromSupabase(){
       if(_currentPage) _silentRefreshPage(_currentPage);
       return; // already booted above
     } else {
-      // Regular user: own task table + errors + clients + login_users (for user dropdown autofill)
+      // Regular user: own task table + errors + clients + login_users + OWN audit errors
+      // Audit errors are needed so the blinking IAE badge shows on the Release page immediately
       const tbl=taskTableMap[userTask];
       setDetail('Loading your '+(userTask||'task')+' data...');
-      // SPEED FIX: regular team members only fetch their OWN errors (server-side
-      // filter) instead of the full client_errors table. Cuts login download from
-      // potentially thousands of rows to a handful. dbLoadMyErrors falls back to
-      // the full load if the filtered query errors out.
       const _myName = CU?.name || CU?.empName || '';
       const fetches=tbl
         ? [dbLoad('clients'), dbLoadRecent(tbl,30), dbLoadMyErrors(_myName), dbLoad('login_users'), dbLoad('instructions')]
         : [dbLoad('clients'), dbLoadMyErrors(_myName), dbLoad('login_users'), dbLoad('instructions')];
       const results=await Promise.all(fetches);
-      // clients is index 0, task table is index 1, etc.
-      if(results[0]) DB.clients=results[0].map(mapClient); // clients FIRST — needed for autofill
+      if(results[0]) DB.clients=results[0].map(mapClient);
       if(tbl&&results[1]) _applyTaskData(tbl,results[1]);
       const eIdx=tbl?2:1;
       const luIdx=tbl?3:2;
@@ -4717,6 +4713,30 @@ async function loadAllFromSupabase(){
       if(results[luIdx]) DB.loginUsers=results[luIdx].map(mapLoginUser);
       if(results[instrIdx]) DB.instructions=results[instrIdx].map(mapInstruction);
       setDetail('✅ '+(results[0]?.length||0)+' records loaded');
+
+      // ── Load own audit errors in background so IAE badge shows on Release page ──
+      // Non-blocking: fires after app boots so login is not delayed
+      if(_supa && _myName){
+        setTimeout(async()=>{
+          try{
+            const since = new Date(Date.now()-90*24*3600*1000).toISOString();
+            const {data:myAudit,error:auditErr} = await _supa.from('audit')
+              .select('*').eq('user_name',_myName).gte('created_at',since)
+              .order('created_at',{ascending:false}).limit(200);
+            if(!auditErr && myAudit && myAudit.length){
+              // Merge without overwriting any records already in DB.audit (from realtime)
+              const existIds = new Set((DB.audit||[]).map(a=>String(a._dbid||a.id||'')));
+              const newMapped = myAudit.map(mapAudit).filter(a=>!existIds.has(String(a._dbid||a.id||'')));
+              if(newMapped.length) DB.audit = [...(DB.audit||[]), ...newMapped];
+              _rebuildAuditMap();
+              // Re-render Release page rows so blinking badge appears immediately
+              if(_currentPage==='release2' && document.getElementById('rlTbody')){
+                try{ renderRLRows(pgSlice('rl')); }catch(e){}
+              }
+            }
+          }catch(e){ console.warn('[member audit load]',e.message); }
+        }, 1500); // 1.5s after boot — non-blocking
+      }
     }
 
 
@@ -20505,6 +20525,10 @@ async function _iaeSafetyPoll(){
     if(added>0){
       if(typeof _rebuildAuditMap==='function') _rebuildAuditMap();
       console.log('[IAE poll v7] merged', added, 'new audit error(s) into DB.audit');
+      // Re-render Release table rows if visible so blinking badge appears immediately
+      if(_currentPage==='release2' && document.getElementById('rlTbody')){
+        try{ renderRLRows(pgSlice('rl')); }catch(e){}
+      }
     }
     // Fire the popup if there is any unacked one for me
     _showInternalAuditAlert();
