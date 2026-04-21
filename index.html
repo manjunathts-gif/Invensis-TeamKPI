@@ -1,8 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v8.1-count-audittab">
+<html lang="en" data-build-stamp="V7_2_CACHE_FIX_2026-04-21" data-build-id="audit-iae-v7.2-cachefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<!-- Force browsers & CDN not to cache this HTML file -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <meta name="theme-color" content="#1e2d6b"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -24951,34 +24955,60 @@ function _buildLvsErrPopup(clientNo){
 </script>
 
 <script>
-// ═══ PWA Service Worker — v6.2 self-heal ═══
-// The old SW aggressively cached index.html and prevented new builds from
-// reaching users. On every load, we now:
-//   1. Unregister ALL existing service-worker registrations
-//   2. Purge every Cache Storage entry
-//   3. Re-register /sw.js fresh (so offline fallback still works)
-// This guarantees that once a user loads this build ONCE, every subsequent
-// load will pick up the latest deployed index.html.
-if('serviceWorker' in navigator){
-  window.addEventListener('load', async () => {
-    try{
-      const regs = await navigator.serviceWorker.getRegistrations();
-      for(const r of regs){
-        try{ await r.unregister(); console.log('[PWA] unregistered old SW @', r.scope); }
-        catch(_e){ console.warn('[PWA] unregister failed:', _e); }
-      }
-      if(self.caches && caches.keys){
+// ═══ PWA + Cache-Bust — v7.2 force-refresh on new deploy ═══
+// PROBLEM: Cloudflare Pages + Service Worker both cache index.html aggressively.
+// SOLUTION:
+//   1. On every load, read the build stamp embedded in <html data-build-stamp>.
+//   2. Compare to the stamp saved in localStorage from the last load.
+//   3. If they differ → new build deployed → wipe ALL caches + force hard reload.
+//   4. Always unregister old SWs and purge cache storage on every load.
+(function(){
+  const BUILD_STAMP = document.documentElement.getAttribute('data-build-stamp') || '';
+  const LS_KEY = 'kpi_build_stamp';
+  const lastStamp = localStorage.getItem(LS_KEY) || '';
+
+  async function nukeAllCaches(){
+    // Unregister every service worker
+    if('serviceWorker' in navigator){
+      try{
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+        if(regs.length) console.log('[Cache] Unregistered', regs.length, 'SW(s)');
+      }catch(e){ console.warn('[Cache] SW unregister failed:', e); }
+    }
+    // Purge all Cache Storage buckets
+    if(self.caches && caches.keys){
+      try{
         const keys = await caches.keys();
         await Promise.all(keys.map(k => caches.delete(k)));
-        if(keys.length) console.log('[PWA] cleared', keys.length, 'cache bucket(s):', keys);
-      }
-    }catch(e){ console.warn('[PWA] self-heal failed:', e); }
-    // Re-register fresh (non-blocking)
-    navigator.serviceWorker.register('/sw.js').then(()=>{
-      console.log('[PWA] Service worker registered (fresh)');
-    }).catch(e=>console.warn('[PWA] SW registration failed:', e));
+        if(keys.length) console.log('[Cache] Cleared', keys.length, 'cache bucket(s)');
+      }catch(e){ console.warn('[Cache] Cache purge failed:', e); }
+    }
+  }
+
+  window.addEventListener('load', async () => {
+    await nukeAllCaches();
+
+    if(BUILD_STAMP && lastStamp && lastStamp !== BUILD_STAMP){
+      // New build detected — save new stamp then hard-reload to get fresh HTML
+      console.log('[Cache] New build detected:', lastStamp, '→', BUILD_STAMP, '— reloading');
+      localStorage.setItem(LS_KEY, BUILD_STAMP);
+      // location.reload(true) is deprecated in some browsers; use cache-busted fetch
+      window.location.href = window.location.pathname + '?v=' + BUILD_STAMP + '&t=' + Date.now();
+      return;
+    }
+
+    // Save current stamp for next load comparison
+    if(BUILD_STAMP) localStorage.setItem(LS_KEY, BUILD_STAMP);
+
+    // Re-register SW fresh (non-blocking, for offline support only)
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js')
+        .then(()=> console.log('[PWA] SW registered (fresh)'))
+        .catch(e => console.warn('[PWA] SW registration failed:', e));
+    }
   });
-}
+})();
 </script>
 <!-- Cloudflare Web Analytics beacon removed: /cdn-cgi/rum endpoint returns 404
      on this Pages deployment. Re-add only after enabling Web Analytics in the
