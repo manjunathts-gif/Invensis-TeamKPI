@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_4_AUDITPERF_2026-04-21" data-build-id="audit-iae-v7.4-auditperf">
+<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -7126,30 +7126,36 @@ function _clearDataCache(){
 }
 const TASK_CACHE_TTL = 8 * 60 * 60 * 1000; // 8 hours — covers a full shift
 
+// ── Cache save debounce timer — prevents multiple rapid saves ──
+let _saveTaskCacheTimer = null;
 function _saveTaskCache(){
+  // Debounce: if called multiple times quickly (e.g. after bulk load), only run once
+  if(_saveTaskCacheTimer) clearTimeout(_saveTaskCacheTimer);
+  _saveTaskCacheTimer = setTimeout(_doSaveTaskCache, 3000); // wait 3s for data to settle
+}
+function _doSaveTaskCache(){
+  _saveTaskCacheTimer = null;
+  // ── PERF FIX: DO NOT cache large arrays (release2, audit, errors) ──
+  // JSON.stringify on 7000+ row arrays blocks the main thread for 3-5 seconds.
+  // These tables are always reloaded from Supabase on startup anyway — no benefit caching them.
+  // Only cache small arrays: clients (autofill), lvs, cls, comp (quick restore for small tables).
   try{
-    // Only cache if we have meaningful data
-    const totalRecs = DB.lvs.length + DB.cls.length + DB.release2.length;
+    const totalRecs = (DB.lvs?.length||0) + (DB.cls?.length||0) + (DB.release2?.length||0);
     if(totalRecs < 5) return;
-    // Only skip write if count unchanged AND dataset is large (avoids phase2 getting skipped)
     const _prevCount = parseInt(localStorage.getItem('kpi_task_cache_count')||'0');
     localStorage.setItem('kpi_task_cache_count', String(totalRecs));
-    if(totalRecs === _prevCount && totalRecs > 100) return; // no change in large dataset — skip write
+    if(totalRecs === _prevCount && totalRecs > 100) return; // no change — skip write
+    // Only stringify small arrays — NEVER release2/audit/errors (too large, causes 5s freeze)
     const cache = {
-      ts: Date.now(),
-      role: CU?.role||'',
-      task: CU?.task||'',
-      clients:  DB.clients,
-      lvs:      DB.lvs,
-      cls:      DB.cls,
-      comp:     DB.comp,
-      parsDocs: DB.parsDocs,
-      oceanDocs:DB.oceanDocs,
-      partLot:  DB.partLot,
-      release2: DB.release2,
-      oceanTT:  DB.oceanTT,
-      b2entries:DB.b2entries,
-      errors:   DB.errors,
+      ts:      Date.now(),
+      role:    CU?.role||'',
+      task:    CU?.task||'',
+      clients: DB.clients,  // needed for client autofill
+      lvs:     DB.lvs.length   <= 500 ? DB.lvs      : DB.lvs.slice(0,500),
+      cls:     DB.cls.length   <= 500 ? DB.cls      : DB.cls.slice(0,500),
+      comp:    DB.comp.length  <= 500 ? DB.comp     : DB.comp.slice(0,500),
+      parsDocs:DB.parsDocs.length<=300 ? DB.parsDocs : DB.parsDocs.slice(0,300),
+      // release2, audit, errors, oceanDocs, partLot, oceanTT, b2entries intentionally omitted
     };
     localStorage.setItem(TASK_CACHE_KEY, JSON.stringify(cache));
   }catch(e){
