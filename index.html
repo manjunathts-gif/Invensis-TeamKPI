@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v7.1-count-audittab">
+<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v8.1-count-audittab">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5498,7 +5498,7 @@ function _applyRealtimeRow(table, row, eventType){
       const isRealError = errType && errType!=='Good Job' && errType!=='None' && errType!=='—' && errType!=='';
       const isLowScore = sc!=null && sc<100;
       const notAcked = !row.user_ack_at;
-      if(targetName && myNames.has(targetName) && notAcked && (isRealError || isLowScore)){
+      if(targetName && myNames.has(targetName) && notAcked && (isRealError && isLowScore)){
         if(typeof showToast==='function'){
           showToast(`⚠️ New audit error reported on Txn ${row.txn} — please review`, true);
         }
@@ -9554,7 +9554,7 @@ function bootApp(){
   if(CU.role==='Team Lead' || CU.role==='Supervisor'){
     showPage('dashboard');
   } else if(isClient()){
-    showPage('clientdashboard'); // Client lands on Client Dashboard
+    showPage('kpidashboard'); // Client lands on KPI Dashboard
     _clientLoginNotify(); // Notify manager + show client welcome banner
   } else {
     showPage(_landPage);
@@ -10122,7 +10122,6 @@ function buildNav(){
   } else if(CU.role==='Client'){
     // Client: view all tasks + KPI dashboard + reports
     items=[
-      {id:'clientdashboard', l:'🏢 My Dashboard', g:'main'},
       {id:'kpidashboard', l:'📊 KPI Dashboard', g:'main'},
       {id:'lvs',          l:'📋 LVS',            g:'tasks'},
       {id:'classifier',   l:'🗂️ Classifier',     g:'tasks'},
@@ -10271,6 +10270,8 @@ function showPage(id){
     const clientAllowed = ['dashboard','lvs','classifier','compliance','parsdocs',
       'oceandocs','partlot','release2','oceantt','b2entries',
       'errorreport','reports','kpidashboard','status'];
+    // Block clientdashboard for Client role — removed from nav
+    if(id==='clientdashboard'){ showToast('⚠️ Access restricted for Client role', true); return; }
     if(!clientAllowed.includes(id)){
       showToast('⚠️ Access restricted for Client role', true);
       return;
@@ -17335,7 +17336,9 @@ function submitAudit(){
     const _isRealError = errorType && errorType!=='Good Job' && errorType!=='None' && errorType!=='—' && errorType!=='';
     const _isLowScore  = score < 100;
     console.log('[Audit→IAE] check: errorType=', errorType, '| score=', score, '| isRealError=', _isRealError, '| isLowScore=', _isLowScore, '| rlRec=', !!rlRec, '| r=', !!r);
-    if(_isRealError || _isLowScore){
+    // Only create error record & notify if BOTH: real error type AND score < 100
+    // Good Job with score < 100 = no error popup. Real error + 100% = no popup.
+    if(_isRealError && _isLowScore){
       // Use rlRec (refreshed lookup) or fall back to r (original closure capture)
       // Either one has what we need for the error record.
       const _rec = rlRec || r;
@@ -20294,13 +20297,17 @@ function _getMyUnackedIAE(){
     if(a.userAckAt) return false; // already acknowledged
     const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
     const et = a.errorType || '';
+    // Only a REAL error type (not Good Job / None / —) triggers the popup
+    // Score < 100 alone does NOT trigger if error type is Good Job or empty
     const isRealError = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
     const isLowScore = sc!=null && sc<100;
-    return isRealError || isLowScore;
+    return isRealError && isLowScore; // BOTH must be true: real error AND score < 100
   });
 }
 
 function _showInternalAuditAlert(){
+  // Don't auto-fire for Team Lead / Supervisor / Manager / Admin — they view via release table badges
+  if(CU && (CU.role==='Team Lead' || CU.role==='Supervisor' || CU.role==='Manager' || isAdmin())) return;
   // Don't double-open
   const existing = document.getElementById('iaePopup');
   if(existing && existing.style.display === 'flex') return;
@@ -20343,7 +20350,8 @@ async function _iaeSafetyPoll(){
       const sc = (r.score!=null && !isNaN(parseFloat(r.score))) ? parseFloat(r.score) : null;
       const isRealError = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
       const isLowScore = sc!=null && sc<100;
-      return isRealError || isLowScore;
+      // Only trigger for REAL error type AND score < 100 (not Good Job with low score)
+      return isRealError && isLowScore;
     });
     if(!errs.length) return;
     // Merge any new ones into DB.audit if not already present
