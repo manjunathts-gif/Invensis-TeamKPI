@@ -17132,7 +17132,11 @@ function closeAuditPanel(){
   window._auditReturnTo=null;
 }
 
-console.log('%c[BUILD] V7_1_AUDIT_TABLE_2026-04-19 — audit-iae-v7.1-count-audittab loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
+(function(){
+  var _bs = document.documentElement.getAttribute('data-build-stamp')||'?';
+  var _bi = document.documentElement.getAttribute('data-build-id')||'?';
+  console.log('%c[BUILD] '+_bs+' — '+_bi+' loaded','background:#059669;color:#fff;padding:4px 10px;font-weight:700;border-radius:4px');
+})();
 function _createInternalAuditError(rlRec, info){
   // ── v7: NO-OP ──
   // Previously this wrote a duplicate row to `client_errors`. The audit
@@ -24955,57 +24959,99 @@ function _buildLvsErrPopup(clientNo){
 </script>
 
 <script>
-// ═══ PWA + Cache-Bust — v7.2 force-refresh on new deploy ═══
-// PROBLEM: Cloudflare Pages + Service Worker both cache index.html aggressively.
-// SOLUTION:
-//   1. On every load, read the build stamp embedded in <html data-build-stamp>.
-//   2. Compare to the stamp saved in localStorage from the last load.
-//   3. If they differ → new build deployed → wipe ALL caches + force hard reload.
-//   4. Always unregister old SWs and purge cache storage on every load.
+// ═══ Cache-Bust + Force-Refresh — v7.3 ═══
+// WHY THIS EXISTS:
+//   Cloudflare Pages caches index.html at the edge AND the Service Worker
+//   caches it in the browser. Even after deploying a new build, users see
+//   the old version until both caches expire (can take hours/days).
+//
+// HOW IT WORKS:
+//   STEP 1 — Immediately fetch the live page with a no-cache header +
+//             cache-busted URL. Extract the data-build-stamp from the response.
+//   STEP 2 — Compare to the stamp in THIS loaded page.
+//   STEP 3 — If different → nuke all SW/cache storage → hard redirect NOW.
+//   STEP 4 — Also compare to localStorage stamp as a fast local check.
+//   STEP 5 — Always unregister old SWs on every load regardless.
 (function(){
-  const BUILD_STAMP = document.documentElement.getAttribute('data-build-stamp') || '';
-  const LS_KEY = 'kpi_build_stamp';
-  const lastStamp = localStorage.getItem(LS_KEY) || '';
+  var CURRENT_STAMP = document.documentElement.getAttribute('data-build-stamp') || '';
+  var LS_KEY = 'kpi_build_stamp_v2';
 
+  // ── STEP 5: Nuke all SW + caches (runs every load) ──
   async function nukeAllCaches(){
-    // Unregister every service worker
     if('serviceWorker' in navigator){
       try{
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
+        var regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(function(r){ return r.unregister(); }));
         if(regs.length) console.log('[Cache] Unregistered', regs.length, 'SW(s)');
       }catch(e){ console.warn('[Cache] SW unregister failed:', e); }
     }
-    // Purge all Cache Storage buckets
-    if(self.caches && caches.keys){
+    if(typeof caches !== 'undefined'){
       try{
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
+        var keys = await caches.keys();
+        await Promise.all(keys.map(function(k){ return caches.delete(k); }));
         if(keys.length) console.log('[Cache] Cleared', keys.length, 'cache bucket(s)');
       }catch(e){ console.warn('[Cache] Cache purge failed:', e); }
     }
   }
 
-  window.addEventListener('load', async () => {
+  // ── Hard redirect to a cache-busted URL ──
+  function forceReload(reason){
+    console.log('[Cache] Force reload —', reason, '| stamp:', CURRENT_STAMP);
+    // Strip any existing ?v= params to avoid accumulation
+    var clean = window.location.pathname;
+    window.location.replace(clean + '?nocache=' + Date.now());
+  }
+
+  // ── STEP 1+2+3: Fetch live page, extract stamp, compare ──
+  async function checkLiveStamp(){
+    try{
+      var url = window.location.pathname + '?_probe=' + Date.now();
+      var resp = await fetch(url, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache'}
+      });
+      if(!resp.ok) return;
+      var text = await resp.text();
+      var m = text.match(/data-build-stamp="([^"]+)"/);
+      if(!m) return;
+      var liveStamp = m[1];
+      if(liveStamp && liveStamp !== CURRENT_STAMP){
+        console.log('[Cache] Live stamp differs:', CURRENT_STAMP, '→', liveStamp);
+        await nukeAllCaches();
+        forceReload('live-stamp-mismatch');
+      }
+    }catch(e){
+      console.warn('[Cache] Live stamp check failed:', e.message);
+    }
+  }
+
+  window.addEventListener('load', async function(){
     await nukeAllCaches();
 
-    if(BUILD_STAMP && lastStamp && lastStamp !== BUILD_STAMP){
-      // New build detected — save new stamp then hard-reload to get fresh HTML
-      console.log('[Cache] New build detected:', lastStamp, '→', BUILD_STAMP, '— reloading');
-      localStorage.setItem(LS_KEY, BUILD_STAMP);
-      // location.reload(true) is deprecated in some browsers; use cache-busted fetch
-      window.location.href = window.location.pathname + '?v=' + BUILD_STAMP + '&t=' + Date.now();
-      return;
+    // STEP 4: Fast localStorage check first
+    var lastStamp = '';
+    try{ lastStamp = localStorage.getItem(LS_KEY) || ''; }catch(e){}
+    if(CURRENT_STAMP) try{ localStorage.setItem(LS_KEY, CURRENT_STAMP); }catch(e){}
+
+    // If URL has ?nocache= we just reloaded fresh — skip probe to avoid loop
+    var isProbeReload = window.location.search.indexOf('nocache=') !== -1;
+    if(isProbeReload){
+      console.log('[Cache] Fresh reload confirmed — stamp:', CURRENT_STAMP);
+      // Clean the URL
+      if(window.history && window.history.replaceState){
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } else {
+      // STEP 1-3: Fetch live page and compare stamps
+      await checkLiveStamp();
     }
 
-    // Save current stamp for next load comparison
-    if(BUILD_STAMP) localStorage.setItem(LS_KEY, BUILD_STAMP);
-
-    // Re-register SW fresh (non-blocking, for offline support only)
+    // Register SW fresh (for offline support only)
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('/sw.js')
-        .then(()=> console.log('[PWA] SW registered (fresh)'))
-        .catch(e => console.warn('[PWA] SW registration failed:', e));
+        .then(function(){ console.log('[PWA] SW registered (fresh)'); })
+        .catch(function(e){ console.warn('[PWA] SW registration failed:', e); });
     }
   });
 })();
