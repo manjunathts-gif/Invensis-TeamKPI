@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_3_AUDITFIX_2026-04-21" data-build-id="audit-iae-v7.3-auditfix">
+<html lang="en" data-build-stamp="V7_4_AUDITPERF_2026-04-21" data-build-id="audit-iae-v7.4-auditperf">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4996,7 +4996,49 @@ function _silentRefreshPage(id){
       return;
     }
     if(id==='audit' && document.querySelector('.dash-ed')){
-      renderAuditTab(window._auditActiveTab||'pending');
+      // ── SILENT in-place audit refresh — NO full rebuild, NO flicker ──
+      // Recompute counts and update only the stat cards + tab labels in-place.
+      // Only rebuilds the table rows (auditTabContent) — not the whole page.
+      (()=>{
+        const _todayYMD = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+        const _todayStr = new Date().toDateString();
+        const _teamRecs = window._auditTeamRecords || [];
+        const _auditedSet = new Set(DB.audit.map(a=>String(a.txn)));
+        const _isAud = r => _auditedSet.has(String(r.txn)) || (r.qualityScore!=null && String(r.qualityScore)!=='');
+        const _done = _teamRecs.filter(r=>_isAud(r));
+        const _pend = _teamRecs.filter(r=>!_isAud(r));
+        const _todayDone = DB.audit.filter(a=>String(a._created||'').slice(0,10)===_todayYMD).length;
+        const _scores = _done.map(r=>parseFloat(window._auditByTxn?.get(String(r.txn))?.score)||0).filter(s=>s>0);
+        const _avg = _scores.length ? (_scores.reduce((a,b)=>a+b,0)/_scores.length).toFixed(1) : '—';
+        const _teamTxnSet = new Set(_teamRecs.map(r=>String(r.txn)));
+        const _pct = _teamRecs.length ? Math.round(_done.length/_teamRecs.length*100) : 0;
+        const _trueTotal = window._rlTrueCount || _teamRecs.length;
+        // Update stat cards in-place
+        _pulseSet('auditTotalTxnsCard', _trueTotal.toLocaleString());
+        _pulseSet(document.querySelector('.sc.c-em .sv'), _done.length);
+        _pulseSet(document.querySelector('.sc.c-am .sv'), _pend.length);
+        _pulseSet(document.querySelector('.sc.c-sky .sv'), _todayDone);
+        const _avgEl = document.querySelector('.sc.c-vi .sv');
+        if(_avgEl) _avgEl.textContent = _avg + (_avg!=='—'?'%':'');
+        // Update DS cards
+        const _dsYes=DB.audit.filter(a=>_teamTxnSet.has(String(a.txn))&&(a.doubleSign||'').toLowerCase()==='yes').length;
+        const _dsNo=DB.audit.filter(a=>_teamTxnSet.has(String(a.txn))&&(a.doubleSign||'').toLowerCase()==='no').length;
+        const _dsCells=document.querySelectorAll('.sc.c-te .sv,.sc.c-ro .sv');
+        if(_dsCells[0]) _pulseSet(_dsCells[0], _dsYes);
+        if(_dsCells[1]) _pulseSet(_dsCells[1], _dsNo);
+        // Update tab labels
+        const _pb=document.getElementById('atab_pending'), _db=document.getElementById('atab_done'), _ab=document.getElementById('atab_all');
+        if(_pb) _pb.textContent = '⏳ Pending ('+_pend.length+')';
+        if(_db) _db.textContent = '✅ Audited ('+_done.length+')';
+        if(_ab) _ab.textContent = '📋 All ('+_trueTotal.toLocaleString()+')';
+        // Update pending badge
+        const _badge = document.querySelector('[style*="991b1b"],[style*="166534"]');
+        // Only rebuild rows — not the whole page
+        if(typeof renderAuditTab==='function') renderAuditTab(window._auditActiveTab||'pending');
+        // Update _auditPending/_auditDone for export/other use
+        window._auditPending = _pend;
+        window._auditDone = _done;
+      })();
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
@@ -5005,7 +5047,7 @@ function _silentRefreshPage(id){
     window._forceRefresh = true;
     showPage(id);
     requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-  }, 300);
+  }, 800);  // 800ms debounce — prevents rapid-fire rebuild during WS bursts
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -16808,13 +16850,13 @@ function renderAudit(c){
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🔍 Audit — Release Shipments</div>
-    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${teamRecords.length} txns · ${CU.name}</div></div>
+    <div class="ps">${rawTeam&&rawTeam!=='ALL'?rawTeam:'All Teams'} · ${(window._rlTrueCount||teamRecords.length).toLocaleString()} txns total · ${CU.name}</div></div>
     <button class="btn-add" style="background:var(--emerald)" onclick="exportAuditCSV()">📥 Export CSV</button>
   </div>
 
   <!-- Summary cards -->
   <div class="sg" style="margin-bottom:14px">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Txns</div><div class="sv">${teamRecords.length}</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl" id="auditTotalTxnsLbl">Total Txns</div><div class="sv" id="auditTotalTxnsCard">${(window._rlTrueCount||teamRecords.length).toLocaleString()}</div><div class="sf">all time</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audited</div><div class="sv">${done.length}</div><div class="sf">${pct}%</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Pending</div><div class="sv">${pending.length}</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Done Today</div><div class="sv">${todayDone}</div></div>
@@ -16856,7 +16898,7 @@ function renderAudit(c){
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:8px">
         <button class="stat-tab active" id="atab_pending" onclick="switchAuditTab('pending')" style="font-size:11px">⏳ Pending (${pending.length})</button>
         <button class="stat-tab" id="atab_done" onclick="switchAuditTab('done')" style="font-size:11px">✅ Audited (${done.length})</button>
-        <button class="stat-tab" id="atab_all" onclick="switchAuditTab('all')" style="font-size:11px">📋 All (${teamRecords.length})</button>
+        <button class="stat-tab" id="atab_all" onclick="switchAuditTab('all')" style="font-size:11px">📋 All (${(window._rlTrueCount||teamRecords.length).toLocaleString()})</button>
         ${pending.length?`<span style="background:#fee2e2;color:#991b1b;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:800">🔔 ${pending.length} awaiting</span>`:'<span style="background:#dcfce7;color:#166534;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700">✅ All done!</span>'}
       </div>
     </div>
@@ -16962,7 +17004,8 @@ function renderAuditTab(tab){
   const offset=(window._auditPageNum-1)*AUDIT_PAGE_SIZE;
   const pageData=data.slice(offset,offset+AUDIT_PAGE_SIZE);
   const auditMap=window._auditByTxn||new Map(DB.audit.map(a=>[String(a.txn),a]));
-  cont.innerHTML=`
+  // Build HTML first, compare hash to last render — skip DOM write if identical (eliminates flicker)
+  const _newHtml = `
   <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface2)">
     <span style="font-size:12px;color:var(--text3)">${data.length} records · page ${window._auditPageNum} of ${totalPages}</span>
     <div style="display:flex;gap:6px">
@@ -17015,6 +17058,12 @@ function renderAuditTab(tab){
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+  // Only write to DOM if content actually changed — prevents flicker on silent refresh
+  const _auditHash = _newHtml.length + '|' + _newHtml.slice(0,80) + _newHtml.slice(-80);
+  if(cont._lastAuditHash !== _auditHash){
+    cont.innerHTML = _newHtml;
+    cont._lastAuditHash = _auditHash;
+  }
 }
 
 function startAudit(rlIdxOrTxn){
