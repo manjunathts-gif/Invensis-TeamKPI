@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_line_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13307,9 +13307,15 @@ function kpiShowTab(id){
     const _ef = tab.ef || '_created';
 
     // Build date-bucketed counts using fast string slicing
+    // IMPORTANT: Use ONLY r[_ef] (the tab's canonical date field).
+    // r._created is a display-formatted string (DD-MM-YYYY HH:MM) — slicing
+    // it as YYYY-MM-DD produces garbage like "01-04-202". Never fall back to it here.
     const bucketMap = {};
     data.forEach(r=>{
-      const ymd = String(r._created || r[_ef] || '').slice(0,10);
+      const raw = String(r[_ef] || '');
+      // Detect DD-MM-YYYY display format and convert to YYYY-MM-DD for sorting
+      const ddmm = raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+      const ymd = ddmm ? `${ddmm[3]}-${ddmm[2]}-${ddmm[1]}` : raw.slice(0,10);
       if(!ymd || ymd.length < 10) return;
       let key = ymd;
       if(_trendPeriod === 'weekly'){
@@ -13373,6 +13379,9 @@ function kpiShowTab(id){
       const avgY = PAD + (1 - (avg-minV)/(maxV-minV||1)) * (H - PAD*2);
 
       const colorRgb = tab.color.startsWith('#') ? hexToRgb(tab.color) : '77,121,255';
+      // Unique gradient ID per tab+period prevents browsers from serving a stale
+      // cached <defs> gradient when innerHTML is replaced on toggle clicks.
+      const _gradId = `trendGrad_${tab.id}_${_trendPeriod}`;
 
       trendSection = `
       <div class="tw" style="margin-bottom:20px">
@@ -13392,9 +13401,9 @@ function kpiShowTab(id){
           </div>
         </div>
         <div style="padding:8px 12px 4px">
-          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="none">
+          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="xMidYMid meet">
             <defs>
-              <linearGradient id="trendGrad_${tab.id}" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="${_gradId}" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
                 <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.02"/>
               </linearGradient>
@@ -13411,7 +13420,7 @@ function kpiShowTab(id){
                   stroke="${tab.color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
             <text x="${W-PAD+3}" y="${avgY+3}" font-size="8" fill="${tab.color}" opacity="0.7">avg</text>
             <!-- Area fill -->
-            <path d="${areaPath}" fill="url(#trendGrad_${tab.id})"/>
+            <path d="${areaPath}" fill="url(#${_gradId})"/>
             <!-- Trend line -->
             <polyline points="${polyline}" fill="none" stroke="${tab.color}" stroke-width="2.5"
                       stroke-linejoin="round" stroke-linecap="round"/>
