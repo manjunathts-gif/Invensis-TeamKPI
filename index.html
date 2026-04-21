@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_2_CACHE_FIX_2026-04-21" data-build-id="audit-iae-v7.2-cachefix">
+<html lang="en" data-build-stamp="V7_3_AUDITFIX_2026-04-21" data-build-id="audit-iae-v7.3-auditfix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -11231,18 +11231,20 @@ function renderAuditStatusTab(c,active,visibleTasks){
   const displayDate=filterDate?new Date(filterDate):nowET();
   const _dYMD=displayDate.getFullYear()+'-'+String(displayDate.getMonth()+1).padStart(2,'0')+'-'+String(displayDate.getDate()).padStart(2,'0');
 
-  const auditedTxns=new Set(DB.audit.map(a=>a.txn));
+  const auditedTxns=new Set(DB.audit.map(a=>String(a.txn)));
   const allRelease=DB.release2;
-  const pending=allRelease.filter(r=>!auditedTxns.has(r.txn));
-  const done=allRelease.filter(r=>auditedTxns.has(r.txn));
+  // Count as audited if audit record exists OR release row has qualityScore (older records)
+  const _isAud=r=>auditedTxns.has(String(r.txn))||(r.qualityScore!=null&&String(r.qualityScore)!=='');
+  const pending=allRelease.filter(r=>!_isAud(r));
+  const done=allRelease.filter(r=>_isAud(r));
   const pct=allRelease.length?Math.round(done.length/allRelease.length*100):0;
 
   // Team × Pending/Done
   const teams=[...new Set(allRelease.map(r=>r.team||'—'))].sort();
   const teamRows=teams.map(tm=>{
     const tmAll=allRelease.filter(r=>(r.team||'—')===tm);
-    const tmDone=tmAll.filter(r=>auditedTxns.has(r.txn));
-    const tmPend=tmAll.filter(r=>!auditedTxns.has(r.txn));
+    const tmDone=tmAll.filter(r=>_isAud(r));
+    const tmPend=tmAll.filter(r=>!_isAud(r));
     const tmScores=tmDone.map(r=>parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0);
     const tmAvg=tmScores.length?(tmScores.reduce((s,v)=>s+v,0)/tmScores.length).toFixed(1):'—';
     const tPct=tmAll.length?Math.round(tmDone.length/tmAll.length*100):0;
@@ -16699,10 +16701,14 @@ function renderAudit(c){
     :(()=>{const f=_raw.filter(r=>normTeam(r.team||'')===myTeamNorm);return f.length?f:_raw;})();
 
   // ── Pre-compute O(1) lookups ──
-  const auditedSet = new Set(DB.audit.map(a=>a.txn));
+  const auditedSet = new Set(DB.audit.map(a=>String(a.txn)));
   const auditMap   = window._auditByTxn || new Map(DB.audit.map(a=>[String(a.txn),a]));
-  const pending    = teamRecords.filter(r=>!auditedSet.has(r.txn));
-  const done       = teamRecords.filter(r=>auditedSet.has(r.txn));
+  // A release record is "audited" if EITHER:
+  //   (a) there's a matching audit record in DB.audit (last 60-90 days), OR
+  //   (b) the release row itself has qualityScore set (older audited records outside audit window)
+  const isAudited  = r => auditedSet.has(String(r.txn)) || (r.qualityScore!=null && String(r.qualityScore)!=='');
+  const pending    = teamRecords.filter(r=>!isAudited(r));
+  const done       = teamRecords.filter(r=>isAudited(r));
   const todayStr   = new Date().toDateString();
   const teamTxnSet = new Set(teamRecords.map(r=>String(r.txn)));
   const todayYMD2  = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
@@ -16935,10 +16941,11 @@ function renderAuditTab(tab){
   const d2=document.getElementById('audit_fd2')?.value;
   const fMode=(document.getElementById('audit_fmode')?.value||'').toLowerCase();
   const fTeam=(document.getElementById('audit_fteam')?.value||'').toLowerCase();
-  const auditedTxns=new Set(DB.audit.map(a=>a.txn));
+  const auditedTxns=new Set(DB.audit.map(a=>String(a.txn)));
+  const _isTabAud=r=>auditedTxns.has(String(r.txn))||(r.qualityScore!=null&&String(r.qualityScore)!=='');
   const all=window._auditTeamRecords||[];
-  let data=tab==='pending'?all.filter(r=>!auditedTxns.has(r.txn)):
-           tab==='done'?all.filter(r=>auditedTxns.has(r.txn)):all;
+  let data=tab==='pending'?all.filter(r=>!_isTabAud(r)):
+           tab==='done'?all.filter(r=>_isTabAud(r)):all;
   if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
   if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
   if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
@@ -20316,8 +20323,9 @@ function _getMyUnackedIAE(){
 }
 
 function _showInternalAuditAlert(){
-  // Don't auto-fire for Team Lead / Supervisor / Manager / Admin — they view via release table badges
-  if(CU && (CU.role==='Team Lead' || CU.role==='Supervisor' || CU.role==='Manager' || isAdmin())) return;
+  // Only auto-fire for Team Members and Team Leads who have their OWN unacked errors
+  // Managers and Admins are auditors — they don't receive error popups
+  if(CU && (isAdmin() || CU.role==='Manager')) return;
   // Don't double-open
   const existing = document.getElementById('iaePopup');
   if(existing && existing.style.display === 'flex') return;
