@@ -3954,8 +3954,25 @@ const _origShowPage = null; // patched after DOM ready
 // ── Global audit lookup Map — rebuilt whenever DB.audit changes ──
 // Eliminates O(n²) window._auditByTxn.get(String(r.txn)) across all render functions
 window._auditByTxn = new Map();
+// ── Global IAE (Internal Audit Error) Map — txn → audit rec with errors ──
+// Cached globally so renderRLRows doesn't rebuild from scratch on every render
+window._iaeByTxn = new Map();
 function _rebuildAuditMap(){
   window._auditByTxn = new Map((DB.audit||[]).map(a=>[String(a.txn),a]));
+  // Rebuild IAE map in the same pass
+  const iaeMap = new Map();
+  (DB.audit||[]).forEach(a=>{
+    if(!a || a.txn==null) return;
+    const et = a.errorType || '';
+    const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
+    const isRealErr = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
+    const isLowSc   = sc!=null && sc<100;
+    if(!isRealErr && !isLowSc) return;
+    const k = String(a.txn);
+    const prev = iaeMap.get(k);
+    if(!prev || (prev.userAckAt && !a.userAckAt)) iaeMap.set(k, a);
+  });
+  window._iaeByTxn = iaeMap;
 }
 
 async function _fetchAllTrueCounts(){
@@ -4874,7 +4891,7 @@ function _silentRefreshPage(id){
       _pulseSet('rlTotalCard', (window._rlTrueCount||_all.length));
       // ── FIX: refresh ALL header stat cards live (Today / TAT / On Hold /
       //           Profile Code Yes + No / Audit Done-Pending-Today)
-      _pulseSet('rlTodayCard', _all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('rlTodayCard', _all.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('rlTatReachedCard', _all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
       _pulseSet('rlTatNotCard',     _all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       _pulseSet('rlHoldCard',       _all.filter(r=>r.status==='Hold').length);
@@ -4887,7 +4904,7 @@ function _silentRefreshPage(id){
         const _auditedInAll = DB.audit.filter(a=>_txnSet.has(String(a.txn)));
         const _aDone = _auditedInAll.length;
         const _aPend = _all.length - _aDone;
-        const _aToday = _auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===_todayET).length;
+        const _aToday = _auditedInAll.filter(a=>String(a._created||'').slice(0,10)===_todayET).length;
         const _pct = _all.length ? Math.round(_aDone/_all.length*100) : 0;
         _pulseSet(_rlAuditDone, _aDone);
         const _pctEl = document.getElementById('rlAuditPctCard'); if(_pctEl) _pctEl.textContent = _pct+'% audited';
@@ -4902,7 +4919,7 @@ function _silentRefreshPage(id){
       pgSetData('lvs',_d); renderLVSRows(pgSlice('lvs')); pgRender('lvs','pg_lvs','pgGoLVS');
       _pulseSet('lvsTotalCard', (window._trueCounts?.lvs||_d.length));
       // ── Header stat badges live update ──
-      _pulseSet('lvsTodayCard',       _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('lvsTodayCard',       _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('lvsTatReachedCard',  _d.filter(r=>r.tat==='TAT Reached').length);
       _pulseSet('lvsTatNotCard',      _d.filter(r=>r.tat==='TAT Not Reached').length);
       _pulseSet('lvsHoldCard',        _d.filter(r=>r.status==='Hold').length);
@@ -4915,7 +4932,7 @@ function _silentRefreshPage(id){
       pgSetData('cls',_d); renderCLSRows(pgSlice('cls')); pgRender('cls','pg_cls','pgGoCLS');
       _pulseSet('clsTotalCard', (window._trueCounts?.cls||_d.length));
       // ── Header stat badges live update ──
-      _pulseSet('clsTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('clsTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('clsCompletedCard',  _d.filter(r=>r.status==='Completed').length);
       _pulseSet('clsHoldCard',       _d.filter(r=>r.status==='Hold').length);
       _pulseSet('clsTatReachedCard', _d.filter(r=>r.tat==='TAT Reached').length);
@@ -4928,7 +4945,7 @@ function _silentRefreshPage(id){
       pgSetData('comp',_d); renderCOMPRows(pgSlice('comp')); pgRender('comp','pg_comp','pgGoCOMP');
       _pulseSet('compTotalCard', (window._trueCounts?.comp||_d.length));
       // ── Header stat badges live update ──
-      _pulseSet('compTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('compTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('compCompletedCard',  _d.filter(r=>r.status==='Completed').length);
       _pulseSet('compHoldCard',       _d.filter(r=>r.status==='Hold').length);
       _pulseSet('compPendingCard',    _d.filter(r=>r.status==='Pending').length);
@@ -4945,7 +4962,7 @@ function _silentRefreshPage(id){
       const _d=_scopeByUser(DB.parsDocs,'user');
       pgSetData('pd',_d); renderPDRows(pgSlice('pd')); pgRender('pd','pg_pd','pgGoPD');
       _pulseSet('pdTotalCard', (window._trueCounts?.pars_docs||_d.length));
-      _pulseSet('pdTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('pdTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('pdTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
       _pulseSet('pdTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
@@ -4955,7 +4972,7 @@ function _silentRefreshPage(id){
       const _d=_scopeByUser(DB.oceanDocs,'user');
       pgSetData('od',_d); renderODRows(pgSlice('od')); pgRender('od','pg_od','pgGoOD');
       _pulseSet('odTotalCard', (window._trueCounts?.ocean_docs||_d.length));
-      _pulseSet('odTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('odTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('odTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
       _pulseSet('odTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
@@ -4965,7 +4982,7 @@ function _silentRefreshPage(id){
       const _d=_scopeByUser(DB.partLot,'user');
       pgSetData('pl',_d); renderPLRows(pgSlice('pl')); pgRender('pl','pg_pl','pgGoPL');
       _pulseSet('plTotalCard', (window._trueCounts?.part_lot||_d.length));
-      _pulseSet('plTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('plTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('plTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
       _pulseSet('plTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
@@ -4975,7 +4992,7 @@ function _silentRefreshPage(id){
       const _d=_scopeByUser(DB.oceanTT,'user');
       pgSetData('ott',_d); renderOTTRows(pgSlice('ott')); pgRender('ott','pg_ott','pgGoOTT');
       _pulseSet('ottTotalCard', (window._trueCounts?.ocean_tt||_d.length));
-      _pulseSet('ottTodayCard',      _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('ottTodayCard',      _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('ottTatReachedCard', _d.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length);
       _pulseSet('ottTatNotCard',     _d.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length);
       _pulseSet('ottTorontoCard',    _d.filter(r=>r.destination==='Toronto').length);
@@ -4987,7 +5004,7 @@ function _silentRefreshPage(id){
       const _d=_scopeByUser(DB.b2entries,'user');
       pgSetData('b2',_d); renderB2Rows(pgSlice('b2')); pgRender('b2','pg_b2','pgGoB2');
       _pulseSet('b2TotalCard', (window._trueCounts?.b2_entries||_d.length));
-      _pulseSet('b2TodayCard',    _d.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===_todayET).length);
+      _pulseSet('b2TodayCard',    _d.filter(r=>String(r._created||'').slice(0,10)===_todayET).length);
       _pulseSet('b2ReadyCard',    _d.filter(r=>r.status==='Ready to Submit').length);
       _pulseSet('b2HoldCard',     _d.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length);
       _pulseSet('b2ProjectCard',  _d.filter(r=>r.tasktype==='Project').length);
@@ -5901,16 +5918,10 @@ function _todayLocal(){
 }
 
 function todayDateStringET(){
-  // Returns today's date as toDateString() equivalent but in ET timezone
-  // Used for dashboard "today" comparisons
-  const parts = new Intl.DateTimeFormat('en-CA',{
-    timeZone:'America/Toronto',
-    weekday:'short', year:'numeric', month:'short', day:'2-digit'
-  }).formatToParts(new Date());
-  const p = {};
-  parts.forEach(({type,value})=>{ p[type]=value; });
-  // Match toDateString format: "Wed Apr 01 2026"
-  return p.weekday+' '+p.month+' '+p.day+' '+p.year;
+  // Returns today's date as YYYY-MM-DD in Eastern Canada time (America/Toronto)
+  // Previously returned toDateString() format — now unified with todayStrET()
+  // All callers now use .slice(0,10) comparison so YYYY-MM-DD is correct
+  return todayStrET();
 }
 function calcDuration(startDate,endDate){
   if(!startDate||!endDate)return'00:00:00';
@@ -10511,7 +10522,7 @@ function renderLVS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayR=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayR=all.filter(r=>String(r._created||'').slice(0,10)===today);
   const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
   const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
@@ -10750,8 +10761,8 @@ function applyLVSFilter(){
   const s=document.getElementById('lf_fs')?.value;
   const q=(document.getElementById('lf_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.lvs,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>r.assignedTo===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(s) data=data.filter(r=>r.status===s);
@@ -11053,7 +11064,7 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -11161,8 +11172,8 @@ function applyCLSFilter(){
   const s=document.getElementById('cf_fs')?.value;
   const q=(document.getElementById('cf_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.cls,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>r.assignedTo===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(s) data=data.filter(r=>r.status===s);
@@ -11449,7 +11460,7 @@ function renderAuditStatusTab(c,active,visibleTasks){
 
 function renderStatus(c,activeTask){
   const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-  const today=todayDateStringET();  // ET today as toDateString() e.g. "Wed Mar 11 2026"
+  const today=todayDateStringET();  // ET today as YYYY-MM-DD e.g. "2026-04-01"
 
   // Helper: get ET wall-clock Date from a record — tries multiple timestamp fields
   function getRecET(r){
@@ -11725,26 +11736,31 @@ function heatClass(n){return n===0?'h0':n===1?'h1':n===2?'h2':n===3?'h3':'h4';}
 
 // ── Task × Hourly heatmap builder (used by dashboard + date filter) ──
 function buildTaskHeatRows(allDB, hours, dateStr){
-  const targetDate = new Date(dateStr).toDateString();
-  const getHour = r => {
-    const candidates = [r._submitRaw, r.submittedTime, r.submitted, r.created, r._created];
-    for(const t of candidates){
-      if(!t) continue;
-      const d = (t instanceof Date) ? t : parseAppDate(String(t));
-      if(d && !isNaN(d)) return d.getHours();
-    }
-    return -1;
-  };
+  // Normalise the target date to a YYYY-MM-DD string for fast slice comparison
+  // (avoids constructing a full Date object per record)
+  const targetYMD = dateStr.length === 10 ? dateStr
+    : (()=>{ const d=new Date(dateStr); return isNaN(d)?'':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+
   const rows = Object.entries(allDB).map(([key, t])=>{
-    // Single pass: filter today's records AND bucket by hour simultaneously
     const hourBucket = {};
     let total = 0;
     t.db.forEach(r=>{
-      const d = parseAppDate(r._created||r.created||'');
-      if(!d || isNaN(d) || d.toDateString()!==targetDate) return;
+      // Fast date check using string slice — no Date construction
+      const recYMD = String(r._created||r.created||'').slice(0,10);
+      if(recYMD !== targetYMD) return;
       total++;
-      const h = pad(getHour(r));
-      if(h!=='-1') hourBucket[h] = (hourBucket[h]||0)+1;
+      // Use cached hour if available; otherwise parse once and cache
+      if(r._cachedHour === undefined){
+        const candidates = [r._submitRaw, r.submittedTime, r.submitted, r.created, r._created];
+        let hr = -1;
+        for(const t of candidates){
+          if(!t) continue;
+          const d = (t instanceof Date) ? t : parseAppDate(String(t));
+          if(d && !isNaN(d)){ hr = d.getHours(); break; }
+        }
+        r._cachedHour = hr < 0 ? null : String(hr).padStart(2,'0');
+      }
+      if(r._cachedHour !== null) hourBucket[r._cachedHour] = (hourBucket[r._cachedHour]||0)+1;
     });
     const cells = hours.map(h=>{
       const cnt = hourBucket[h]||0;
@@ -11882,63 +11898,10 @@ function renderDashboard(c){
     }
   }));
 
-  // Mode stats for audit — single pass
-  const modes = ['Truck','Ocean','Air','Rail'];
-  const modeCfg = {
-    'Truck':{color:'#f97316',bg:'#fff7ed',border:'#fed7aa',text:'#92400e',icon:'🚛'},
-    'Ocean':{color:'#0891b2',bg:'#f0f9ff',border:'#bae6fd',text:'#075985',icon:'🌊'},
-    'Air':  {color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',icon:'✈️'},
-    'Rail': {color:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',icon:'🚂'},
-  };
-  // Build modeStats in single pass through release2
-  const modeStats = {};
-  modes.forEach(m=>{ modeStats[m]={total:0,done:0,scoreSum:0,scoreCount:0}; });
-  DB.release2.forEach(r=>{
-    const m = modes.find(x=>x.toLowerCase()===(r.mode||'').toLowerCase());
-    if(!m) return;
-    modeStats[m].total++;
-    if(auditedTxnSet.has(r.txn)){
-      modeStats[m].done++;
-      const sc=parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0;
-      if(sc>0){ modeStats[m].scoreSum+=sc; modeStats[m].scoreCount++; }
-    }
-  });
-  modes.forEach(m=>{
-    const s=modeStats[m];
-    s.pend=s.total-s.done;
-    s.avg=s.scoreCount?(s.scoreSum/s.scoreCount).toFixed(1):'—';
-    s.pct=s.total?Math.round(s.done/s.total*100):0;
-  });
-
-  // ── Auditor × Hourly data (for Team Lead dashboard & admin) ──
-  const dashAuditHours=['06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22'];
-  const dashAuditorsList=[...new Set(DB.audit.map(a=>a.auditor))].filter(Boolean).sort();
-  const dashTodayAuditRecs=DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD);
-  const dashAuditorRows=dashAuditorsList.map(aud=>{
-    const myTotal=DB.audit.filter(a=>a.auditor===aud).length;
-    const myToday=dashTodayAuditRecs.filter(a=>a.auditor===aud);
-    const cells=dashAuditHours.map(h=>{
-      const cnt=myToday.filter(a=>{
-        const dt=parseAppDate(a._created)||new Date(0);
-        return String(dt.getHours()).padStart(2,'0')===h;
-      }).length;
-      if(!cnt) return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;
-      const bg=cnt>=5?'#065f46':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
-      return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;
-    }).join('');
-    return`<tr>
-      <td style="font-weight:700;padding:7px 12px;white-space:nowrap;font-size:12px;border-left:3px solid #22c55e">${aud}${aud===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 5px">you</span>':''}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;padding:7px 8px">${myTotal}</td>
-      ${cells}
-    </tr>`;
-  }).join('');
-  const dashAuditorTotalRow=`<tr style="border-top:2px solid #16a34a">
-    <td style="font-weight:800;padding:7px 12px;color:#065f46;border-left:3px solid #059669;background:#f0fdf4;font-size:12px">✅ Done today</td>
-    <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${dashTodayAuditRecs.length}</td>
-    ${dashAuditHours.map(h=>{const cnt=dashTodayAuditRecs.filter(a=>{const dt=parseAppDate(a._created)||new Date(0);return String(dt.getHours()).padStart(2,'0')===h;}).length;if(!cnt)return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;const bg=cnt>=5?'#065f46':cnt>=3?'#059669':cnt>=2?'#16a34a':'#22c55e';return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;}).join('')}
-  </tr>`;
-
   // ── SMART RE-RENDER: if already on dashboard, update numbers only ──
+  // Check BEFORE the expensive auditor heatmap / modeStats computation so
+  // realtime-triggered refreshes (which hit this path 99% of the time) return
+  // fast after updating only the number elements.
   const _existingDash = c.querySelector('.dash-ed');
   if(_existingDash && !window._forceRefresh){
     // Helper: set number, flash +1 pulse if value increased, briefly update colour
@@ -12016,6 +11979,77 @@ function renderDashboard(c){
     });
     return;
   }
+
+  // ── FULL BUILD ONLY: expensive computations that are only needed for first render ──
+  // These are skipped entirely on realtime-triggered smart re-renders (the path above).
+
+  // Cache parsed hour on each audit record so repeated full renders don't re-parse
+  const dashAuditHours=['06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22'];
+  const dashTodayAuditRecs=DB.audit.filter(a=>String(a._created||'').slice(0,10)===todayYMD);
+  // Pre-parse hours once — avoids O(auditors × hours × records) parseAppDate calls
+  dashTodayAuditRecs.forEach(a=>{
+    if(a._cachedHour===undefined){
+      const dt = parseAppDate(a._created)||new Date(0);
+      a._cachedHour = String(dt.getHours()).padStart(2,'0');
+    }
+  });
+  const dashAuditorsList=[...new Set(DB.audit.map(a=>a.auditor))].filter(Boolean).sort();
+  // Build auditor totals map in one pass
+  const _audTotals={};
+  DB.audit.forEach(a=>{ if(a.auditor) _audTotals[a.auditor]=(_audTotals[a.auditor]||0)+1; });
+  const dashAuditorRows=dashAuditorsList.map(aud=>{
+    const myTotal=_audTotals[aud]||0;
+    const myToday=dashTodayAuditRecs.filter(a=>a.auditor===aud);
+    // Build hour bucket in single pass using cached hours
+    const hourBucket={};
+    myToday.forEach(a=>{ hourBucket[a._cachedHour]=(hourBucket[a._cachedHour]||0)+1; });
+    const cells=dashAuditHours.map(h=>{
+      const cnt=hourBucket[h]||0;
+      if(!cnt) return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;
+      const bg=cnt>=5?'#065f46':cnt>=3?'#15803d':cnt>=2?'#16a34a':'#22c55e';
+      return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;
+    }).join('');
+    return`<tr>
+      <td style="font-weight:700;padding:7px 12px;white-space:nowrap;font-size:12px;border-left:3px solid #22c55e">${aud}${aud===CU.name?' <span style="font-size:9px;background:#dbeafe;color:var(--primary);border-radius:8px;padding:1px 5px">you</span>':''}</td>
+      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#166534;padding:7px 8px">${myTotal}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  // Total row — reuse cached hour buckets
+  const _totalHourBucket={};
+  dashTodayAuditRecs.forEach(a=>{ _totalHourBucket[a._cachedHour]=(_totalHourBucket[a._cachedHour]||0)+1; });
+  const dashAuditorTotalRow=`<tr style="border-top:2px solid #16a34a">
+    <td style="font-weight:800;padding:7px 12px;color:#065f46;border-left:3px solid #059669;background:#f0fdf4;font-size:12px">✅ Done today</td>
+    <td style="text-align:center;font-family:var(--mono);font-weight:800;color:#065f46;background:#f0fdf4">${dashTodayAuditRecs.length}</td>
+    ${dashAuditHours.map(h=>{const cnt=_totalHourBucket[h]||0;if(!cnt)return`<td style="text-align:center;color:var(--text3);font-size:11px;padding:6px 3px">—</td>`;const bg=cnt>=5?'#065f46':cnt>=3?'#059669':cnt>=2?'#16a34a':'#22c55e';return`<td style="text-align:center;background:${bg};color:#fff;font-family:var(--mono);font-size:12px;font-weight:800;padding:5px 2px">${cnt}</td>`;}).join('')}
+  </tr>`;
+
+  // Mode stats for audit — single pass
+  const modes = ['Truck','Ocean','Air','Rail'];
+  const modeCfg = {
+    'Truck':{color:'#f97316',bg:'#fff7ed',border:'#fed7aa',text:'#92400e',icon:'🚛'},
+    'Ocean':{color:'#0891b2',bg:'#f0f9ff',border:'#bae6fd',text:'#075985',icon:'🌊'},
+    'Air':  {color:'#7c3aed',bg:'#f5f3ff',border:'#ddd6fe',text:'#5b21b6',icon:'✈️'},
+    'Rail': {color:'#16a34a',bg:'#f0fdf4',border:'#bbf7d0',text:'#166534',icon:'🚂'},
+  };
+  const modeStats = {};
+  modes.forEach(m=>{ modeStats[m]={total:0,done:0,scoreSum:0,scoreCount:0}; });
+  DB.release2.forEach(r=>{
+    const m = modes.find(x=>x.toLowerCase()===(r.mode||'').toLowerCase());
+    if(!m) return;
+    modeStats[m].total++;
+    if(auditedTxnSet.has(r.txn)){
+      modeStats[m].done++;
+      const sc=parseFloat(window._auditByTxn.get(String(r.txn))?.score)||0;
+      if(sc>0){ modeStats[m].scoreSum+=sc; modeStats[m].scoreCount++; }
+    }
+  });
+  modes.forEach(m=>{
+    const s=modeStats[m];
+    s.pend=s.total-s.done;
+    s.avg=s.scoreCount?(s.scoreSum/s.scoreCount).toFixed(1):'—';
+    s.pct=s.total?Math.round(s.done/s.total*100):0;
+  });
 
   // ── FULL BUILD HTML (first render only) ──
   c.innerHTML = `
@@ -12842,7 +12876,6 @@ function renderClientDashboard(c){
   const clientNo = String(CU?.team||'');
   const clientName = CU?.name||CU?.username||'Client';
   const today = todayDateStringET();
-  const todayStr = new Date().toDateString();
 
   // Filter each DB array by client number
   const tasks = [
@@ -12861,7 +12894,7 @@ function renderClientDashboard(c){
     const myRecs = clientNo
       ? t.db.filter(r=>String(r[t.client_field]||r.client||r.clientNo||'')===clientNo)
       : t.db;
-    const todayCnt = myRecs.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+    const todayCnt = myRecs.filter(r=>String(r._created||'').slice(0,10)===today).length;
     const tatR = myRecs.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
     const tatN = myRecs.filter(r=>(r.tat||'').toLowerCase().includes('not reached')).length;
     const tatPct = (tatR+tatN) ? Math.round(tatR/(tatR+tatN)*100) : 0;
@@ -13545,8 +13578,8 @@ function applyReportFilter(){
   // Filter LVS report rows
   const lvsUsers=DB.users.filter(u=>u.task==='LVS');
   let filteredLVS=DB.lvs;
-  if(d1) filteredLVS=filteredLVS.filter(r=>parseAppDate(r._created)>=new Date(d1));
-  if(d2) filteredLVS=filteredLVS.filter(r=>parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
+  if(d1) filteredLVS=filteredLVS.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) filteredLVS=filteredLVS.filter(r=>String(r._created||'').slice(0,10)<=d2);
   const tbody=document.getElementById('lvsRepBody');
   if(tbody) tbody.innerHTML=lvsUsers.map(u=>{
     const total=filteredLVS.filter(r=>r.assignedTo===u.name).length;
@@ -17547,7 +17580,7 @@ function renderCOMP(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const todayC=all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today);
+  const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
   <div class="ph">
@@ -17691,8 +17724,8 @@ function applyCOMPFilter(){
   const s=document.getElementById('cpf2_fs')?.value;
   const q=(document.getElementById('cpf2_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.comp,'assignedTo');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>r.assignedTo===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(rt) data=data.filter(r=>r.reqType===rt);
@@ -17924,7 +17957,7 @@ function renderPARSDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="pdTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="pdTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18003,8 +18036,8 @@ function applyPDFilter(){
   const mo=document.getElementById('pd_fmode')?.value;
   const q=(document.getElementById('pd_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.parsDocs,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(mo) data=data.filter(r=>(r.mode||'')===mo);
@@ -18396,7 +18429,7 @@ function renderOceanDocs(c){
   </div>
   <div class="sg">
     <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="odTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="odTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18472,8 +18505,8 @@ function applyODFilter(){
   const mo=document.getElementById('od_fmode')?.value;
   const q=(document.getElementById('od_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.oceanDocs,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(mo) data=data.filter(r=>(r.mode||'')===mo);
@@ -18684,7 +18717,7 @@ function renderPartLot(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="plTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="plTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
@@ -18744,8 +18777,8 @@ function applyPLFilter(){
   const u=document.getElementById('pl_fu')?.value;
   const q=(document.getElementById('pl_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.partLot,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(q) data=data.filter(r=>String(r.subject||'').toLowerCase().includes(q)||String(r.txn||'').toLowerCase().includes(q)||String(r.parsno||'').toLowerCase().includes(q)||String(r.user||'').toLowerCase().includes(q));
   pgSetData('pl', data);
@@ -19006,7 +19039,7 @@ function renderRelease2(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{
@@ -19090,24 +19123,9 @@ function renderRLRows(data){
   const showAuditBtn=(CU&&CU.role==='Team Lead'&&CU.task==='Release')||isAdmin()||(CU&&CU.role==='Supervisor');
   const showTLEdit=(CU&&CU.role==='Team Lead'&&CU.task==='Release');
   const _auditMap = window._auditByTxn || new Map();
-  // ── v7: IAE now lives in the audit table itself ──
-  // Build a Map of txn → audit rec WHERE it qualifies as an error
-  // (score < 100 OR errorType != 'Good Job'). O(audit) once; O(1) per row.
-  const _iaeMap = new Map();
-  const _audArr = DB.audit || [];
-  for(let _i=0;_i<_audArr.length;_i++){
-    const _a = _audArr[_i];
-    if(!_a || _a.txn==null) continue;
-    const _et = _a.errorType || '';
-    const _sc = (_a.score!=null && !isNaN(parseFloat(_a.score))) ? parseFloat(_a.score) : null;
-    const _isRealErr = _et && _et!=='Good Job' && _et!=='None' && _et!=='—' && _et!=='';
-    const _isLowSc   = _sc!=null && _sc<100;
-    if(!_isRealErr && !_isLowSc) continue;
-    const _k = String(_a.txn);
-    // Prefer unacknowledged record if multiple audits exist for same txn
-    const _prev = _iaeMap.get(_k);
-    if(!_prev || (_prev.userAckAt && !_a.userAckAt)) _iaeMap.set(_k, _a);
-  }
+  // Use globally cached IAE map — rebuilt by _rebuildAuditMap on every audit change
+  // Avoids re-iterating all of DB.audit (potentially thousands of rows) on every render
+  const _iaeMap = window._iaeByTxn || new Map();
   const _canEdit = canEditData();
   const _isAdm = isAdmin();
   const _isTLRel = CU&&CU.role==='Team Lead'&&CU.task==='Release'&&_canEdit;
@@ -19227,8 +19245,8 @@ function applyRLFilter(){
   const s=document.getElementById('rl_fstatus')?.value;
   const q=(document.getElementById('rl_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.release2,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(mo) data=data.filter(r=>(r.mode||'')===mo);
@@ -19268,7 +19286,7 @@ function renderTATIssue(c){
   </div>
   <div class="sg">
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${all.length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
   </div>
   <div class="fb">
@@ -19349,8 +19367,8 @@ function applyTIFilter(){
     const tv=(r.tat||'').toLowerCase();
     return tv.includes('not reached')||tv.includes('not-reached');
   });
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(mo) data=data.filter(r=>(r.mode||'')===mo);
@@ -19414,8 +19432,8 @@ function renderDCIssue(c){
     return currentNorm&&currentNorm!==correct;
   }).length;
   const totalIssues = all.length;
-  const todayStr = new Date().toDateString();
-  const todayCount = all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===todayStr).length;
+  const todayStr = todayStrET();
+  const todayCount = all.filter(r=>String(r._created||'').slice(0,10)===todayStr).length;
   const withDelay = all.filter(r=>r._delayMins!==null);
   const avgDelay = withDelay.length ? Math.round(withDelay.reduce((s,r)=>s+r._delayMins,0)/withDelay.length) : 0;
   const over2h = all.filter(r=>r._delayMins!==null&&r._delayMins>120).length;
@@ -19668,8 +19686,8 @@ function applyDCFilter(){
     return tv.includes('not');
   }).map(r=>({...r,_delayMins:_calcDelay(r)}));
 
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(q) data=data.filter(r=>
@@ -23274,7 +23292,7 @@ function renderOceanTT(c){
   </div>
   <div class="sg">
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">🔍</div><div class="sl">Total Records</div><div class="sv" id="ottTotalCard">${window._trueCounts&&window._trueCounts['ocean_tt']?window._trueCounts['ocean_tt'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="ottTodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="ottTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="ottTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="ottTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`})()}
     <div class="sc c-am"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Toronto</div><div class="sv" id="ottTorontoCard">${all.filter(r=>r.destination==='Toronto').length}</div></div>
     <div class="sc c-ro"><div class="sc-top"></div><div class="si">🏙️</div><div class="sl">Montreal</div><div class="sv" id="ottMontrealCard">${all.filter(r=>r.destination==='Montreal').length}</div></div>
@@ -23367,8 +23385,8 @@ function applyOTTFilter(){
   const dest=document.getElementById('ott_fdest')?.value;
   const q=(document.getElementById('ott_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.oceanTT,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(tm) data=data.filter(r=>(r.team||'')===tm);
   if(s) data=data.filter(r=>r.status===s);
@@ -23514,7 +23532,7 @@ function renderB2Entries(c){
   </div>
   <div class="sg">
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📝</div><div class="sl">Total Records</div><div class="sv" id="b2TotalCard">${window._trueCounts&&window._trueCounts['b2_entries']?window._trueCounts['b2_entries'].toLocaleString():all.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="b2TodayCard">${all.filter(r=>(parseAppDate(r._created)||new Date(0)).toDateString()===today).length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="b2TodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
     ${(()=>{const ready=all.filter(r=>r.status==='Ready to Submit').length;const hold=all.filter(r=>r.status==='Hold'||r.status==='Waiting for Info').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">📊 Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="b2ReadyCard">${ready}</div><div class="sc-tat-lbl">✅ Ready</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="b2HoldCard">${hold}</div><div class="sc-tat-lbl">⏳ Hold/Wait</div></div></div></div>`})()}
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">📁</div><div class="sl">Project</div><div class="sv" id="b2ProjectCard">${all.filter(r=>r.tasktype==='Project').length}</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Individual</div><div class="sv" id="b2IndivCard">${all.filter(r=>r.tasktype==='Individual').length}</div></div>
@@ -23623,8 +23641,8 @@ function applyB2Filter(){
   const tt=document.getElementById('b2_ftask')?.value;
   const q=(document.getElementById('b2_search')?.value||'').toLowerCase().trim();
   let data=_scopeByUser(DB.b2entries,'user');
-  if(d1) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))>=new Date(d1));
-  if(d2) data=data.filter(r=>(parseAppDate(r._created)||new Date(0))<=new Date(d2+'T23:59:59'));
+  if(d1) data=data.filter(r=>String(r._created||'').slice(0,10)>=d1);
+  if(d2) data=data.filter(r=>String(r._created||'').slice(0,10)<=d2);
   if(u) data=data.filter(r=>(r.user||'')===u);
   if(s) data=data.filter(r=>r.status===s);
   if(src) data=data.filter(r=>r.source===src);
