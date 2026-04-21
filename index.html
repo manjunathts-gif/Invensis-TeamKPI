@@ -10448,11 +10448,10 @@ function showPage(id){
   // Show skeleton immediately so the click feels instant
   _showPageSkeleton(c, id);
 
-  // ── DEFERRED HEAVY RENDER: runs after browser paints the skeleton ──
-  // This frees the click handler immediately, eliminating the 3–6 second
-  // 'click handler took Nms' violations.
-  requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
+  // ── DEFERRED HEAVY RENDER: setTimeout(0) yields to browser paint first,
+  //    then renders on next event-loop tick. Avoids rAF handler violations
+  //    when the render itself is heavy (4425ms rAF = render blocking the frame).
+  setTimeout(()=>{
       // Track render time for performance monitor
       _perfTrackRender(id);
       const _perfDone = () => _perfTrackRenderEnd(id);
@@ -10515,8 +10514,7 @@ function showPage(id){
       setTimeout(injectErrAlertBanner, 80);
       // Check for pending internal audit errors (respects open-form rule)
       setTimeout(()=>{ try{ if(typeof _checkPendingIAE==='function') _checkPendingIAE(); }catch(e){} }, 120);
-    });
-  });
+  }, 0);
 }
 
 // ── Sync-refresh: re-renders active page + dashboard + status after any local DB change ──
@@ -12978,7 +12976,7 @@ function renderKPIDashboard(c){
   <div class="ph">
     <div>
       <div class="pt">📊 KPI Dashboard <span class="pbadge">Live</span></div>
-      <div class="ps">Team × Hour · Client × Hour · Top Clients · Mode breakdown per task</div>
+      <div class="ps">Team × Hour · Trend Line (Daily/Weekly/Monthly) · Top Clients · Mode breakdown per task</div>
     </div>
   </div>
 
@@ -13067,14 +13065,14 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data
+  // Filter data — fast string-slice date comparison, no parseAppDate
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      const d=parseAppDate(r._created||r[tab.ef]||'');
-      if(!d) return true;
-      if(_kpiD1&&d<new Date(_kpiD1)) return false;
-      if(_kpiD2&&d>new Date(_kpiD2+'T23:59:59')) return false;
+      const ymd = String(r._created||r[tab.ef]||'').slice(0,10);
+      if(!ymd) return true;
+      if(_kpiD1 && ymd < _kpiD1) return false;
+      if(_kpiD2 && ymd > _kpiD2) return false;
       return true;
     });
   }
@@ -13251,8 +13249,12 @@ function kpiShowTab(id){
     const teamMap2={};
     data.forEach(r=>{
       const t=r[tab.teamF]||'—';
-      const d=parseAppDate(r._created||r[tab.ef]||'');
-      const hr=d?d.getHours():null;
+      // Use cached hour if available; else parse once and cache
+      if(r._cachedHour===undefined){
+        const d=parseAppDate(r._created||r[tab.ef]||'');
+        r._cachedHour = d ? String(d.getHours()).padStart(2,'0') : null;
+      }
+      const hr = r._cachedHour !== null ? parseInt(r._cachedHour,10) : null;
       if(hr===null) return;
       if(!teamMap2[t]) teamMap2[t]=Array(24).fill(0);
       teamMap2[t][hr]++;
@@ -13297,62 +13299,135 @@ function kpiShowTab(id){
     </div>`;
   }
 
-  // ── Client × Hour cross-table ──
-  let clientHourSection='';
-  if(tab.hasClient && tab.clientF){
-    const hrLabels2=['12AM','1AM','2AM','3AM','4AM','5AM','6AM','7AM','8AM','9AM','10AM','11AM','12PM','1PM','2PM','3PM','4PM','5PM','6PM','7PM','8PM','9PM','10PM','11PM'];
-    const clientHrMap={};
+  // ── Trend Line: Daily / Weekly / Monthly count (replaces Client × Hour heatmap) ──
+  // Uses pre-computed data from string-slice dates — no parseAppDate calls
+  let trendSection='';
+  if(!isClient()){
+    const _trendPeriod = window['_kpiTrend_'+tab.id] || 'daily';
+    const _ef = tab.ef || '_created';
+
+    // Build date-bucketed counts using fast string slicing
+    const bucketMap = {};
     data.forEach(r=>{
-      const cl=r[tab.clientF]||'—';
-      const d=parseAppDate(r._created||r[tab.ef]||'');
-      const hr=d?d.getHours():null;
-      if(hr===null) return;
-      if(!clientHrMap[cl]) clientHrMap[cl]=Array(24).fill(0);
-      clientHrMap[cl][hr]++;
+      const ymd = String(r._created || r[_ef] || '').slice(0,10);
+      if(!ymd || ymd.length < 10) return;
+      let key = ymd;
+      if(_trendPeriod === 'weekly'){
+        // ISO week: get Monday of that week
+        const d = new Date(ymd); const day = d.getDay()||7;
+        d.setDate(d.getDate()-day+1);
+        key = d.toISOString().slice(0,10);
+      } else if(_trendPeriod === 'monthly'){
+        key = ymd.slice(0,7); // YYYY-MM
+      }
+      bucketMap[key] = (bucketMap[key]||0)+1;
     });
-    const allClients=Object.keys(clientHrMap).sort((a,b)=>{
-      const sa=clientHrMap[a].reduce((x,y)=>x+y,0);
-      const sb=clientHrMap[b].reduce((x,y)=>x+y,0);
-      return sb-sa;
-    });
-    // Show top 20 clients only
-    const topClients=allClients.slice(0,20);
-    const thC=hrLabels2.map(l=>`<th style="text-align:center;font-size:10px;min-width:36px;padding:4px 2px">${l}</th>`).join('');
-    const cRows=topClients.map(cl=>{
-      const row=clientHrMap[cl];
-      const rowTotal=row.reduce((a,b)=>a+b,0);
-      const maxV=Math.max(...row,1);
-      const cells=row.map(v=>{
-        const bg=v===0?'transparent':`rgba(${tab.color.startsWith('#')?hexToRgb(tab.color):'77,121,255'},${Math.max(0.08,v/maxV)})`;
-        return`<td style="text-align:center;font-size:11px;font-weight:${v?700:400};color:${v?'var(--text)':'var(--text3)'};background:${bg};padding:3px 2px">${v||''}</td>`;
-      }).join('');
-      return`<tr><td style="font-size:12px;font-weight:600;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;padding:5px 10px" title="${cl}">${cl}</td>${cells}<td style="text-align:center;font-weight:800;font-size:12px;color:${tab.color};padding:5px 8px">${rowTotal}</td></tr>`;
-    });
-    const colTotals2=Array(24).fill(0);
-    topClients.forEach(cl=>clientHrMap[cl].forEach((v,i)=>colTotals2[i]+=v));
-    const totalCells2=colTotals2.map(v=>`<td style="text-align:center;font-size:11px;font-weight:800;color:${tab.color};padding:4px 2px">${v||''}</td>`).join('');
-    if(!isClient()) clientHourSection=`
-    <div class="tw" style="margin-bottom:20px">
-      <div class="th2">
-        <div class="tt">🏢 Client × Hour</div>
-        <div class="tc">${topClients.length}${allClients.length>20?' of '+allClients.length:''} clients · ${total} records</div>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="dt" style="font-size:11px">
-          <thead><tr>
-            <th style="min-width:140px">Client</th>${thC}
-            <th style="text-align:center;min-width:50px">Total</th>
-          </tr></thead>
-          <tbody>
-            ${cRows.join('')}
-            <tr style="background:var(--surface2);border-top:2px solid var(--border)">
-              <td style="font-weight:800;padding:5px 10px">TOTAL</td>${totalCells2}
-              <td style="text-align:center;font-weight:800;font-size:12px;color:${tab.color}">${total}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>`;
+
+    const bucketEntries = Object.entries(bucketMap).sort((a,b)=>a[0]<b[0]?-1:1);
+    // Show last N buckets based on period
+    const maxBuckets = _trendPeriod==='monthly'?12:_trendPeriod==='weekly'?16:30;
+    const entries = bucketEntries.slice(-maxBuckets);
+
+    if(entries.length >= 2){
+      const vals = entries.map(e=>e[1]);
+      const maxV = Math.max(...vals,1);
+      const minV = Math.min(...vals);
+      const W = 600, H = 120, PAD = 24;
+      const xStep = (W - PAD*2) / (entries.length - 1);
+
+      // Build SVG points
+      const points = entries.map((e,i)=>{
+        const x = PAD + i * xStep;
+        const y = PAD + (1 - (e[1]-minV)/(maxV-minV||1)) * (H - PAD*2);
+        return {x, y, val:e[1], label:e[0]};
+      });
+
+      const polyline = points.map(p=>`${p.x},${p.y}`).join(' ');
+      // Area fill path
+      const areaPath = `M${points[0].x},${H-PAD} `
+        + points.map(p=>`L${p.x},${p.y}`).join(' ')
+        + ` L${points[points.length-1].x},${H-PAD} Z`;
+
+      // X-axis labels — show only every Nth to avoid overlap
+      const labelStep = Math.max(1, Math.ceil(entries.length/8));
+      const xLabels = points
+        .filter((_,i)=>i%labelStep===0||i===entries.length-1)
+        .map(p=>{
+          let lbl = p.label;
+          if(_trendPeriod==='daily') lbl = p.label.slice(5); // MM-DD
+          else if(_trendPeriod==='weekly') lbl = 'W'+p.label.slice(5);
+          else lbl = p.label; // YYYY-MM
+          return `<text x="${p.x}" y="${H}" text-anchor="middle" font-size="9" fill="var(--text3)">${lbl}</text>`;
+        }).join('');
+
+      // Dots for last point and max point
+      const maxIdx = vals.indexOf(maxV);
+      const dotPoints = [points[points.length-1], points[maxIdx]].filter((p,i,a)=>a.indexOf(p)===i);
+      const dots = dotPoints.map(p=>`
+        <circle cx="${p.x}" cy="${p.y}" r="4" fill="${tab.color}" stroke="#fff" stroke-width="2"/>
+        <text x="${p.x}" y="${p.y-8}" text-anchor="middle" font-size="9" font-weight="800" fill="${tab.color}">${p.val}</text>
+      `).join('');
+
+      // Average line
+      const avg = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+      const avgY = PAD + (1 - (avg-minV)/(maxV-minV||1)) * (H - PAD*2);
+
+      const colorRgb = tab.color.startsWith('#') ? hexToRgb(tab.color) : '77,121,255';
+
+      trendSection = `
+      <div class="tw" style="margin-bottom:20px">
+        <div class="th2" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <div class="tt">📈 ${tab.label.replace(/^[^\s]+\s/,'')} Count Trend</div>
+            <div class="tc">${entries.length} ${_trendPeriod==='daily'?'days':_trendPeriod==='weekly'?'weeks':'months'} · avg ${avg}/period</div>
+          </div>
+          <div style="display:flex;gap:4px">
+            ${['daily','weekly','monthly'].map(p=>`
+              <button onclick="window['_kpiTrend_${tab.id}']='${p}';kpiShowTab('${tab.id}')"
+                style="padding:4px 10px;border-radius:6px;border:1.5px solid ${p===_trendPeriod?tab.color:tab.color+'44'};
+                       background:${p===_trendPeriod?tab.color:'transparent'};color:${p===_trendPeriod?'#fff':tab.color};
+                       font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)">
+                ${p.charAt(0).toUpperCase()+p.slice(1)}
+              </button>`).join('')}
+          </div>
+        </div>
+        <div style="padding:8px 12px 4px">
+          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="trendGrad_${tab.id}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.02"/>
+              </linearGradient>
+            </defs>
+            <!-- Grid lines -->
+            ${[0,0.25,0.5,0.75,1].map(f=>{
+              const gy = PAD + f*(H-PAD*2);
+              const gv = Math.round(maxV - f*(maxV-minV));
+              return `<line x1="${PAD}" y1="${gy}" x2="${W-PAD}" y2="${gy}" stroke="var(--border)" stroke-width="0.5"/>
+                      <text x="${PAD-3}" y="${gy+3}" text-anchor="end" font-size="8" fill="var(--text3)">${gv}</text>`;
+            }).join('')}
+            <!-- Avg line -->
+            <line x1="${PAD}" y1="${avgY}" x2="${W-PAD}" y2="${avgY}"
+                  stroke="${tab.color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+            <text x="${W-PAD+3}" y="${avgY+3}" font-size="8" fill="${tab.color}" opacity="0.7">avg</text>
+            <!-- Area fill -->
+            <path d="${areaPath}" fill="url(#trendGrad_${tab.id})"/>
+            <!-- Trend line -->
+            <polyline points="${polyline}" fill="none" stroke="${tab.color}" stroke-width="2.5"
+                      stroke-linejoin="round" stroke-linecap="round"/>
+            <!-- Dots + labels -->
+            ${dots}
+            <!-- X labels -->
+            ${xLabels}
+          </svg>
+        </div>
+      </div>`;
+    } else {
+      trendSection = `
+      <div class="tw" style="margin-bottom:20px;padding:20px;text-align:center;color:var(--text3);font-size:12px">
+        📈 Not enough data for trend — apply a wider date range
+      </div>`;
+    }
   }
 
   // ── Mail Received vs ETA window chart (PARS Docs + Ocean Docs) ──
@@ -13429,7 +13504,7 @@ function kpiShowTab(id){
     ${teamSection}
     ${clientSection}
     ${teamHourSection}
-    ${clientHourSection}
+    ${trendSection}
   `;
 }
 
