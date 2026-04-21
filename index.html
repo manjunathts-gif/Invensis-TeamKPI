@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v7.1-count-audittab">
+<html lang="en" data-build-stamp="V7_1_AUDIT_TABLE_2026-04-19" data-build-id="audit-iae-v8.1-count-audittab">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13601,7 +13601,8 @@ function exportAllTasksXLSX(){
         const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
         const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
         const analytics=sepIdx>=0?combined.slice(sepIdx+4):(combined.startsWith('[Truck TAT Analytics]')?combined:'');
-        return[r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',r.docrcvd||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',userCmt,analytics,(r._created||'').slice(0,10),ar?.auditor||'',ar?.errorType||'',ar?.score||'',ar?.doubleSign||'',ar?.comments||'',ar?.startTime||'',ar?.endTime||'',ar?.duration||''];
+        const _xlsxClientExport=isClient();
+        return[r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',r.docrcvd||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',userCmt,analytics,(r._created||'').slice(0,10),_xlsxClientExport?'':ar?.auditor||'',_xlsxClientExport?'':ar?.errorType||'',_xlsxClientExport?'':ar?.score||'',_xlsxClientExport?'':ar?.doubleSign||'',_xlsxClientExport?'':ar?.comments||'',_xlsxClientExport?'':ar?.startTime||'',_xlsxClientExport?'':ar?.endTime||'',_xlsxClientExport?'':ar?.duration||''];
       })
     ), 'Release');
 
@@ -13676,6 +13677,20 @@ function exportCSV(rows,headers,filename,summaryInfo){
       const keep = (_,i)=>!removeIdx.includes(i);
       headers = headers.filter(keep);
       rows    = rows.map(row=>Array.isArray(row)?row.filter(keep):row);
+    }
+    // Blank out audit columns for Client role (keep columns, clear values)
+    const auditBlankCols=['Audit By','Error Type','Quality Score %','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
+    const auditBlankIdx = headers.reduce((acc,h,i)=>{
+      if(auditBlankCols.includes(h)) acc.push(i);
+      return acc;
+    },[]);
+    if(auditBlankIdx.length){
+      rows = rows.map(row=>{
+        if(!Array.isArray(row)) return row;
+        const r=[...row];
+        auditBlankIdx.forEach(i=>{ r[i]=''; });
+        return r;
+      });
     }
   }
   // ── FIX: prepend a summary block so the exported CSV shows the total count
@@ -22956,10 +22971,11 @@ async function exportRelease2(){
       r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',
       r.docrcvd||'',r.profileCode||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',
       userCmt||'',analyticsCmt||'',(r._created||'').slice(0,10),
-      ar?.auditor||'',ar?.errorType||'',ar?.score||'',ar?.doubleSign||'',
-      ar?.comments||'',ar?.startTime||'',ar?.endTime||'',ar?.duration||''
+      _isClientExport?'':ar?.auditor||'',_isClientExport?'':ar?.errorType||'',_isClientExport?'':ar?.score||'',_isClientExport?'':ar?.doubleSign||'',
+      _isClientExport?'':ar?.comments||'',_isClientExport?'':ar?.startTime||'',_isClientExport?'':ar?.endTime||'',_isClientExport?'':ar?.duration||''
     ];
   });
+  const _isClientExport = isClient();
   const _rlTR = _data.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;
   const _rlTN = _data.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
   const _rlPcY = _data.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
