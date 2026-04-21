@@ -4847,8 +4847,8 @@ function _silentRefreshPage(id){
         el.textContent = display;
         const _new = parseFloat(String(display).replace(/[^0-9.\-]/g,''))||0;
         if(_new > _old){
-          el.classList.remove('kpi-pulse'); void el.offsetWidth; el.classList.add('kpi-pulse');
-          setTimeout(()=>el.classList.remove('kpi-pulse'),900);
+          el.classList.remove('kpi-pulse');
+          requestAnimationFrame(()=>{ el.classList.add('kpi-pulse'); setTimeout(()=>el.classList.remove('kpi-pulse'),900); });
         }
       }
     };
@@ -5047,7 +5047,7 @@ function _silentRefreshPage(id){
     window._forceRefresh = true;
     showPage(id);
     requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-  }, 800);  // 800ms debounce — prevents rapid-fire rebuild during WS bursts
+  }, 120);  // 120ms debounce — collapses rapid WS bursts without adding visible lag
 }
 
 function dbInsertOptimistic(localRow, supaTable, supaRow, mapFn, dbArray, afterShow){
@@ -5971,14 +5971,16 @@ function showToast(msg,err=false){
   else if(msg.startsWith('🔄')||msg.startsWith('📥')||msg.startsWith('ℹ️')) cls+=' tinfo';
   t.className=cls;
   t.innerHTML=msg;
-  void t.offsetWidth; // force reflow so animation replays
-  t.className=cls+' show';
-  // After 3.2s: add 'out' animation class to slide out
-  t._ht=setTimeout(()=>{
-    t.className=cls+' out';
-    // After animation completes (250ms): fully hide — remove all classes
-    t._ht2=setTimeout(()=>{ t.className='toast'; t.innerHTML=''; },260);
-  },3200);
+  // Use rAF to restart animation without forcing a synchronous reflow
+  requestAnimationFrame(()=>{
+    t.className=cls+' show';
+    // After 3.2s: add 'out' animation class to slide out
+    t._ht=setTimeout(()=>{
+      t.className=cls+' out';
+      // After animation completes (250ms): fully hide — remove all classes
+      t._ht2=setTimeout(()=>{ t.className='toast'; t.innerHTML=''; },260);
+    },3200);
+  });
 }
 
 // ══════════════════════════════════════════════════════════
@@ -10318,6 +10320,37 @@ function restoreSidebarState(){
   } catch(e){}
 }
 
+// ── Cached nav buttons — avoid querySelectorAll('.nb') on every tab click ──
+let _cachedNavBtns = null;
+function _getNavBtns(){
+  if(!_cachedNavBtns || !document.body.contains(_cachedNavBtns[0])){
+    _cachedNavBtns = Array.from(document.querySelectorAll('.nb'));
+  }
+  return _cachedNavBtns;
+}
+
+// ── Loading skeleton shown instantly on tab click ──
+function _showPageSkeleton(c, id){
+  const pageTitles={lvs:'LVS — Release',classifier:'Classifier',compliance:'Compliance',
+    parsdocs:'PARS Docs Clerk',oceandocs:'Ocean Docs Clerk',partlot:'Part Lot',
+    release2:'Release',dashboard:'Dashboard',reports:'Reports',
+    status:'Team Status',users:'Users',clients:'Clients',
+    oceantt:'Ocean T&T',b2entries:'B2 Entries',audit:'Audit',
+    mystatus:'My Status',errorreport:'Error Report',perfmon:'Performance Monitor',loginusers:'Login Users',gdrive:'Google Drive',
+    tatanalyzer:'📊 TAT Analyzer',tatreasons:'TAT Reasons',instructions:'📋 Instruction Followup',idlelog:'⏸️ Idle Log',tatissue:'🚨 TAT Issue'};
+  const label = pageTitles[id]||'Loading';
+  c.innerHTML=`<div style="padding:32px 24px">
+    <div style="height:28px;width:180px;border-radius:8px;background:var(--border);margin-bottom:20px;animation:skPulse 1.2s ease-in-out infinite"></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
+      ${[1,2,3,4].map(()=>`<div style="height:90px;flex:1;min-width:140px;border-radius:12px;background:var(--border);animation:skPulse 1.2s ease-in-out infinite"></div>`).join('')}
+    </div>
+    <div style="height:16px;width:100%;border-radius:6px;background:var(--border);margin-bottom:10px;animation:skPulse 1.2s ease-in-out infinite"></div>
+    <div style="height:16px;width:80%;border-radius:6px;background:var(--border);margin-bottom:10px;animation:skPulse 1.2s ease-in-out infinite"></div>
+    <div style="height:16px;width:90%;border-radius:6px;background:var(--border);animation:skPulse 1.2s ease-in-out infinite"></div>
+  </div>
+  <style>@keyframes skPulse{0%,100%{opacity:.5}50%{opacity:1}}</style>`;
+}
+
 function showPage(id){
   // Block Client role from accessing admin/sensitive pages
   if(isClient()){
@@ -10334,7 +10367,8 @@ function showPage(id){
   // If a slide panel is open, don't destroy it by re-rendering the page content
   if(isPanelOpen()){
     // Still update the nav highlight and title, but skip innerHTML re-render
-    document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+    const _nb = _getNavBtns();
+    _nb.forEach(b=>b.classList.remove('active'));
     const b=document.getElementById('nb_'+id);if(b)b.classList.add('active');
     window._pendingPageRefresh=id; // re-render once panel closes
     return;
@@ -10348,27 +10382,15 @@ function showPage(id){
   window._forceRefresh = false;
   window._pendingPageRefresh=null;
   _currentPage=id;
-  // Show info banner for Supervisor on task pages — they can add but not edit
-  const _taskPages=['lvs','classifier','compliance','parsdocs','oceandocs','partlot','release2','oceantt','b2entries'];
-  if(CU && CU.role==='Supervisor' && _taskPages.includes(id)){
-    setTimeout(()=>{
-      if(!document.getElementById('supViewOnlyBanner')){
-        const _b=document.createElement('div');
-        _b.id='supViewOnlyBanner';
-        _b.style.cssText='position:sticky;top:0;z-index:50;background:#e0f2fe;border-bottom:2px solid #0ea5e9;padding:8px 16px;font-size:12px;font-weight:700;color:#0369a1;text-align:center;';
-        _b.textContent='👁️ Supervisor View — ✅ Adding new records is enabled · ✏️ Editing existing records is restricted';
-        const pc=document.getElementById('pc');
-        if(pc&&pc.firstChild)pc.insertBefore(_b,pc.firstChild);
-      }
-    },50);
-  }
-  _updateMobNav(id); // sync bottom nav
-  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+
+  // ── FAST SYNC WORK: nav highlight + title update — these are cheap and give
+  //    immediate visual feedback before the heavy render fires ──
+  _updateMobNav(id);
+  const _nb = _getNavBtns();
+  _nb.forEach(b=>b.classList.remove('active'));
   const b=document.getElementById('nb_'+id);if(b)b.classList.add('active');
   const c=document.getElementById('pc');
-  // Only clear content when navigating to a different page
-  if(!window._forceRefresh) c.innerHTML='';
-  window._forceRefresh = false;
+
   // Set tab background theme
   c.className='pc';
   const tabMap={lvs:'tab-lvs',classifier:'tab-classifier',compliance:'tab-compliance',
@@ -10378,6 +10400,7 @@ function showPage(id){
     oceantt:'tab-oceantt',b2entries:'tab-b2',audit:'tab-audit',tatanalyzer:'tab-dashboard',
     tatreasons:'tab-users',idlelog:'tab-users'};
   if(tabMap[id]) c.classList.add(tabMap[id]);
+
   // Hope UI topbar page title
   const pageTitles={lvs:'LVS — Release',classifier:'Classifier',compliance:'Compliance',
     parsdocs:'PARS Docs Clerk',oceandocs:'Ocean Docs Clerk',partlot:'Part Lot',
@@ -10390,55 +10413,79 @@ function showPage(id){
   const crumbEl=document.getElementById('hopeBreadcrumb');
   if(titleEl) titleEl.textContent=pageTitles[id]||'Overview';
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
-  // Track render time for performance monitor
-  _perfTrackRender(id);
-  const _perfDone = () => _perfTrackRenderEnd(id);
 
-  if(id==='lvs'){ renderLVS(c); _perfDone(); }
-  else if(id==='classifier'){ renderCLS(c); _perfDone(); }
-  else if(id==='compliance') renderCOMP(c);
-  else if(id==='status'){ renderStatus(c, window._statusActiveKey||undefined); _perfDone(); }
-  else if(id==='dashboard'){ renderDashboard(c); _perfDone(); }
-  else if(id==='users') renderUsers(c);
-  else if(id==='clients') renderClients(c);
-  else if(id==='reports'){ renderReports(c); _perfDone(); }
-  else if(id==='kpidashboard') renderKPIDashboard(c);
-  else if(id==='clientdashboard') renderClientDashboard(c);
-  else if(id==='parsdocs'){ renderPARSDocs(c); _perfDone(); }
-  else if(id==='oceandocs'){ renderOceanDocs(c); _perfDone(); }
-  else if(id==='partlot') renderPartLot(c);
-  else if(id==='release2'){ renderRelease2(c); _perfDone(); }
-  else if(id==='oceantt'){ renderOceanTT(c); _perfDone(); }
-  else if(id==='b2entries'){ renderB2Entries(c); _perfDone(); }
-  else if(id==='productivity') renderProductivity(c);
-  else if(id==='loginusers'){
-    if(_supa){
-      dbLoad('login_users').then(rows=>{
-        if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
-        renderLoginUsers(c);
-      }).catch(()=>renderLoginUsers(c));
-    } else { renderLoginUsers(c); }
-  }
-  else if(id==='gdrive') renderGDrive(c);
-  else if(id==='mystatus') renderMyStatus(c);
-  else if(id==='errorreport') renderErrorReport(c);
-  else if(id==='perfmon') renderPerfMonitor(c);
-  else if(id==='audit'){ renderAudit(c); _perfDone(); }
-  else if(id==='tatanalyzer') renderTATAnalyzer(c);
-  else if(id==='tatreasons') renderTATReasons(c);
-  else if(id==='tatissue') renderTATIssue(c);
-  else if(id==='dcissue') renderDCIssue(c);
-  else if(id==='instructions') renderInstructions(c);
-  else if(id==='huddle') renderHuddlePage(c);
-  else if(id==='qualityanalytics') renderQualityAnalytics(c);
-  else if(id==='idlelog') renderIdleLogPage(c);
-  else if(id==='archive') renderArchivePage(c);
-  else if(id==='attendance') renderAttendancePage(c);
-  else renderComing(c);
-  // After page renders, show error alert banner for users with unacknowledged errors
-  setTimeout(injectErrAlertBanner, 80);
-  // Check for pending internal audit errors (respects open-form rule)
-  setTimeout(()=>{ try{ if(typeof _checkPendingIAE==='function') _checkPendingIAE(); }catch(e){} }, 120);
+  // Show skeleton immediately so the click feels instant
+  _showPageSkeleton(c, id);
+
+  // ── DEFERRED HEAVY RENDER: runs after browser paints the skeleton ──
+  // This frees the click handler immediately, eliminating the 3–6 second
+  // 'click handler took Nms' violations.
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      // Track render time for performance monitor
+      _perfTrackRender(id);
+      const _perfDone = () => _perfTrackRenderEnd(id);
+
+      // Show info banner for Supervisor on task pages
+      const _taskPages=['lvs','classifier','compliance','parsdocs','oceandocs','partlot','release2','oceantt','b2entries'];
+      if(CU && CU.role==='Supervisor' && _taskPages.includes(id)){
+        if(!document.getElementById('supViewOnlyBanner')){
+          const _b=document.createElement('div');
+          _b.id='supViewOnlyBanner';
+          _b.style.cssText='position:sticky;top:0;z-index:50;background:#e0f2fe;border-bottom:2px solid #0ea5e9;padding:8px 16px;font-size:12px;font-weight:700;color:#0369a1;text-align:center;';
+          _b.textContent='👁️ Supervisor View — ✅ Adding new records is enabled · ✏️ Editing existing records is restricted';
+          if(c&&c.firstChild)c.insertBefore(_b,c.firstChild);
+        }
+      }
+
+      if(id==='lvs'){ renderLVS(c); _perfDone(); }
+      else if(id==='classifier'){ renderCLS(c); _perfDone(); }
+      else if(id==='compliance') renderCOMP(c);
+      else if(id==='status'){ renderStatus(c, window._statusActiveKey||undefined); _perfDone(); }
+      else if(id==='dashboard'){ renderDashboard(c); _perfDone(); }
+      else if(id==='users') renderUsers(c);
+      else if(id==='clients') renderClients(c);
+      else if(id==='reports'){ renderReports(c); _perfDone(); }
+      else if(id==='kpidashboard') renderKPIDashboard(c);
+      else if(id==='clientdashboard') renderClientDashboard(c);
+      else if(id==='parsdocs'){ renderPARSDocs(c); _perfDone(); }
+      else if(id==='oceandocs'){ renderOceanDocs(c); _perfDone(); }
+      else if(id==='partlot') renderPartLot(c);
+      else if(id==='release2'){ renderRelease2(c); _perfDone(); }
+      else if(id==='oceantt'){ renderOceanTT(c); _perfDone(); }
+      else if(id==='b2entries'){ renderB2Entries(c); _perfDone(); }
+      else if(id==='productivity') renderProductivity(c);
+      else if(id==='loginusers'){
+        if(_supa){
+          dbLoad('login_users').then(rows=>{
+            if(rows&&rows.length>0) DB.loginUsers=rows.map(mapLoginUser);
+            renderLoginUsers(c);
+          }).catch(()=>renderLoginUsers(c));
+        } else { renderLoginUsers(c); }
+      }
+      else if(id==='gdrive') renderGDrive(c);
+      else if(id==='mystatus') renderMyStatus(c);
+      else if(id==='errorreport') renderErrorReport(c);
+      else if(id==='perfmon') renderPerfMonitor(c);
+      else if(id==='audit'){ renderAudit(c); _perfDone(); }
+      else if(id==='tatanalyzer') renderTATAnalyzer(c);
+      else if(id==='tatreasons') renderTATReasons(c);
+      else if(id==='tatissue') renderTATIssue(c);
+      else if(id==='dcissue') renderDCIssue(c);
+      else if(id==='instructions') renderInstructions(c);
+      else if(id==='huddle') renderHuddlePage(c);
+      else if(id==='qualityanalytics') renderQualityAnalytics(c);
+      else if(id==='idlelog') renderIdleLogPage(c);
+      else if(id==='archive') renderArchivePage(c);
+      else if(id==='attendance') renderAttendancePage(c);
+      else renderComing(c);
+
+      // After page renders, show error alert banner for users with unacknowledged errors
+      setTimeout(injectErrAlertBanner, 80);
+      // Check for pending internal audit errors (respects open-form rule)
+      setTimeout(()=>{ try{ if(typeof _checkPendingIAE==='function') _checkPendingIAE(); }catch(e){} }, 120);
+    });
+  });
 }
 
 // ── Sync-refresh: re-renders active page + dashboard + status after any local DB change ──
@@ -11904,8 +11951,8 @@ function renderDashboard(c){
       if(el.textContent !== display){
         el.textContent = display;
         if(_nNew > _nOld && !opts.noPulse){
-          el.classList.remove('kpi-pulse'); void el.offsetWidth; el.classList.add('kpi-pulse');
-          setTimeout(()=>el.classList.remove('kpi-pulse'), 900);
+          el.classList.remove('kpi-pulse');
+          requestAnimationFrame(()=>{ el.classList.add('kpi-pulse'); setTimeout(()=>el.classList.remove('kpi-pulse'),900); });
         }
       }
     };
@@ -11920,8 +11967,8 @@ function renderDashboard(c){
           const _old = parseFloat(String(numEl.textContent).replace(/[^0-9.\-]/g,''))||0;
           numEl.textContent = s.total.toLocaleString();
           if(s.total > _old){
-            numEl.classList.remove('kpi-pulse'); void numEl.offsetWidth; numEl.classList.add('kpi-pulse');
-            setTimeout(()=>numEl.classList.remove('kpi-pulse'), 900);
+            numEl.classList.remove('kpi-pulse');
+            requestAnimationFrame(()=>{ numEl.classList.add('kpi-pulse'); setTimeout(()=>numEl.classList.remove('kpi-pulse'),900); });
           }
         }
         if(footEl) footEl.textContent='Today: '+s.todayCnt;
@@ -19681,7 +19728,7 @@ function openRelease2(){
   // Also clear read-only auto fields explicitly
   ['rl_clientname','rl_team'].forEach(id=>{
     const e=document.getElementById(id);
-    if(e){ e.value=''; e.classList.remove('auto'); void e.offsetWidth; e.classList.add('auto'); }
+    if(e){ e.value=''; e.classList.remove('auto'); requestAnimationFrame(()=>e.classList.add('auto')); }
   });
   const rla=document.getElementById('rl_client_alert');if(rla)rla.style.display='none';
   const ack=document.getElementById('rl_acknowledge');if(ack)ack.checked=false;
