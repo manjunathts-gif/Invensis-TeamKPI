@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_7_bool-fix_2026-04-22" data-build-id="audit-iae-v7.7-bool-fix">
+<html lang="en" data-build-stamp="V7_8_txn-multirow-fix_2026-04-22" data-build-id="audit-iae-v7.8-txn-multirow-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -20659,8 +20659,18 @@ window._iaeActiveTxn = null;
 window._iaeActiveRec = null;
 
 function openInternalAuditErrorPopup(txn){
-  // v7: audit table is the single source of truth
-  const auditRec = (DB.audit||[]).find(a => String(a.txn)===String(txn));
+  // v7: audit table is the single source of truth.
+  // FIX: DB.audit may have MULTIPLE rows for the same txn (re-audits).
+  // _auditByTxn map keeps only ONE entry per txn (last wins) — may pick wrong row.
+  // Search DB.audit directly and prefer the UNACKED real-error row to get correct DB id.
+  const _allForTxn = (DB.audit||[]).filter(a => String(a.txn)===String(txn));
+  const _isRealErrRow = a => {
+    const et = a.errorType||''; const sc = parseFloat(a.score);
+    return et && et!=='Good Job' && et!=='None' && et!=='\u2014' && !isNaN(sc) && sc<100;
+  };
+  const auditRec = _allForTxn.find(a => _isRealErrRow(a) && !a.userAckAt)
+                || _allForTxn.find(a => _isRealErrRow(a))
+                || _allForTxn[0];
   if(!auditRec){
     if(typeof showToast==='function') showToast('⚠️ Audit record not found', true);
     return;
