@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_CLIENT FIX_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_erro onsole dup_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5645,6 +5645,15 @@ function _applyRealtimeRow(table, row, eventType){
 
 function setupRealtime(){
   if(!_supaRT){ _setRTIndicator('polling'); return; }
+
+  // ── Guard: tear down any existing channel BEFORE creating a new one.
+  // Without this, calling setupRealtime() twice (e.g. duplicate-login force)
+  // causes "cannot add postgres_changes callbacks after subscribe()" because
+  // the old channel is already subscribed and we try to .on() it again.
+  if(_realtimeChannel){
+    try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
+    _realtimeChannel = null;
+  }
 
   _setRTIndicator('connecting');
 
