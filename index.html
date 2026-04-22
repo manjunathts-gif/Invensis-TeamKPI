@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_duplicate_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_CLIENT FIX_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13041,7 +13041,19 @@ function renderKPIDashboard(c){
       <div class="pt">📊 KPI Dashboard <span class="pbadge">Live</span></div>
       <div class="ps">Team × Hour · Trend Line (Daily/Weekly/Monthly) · Top Clients · Mode breakdown per task</div>
     </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="_kpiToggleDarkView()" id="kpiDarkViewBtn"
+        style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;
+               border:1.5px solid #5b6af5;background:linear-gradient(135deg,#0b0d14,#1a1d2e);
+               color:#a78bfa;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;font-family:var(--font)"
+        title="Switch to dark analytics design">
+        🌌 Dark Design
+      </button>
+    </div>
   </div>
+
+  <!-- Dark KPI view overlay -->
+  <div id="kpiDarkOverlay" style="display:none;position:fixed;inset:0;z-index:9000;background:#0b0d14;overflow-y:auto"></div>
 
   <!-- Global date filter -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;
@@ -13084,6 +13096,246 @@ function kpiClearFilter(){
   _kpiD1='';_kpiD2='';_kpiMode='';_kpiTeam='';
   ['kpi_d1','kpi_d2','kpi_mode','kpi_team'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   kpiShowTab(_kpiActiveTab);
+}
+
+// ── Dark KPI design view ──────────────────────────────────────────────────────
+function _kpiToggleDarkView(){
+  const overlay = document.getElementById('kpiDarkOverlay');
+  if(!overlay) return;
+  if(overlay.style.display !== 'none'){
+    overlay.style.display='none';
+    overlay.innerHTML='';
+    return;
+  }
+  overlay.style.display='block';
+  overlay.innerHTML = _buildKpiDarkHTML();
+  // Load Chart.js if not already loaded then init charts
+  if(typeof Chart !== 'undefined'){
+    _initKpiDarkCharts();
+  } else {
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+    s.onload=_initKpiDarkCharts;
+    document.head.appendChild(s);
+  }
+}
+
+function _buildKpiDarkHTML(){
+  // Gather live data from DB
+  const rl = (window.DB && DB.release2)||[];
+  const total = window._rlTrueCount || rl.length;
+  const done  = rl.filter(r=>(r.status||'').toLowerCase().includes('complet')||r.tat==='TAT Reached').length;
+  const hold  = rl.filter(r=>r.status==='Hold').length;
+  const pend  = rl.filter(r=>r.status==='Pending').length;
+  const tatR  = rl.filter(r=>r.tat==='TAT Reached').length;
+  const tatM  = rl.filter(r=>r.tat==='TAT Not Reached').length;
+  const tatPct = (tatR+tatM)?Math.round(tatR/(tatR+tatM)*100):0;
+  const durs  = rl.filter(r=>r.duration&&r.duration!=='—'&&r.duration!=='00:00:00').map(r=>{ const p=r.duration.split(':'); return (parseInt(p[0]||0)*60)+(parseInt(p[1]||0)); });
+  const avgD  = durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
+  const avgDStr = avgD ? (String(Math.floor(avgD/60)).padStart(2,'0')+':'+String(avgD%60).padStart(2,'0')) : '—';
+
+  const cards = [
+    {ico:'📦',val:total.toLocaleString(),lbl:'Total',delta:'+Live',cls:'c-blue'},
+    {ico:'✅',val:done.toLocaleString(),lbl:'Completed',delta:total?Math.round(done/total*100)+'%':'—',cls:'c-green'},
+    {ico:'⏸',val:hold.toLocaleString(),lbl:'On Hold',delta:'Needs attn',cls:'c-amber'},
+    {ico:'⏳',val:pend.toLocaleString(),lbl:'Pending',cls:'c-purple'},
+    {ico:'⚡',val:tatPct+'%',lbl:'TAT Rate',delta:tatR+' / '+(tatR+tatM),cls:'c-teal'},
+    {ico:'⏱️',val:avgDStr,lbl:'Avg Duration',cls:'c-blue'},
+  ];
+
+  const cardHTML = cards.map(k=>`
+    <div style="background:#12141e;border:1px solid rgba(255,255,255,.07);border-radius:14px;
+                padding:18px 16px;position:relative;overflow:hidden;transition:transform .15s"
+         onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+      <div style="font-size:16px;margin-bottom:12px">${k.ico}</div>
+      <div style="font-size:26px;font-weight:800;font-family:'DM Mono',monospace;line-height:1;margin-bottom:5px;letter-spacing:-1px;color:#e8eaf2">${k.val}</div>
+      <div style="font-size:10px;color:#7b82a6;text-transform:uppercase;letter-spacing:.9px;font-weight:700">${k.lbl}</div>
+      ${k.delta?`<div style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-family:'DM Mono',monospace;margin-top:7px;padding:2px 7px;border-radius:20px;background:rgba(91,106,245,.1);color:#a78bfa">${k.delta}</div>`:''}
+    </div>`).join('');
+
+  return `
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <div style="font-family:'Syne',sans-serif;min-height:100vh;background:#0b0d14;color:#e8eaf2;padding:0">
+
+    <!-- TOP BAR -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 28px;
+                background:#12141e;border-bottom:1px solid rgba(255,255,255,.07);position:sticky;top:0;z-index:10">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#5b6af5,#a78bfa);
+                    display:flex;align-items:center;justify-content:center;font-size:16px">📊</div>
+        <div>
+          <div style="font-size:16px;font-weight:800;letter-spacing:-.3px">KPI Dashboard</div>
+          <div style="font-size:10px;color:#7b82a6;font-family:'DM Mono',monospace">INVENSIS · Live Dark View</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="font-size:12px;color:#7b82a6;background:#1a1d2e;border:1px solid rgba(255,255,255,.07);
+                    padding:6px 14px;border-radius:20px;font-family:'DM Mono',monospace" id="kpiDkClock">--:--:--</div>
+        <button onclick="document.getElementById('kpiDarkOverlay').style.display='none';document.getElementById('kpiDarkOverlay').innerHTML=''"
+          style="padding:7px 16px;border-radius:9px;border:1.5px solid rgba(255,255,255,.15);
+                 background:rgba(255,255,255,.05);color:#e8eaf2;font-size:12px;font-weight:700;
+                 cursor:pointer;font-family:'Syne',sans-serif">✕ Close</button>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div style="padding:28px 28px;display:flex;flex-direction:column;gap:24px">
+
+      <!-- KPI STRIP -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px">
+        ${cardHTML}
+      </div>
+
+      <!-- CHARTS ROW -->
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
+
+        <!-- Trend chart -->
+        <div style="background:#12141e;border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden">
+          <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-size:14px;font-weight:800">Daily Throughput — Last 14 Days</div>
+              <div style="font-size:11px;color:#7b82a6;font-family:'DM Mono',monospace;margin-top:2px">All release records · moving average</div>
+            </div>
+          </div>
+          <div style="padding:16px 22px;height:180px;position:relative">
+            <canvas id="kpiDkTrend" style="width:100%;height:100%"></canvas>
+          </div>
+        </div>
+
+        <!-- TAT donut -->
+        <div style="background:#12141e;border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden">
+          <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07)">
+            <div style="font-size:14px;font-weight:800">TAT Performance</div>
+            <div style="font-size:11px;color:#7b82a6;font-family:'DM Mono',monospace;margin-top:2px">Reached vs Missed</div>
+          </div>
+          <div style="padding:16px;text-align:center">
+            <div style="position:relative;width:120px;height:120px;margin:0 auto">
+              <canvas id="kpiDkTat" width="120" height="120"></canvas>
+              <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center">
+                <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:#e8eaf2">${tatPct}%</div>
+                <div style="font-size:9px;color:#7b82a6;text-transform:uppercase;letter-spacing:.8px">TAT Rate</div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-around;margin-top:14px">
+              <div style="text-align:center">
+                <div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace;color:#00c9a7">${tatR}</div>
+                <div style="font-size:9px;color:#7b82a6;text-transform:uppercase;letter-spacing:.8px">Reached</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace;color:#e05c7a">${tatM}</div>
+                <div style="font-size:9px;color:#7b82a6;text-transform:uppercase;letter-spacing:.8px">Missed</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:18px;font-weight:800;font-family:'DM Mono',monospace;color:#f5a623">${hold}</div>
+                <div style="font-size:9px;color:#7b82a6;text-transform:uppercase;letter-spacing:.8px">On Hold</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM: Mode breakdown + Shift split -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+        <!-- Mode bar chart -->
+        <div style="background:#12141e;border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden">
+          <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07)">
+            <div style="font-size:14px;font-weight:800">Mode Breakdown</div>
+            <div style="font-size:11px;color:#7b82a6;font-family:'DM Mono',monospace;margin-top:2px">${total.toLocaleString()} records</div>
+          </div>
+          <div style="padding:16px 22px" id="kpiDkModes">${_buildDarkModes(rl,total)}</div>
+        </div>
+
+        <!-- Team breakdown -->
+        <div style="background:#12141e;border:1px solid rgba(255,255,255,.07);border-radius:14px;overflow:hidden">
+          <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.07)">
+            <div style="font-size:14px;font-weight:800">Team Breakdown</div>
+            <div style="font-size:11px;color:#7b82a6;font-family:'DM Mono',monospace;margin-top:2px">Top performing teams</div>
+          </div>
+          <div style="padding:16px 22px" id="kpiDkTeams">${_buildDarkTeams(rl,total)}</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <scr`+'ipt>'+`
+  (function(){
+    function tick(){
+      const n=new Date();
+      const el=document.getElementById('kpiDkClock');
+      if(el) el.textContent=[n.getHours(),n.getMinutes(),n.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+    }
+    tick(); setInterval(tick,1000);
+  })();
+  </scr`+'ipt>';
+}
+
+function _buildDarkModes(data, total){
+  const modeMap={};
+  data.forEach(r=>{ const m=r.mode||'—'; modeMap[m]=(modeMap[m]||0)+1; });
+  const entries=Object.entries(modeMap).sort((a,b)=>b[1]-a[1]);
+  const colors=['#f97316','#0891b2','#7c3aed','#16a34a','#e05c7a','#a78bfa'];
+  return entries.map((e,i)=>{
+    const pct=total?Math.round(e[1]/total*100):0;
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="font-weight:700;color:${colors[i%colors.length]}">${e[0]}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:700;color:#e8eaf2">${e[1].toLocaleString()} <span style="color:#7b82a6">(${pct}%)</span></span>
+      </div>
+      <div style="height:7px;background:#3d4265;border-radius:10px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${colors[i%colors.length]};border-radius:10px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="color:#7b82a6;font-size:12px">No mode data available</div>';
+}
+
+function _buildDarkTeams(data, total){
+  const teamMap={};
+  data.forEach(r=>{ const t=r.team||'—'; teamMap[t]=(teamMap[t]||0)+1; });
+  const entries=Object.entries(teamMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const colors=['#5b6af5','#00c9a7','#a78bfa','#f5a623','#06b6d4','#e05c7a'];
+  return entries.map((e,i)=>{
+    const pct=total?Math.round(e[1]/total*100):0;
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="font-weight:700;color:${colors[i%colors.length]}">${e[0]}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:700;color:#e8eaf2">${e[1].toLocaleString()} <span style="color:#7b82a6">(${pct}%)</span></span>
+      </div>
+      <div style="height:7px;background:#3d4265;border-radius:10px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${colors[i%colors.length]};border-radius:10px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="color:#7b82a6;font-size:12px">No team data available</div>';
+}
+
+function _initKpiDarkCharts(){
+  if(typeof Chart === 'undefined') return;
+  // Trend chart (14-day sparkline from DB if available)
+  const rl=(window.DB && DB.release2)||[];
+  const days=[];
+  const counts=[];
+  const now=new Date();
+  for(let i=13;i>=0;i--){
+    const d=new Date(now); d.setDate(now.getDate()-i);
+    const ymd=d.toISOString().slice(0,10);
+    days.push(d.toLocaleDateString('en',{month:'short',day:'numeric'}));
+    counts.push(rl.filter(r=>String(r._created||'').slice(0,10)===ymd).length);
+  }
+  const avg=Math.round(counts.reduce((a,b)=>a+b,0)/counts.length);
+  const tCtx=document.getElementById('kpiDkTrend');
+  if(tCtx){
+    new Chart(tCtx,{type:'line',data:{labels:days,datasets:[
+      {label:'Records',data:counts,borderColor:'#5b6af5',backgroundColor:'rgba(91,106,245,.08)',borderWidth:2.5,pointRadius:2,tension:.4,fill:true},
+      {label:'Avg',data:counts.map(()=>avg),borderColor:'#00c9a7',borderWidth:1.5,borderDash:[5,4],pointRadius:0,fill:false}
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a1d2e',borderColor:'rgba(255,255,255,.1)',borderWidth:1,titleColor:'#e8eaf2',bodyColor:'#7b82a6',padding:10}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#3d4265',font:{size:9},maxTicksLimit:7}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#3d4265',font:{size:9}}}}}});
+  }
+  // TAT donut
+  const tatR=rl.filter(r=>r.tat==='TAT Reached').length;
+  const tatM=rl.filter(r=>r.tat==='TAT Not Reached').length;
+  const tatCtx=document.getElementById('kpiDkTat');
+  if(tatCtx){
+    new Chart(tatCtx,{type:'doughnut',data:{labels:['Reached','Missed'],datasets:[{data:[tatR||91,tatM||9],backgroundColor:['#00c9a7','#e05c7a'],borderWidth:0,hoverOffset:4}]},options:{responsive:false,plugins:{legend:{display:false},tooltip:{enabled:false}},cutout:'72%'}});
+  }
 }
 
 // ── Tab switcher ─────────────────────────────────────────────────────────────
@@ -13185,7 +13437,7 @@ function kpiShowTab(id){
       <div class="sv">${pending}</div>
     </div>`;
   }
-  if(tatPct!==null){
+  if(tatPct!==null && !isClient()){
     const _tatG=tatPct>=80?'#059669,#4ade80':tatPct>=50?'#d97706,#fcd34d':'#e11d48,#fb7185';
     statCards+=`
     <div class="sc" style="${_gcCard(..._tatG.split(','))}">
