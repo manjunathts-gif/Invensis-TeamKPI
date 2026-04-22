@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_10_rawfetch-f1ix_2026-04-22" data-build-id="audit-iae-v7.10-rawfetch-fix">
+<html lang="en" data-build-stamp="V7_11_delete-fixED ERROR POP DELETE_2026-04-22" data-build-id="audit-iae-v7.11-delete-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -16569,10 +16569,28 @@ function saveUserComment(idx){
   showPage(_currentPage||'errorreport');
 }
 
-function deleteErrorRecord(idx){
-  if(!confirm('Delete this error record?'))return;
-  DB.errors.splice(idx,1);
-  DB.errors.forEach((e,i)=>e._idx=i);
+async function deleteErrorRecord(idx){
+  const rec = DB.errors[idx];
+  if(!rec) return;
+  const dbId = rec._dbid || rec.id;
+  if(!confirm('Delete this error record for Txn '+(rec.txn||'')+'? This cannot be undone.')) return;
+
+  // Delete from DB first (admin uses dbDeleteAdmin which goes through proxy)
+  if(dbId){
+    try{
+      await dbDeleteAdmin('client_errors', dbId);
+    } catch(err){
+      console.error('[DeleteError] DB delete failed:', err);
+      showToast('⚠️ Delete failed: ' + (err.message||'unknown error'), true);
+      return; // do NOT remove from local state if DB delete failed
+    }
+  } else {
+    console.warn('[DeleteError] No _dbid — record may not be synced to DB yet, removing locally only');
+  }
+
+  // Remove from local memory only after confirmed DB delete
+  DB.errors.splice(idx, 1);
+  DB.errors.forEach((e,i) => e._idx = i);
   showToast('✅ Error record deleted');
   showPage(_currentPage||'errorreport');
 }
