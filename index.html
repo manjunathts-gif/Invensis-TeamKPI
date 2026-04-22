@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_line_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-22" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4716,26 +4716,49 @@ async function loadAllFromSupabase(){
 
       // ── Load own audit errors in background so IAE badge shows on Release page ──
       // Non-blocking: fires after app boots so login is not delayed
-      if(_supa && _myName){
+      // Try all possible name variants: CU.name, CU.empName, CU.username, CU.loginName
+      if(_supa){
         setTimeout(async()=>{
           try{
             const since = new Date(Date.now()-90*24*3600*1000).toISOString();
+            // Collect all unique name variants for this user
+            const nameVariants = [...new Set(
+              [CU.name, CU.empName, CU.username, CU.loginName]
+                .filter(Boolean)
+                .map(n => n.trim())
+                .filter(n => n.length > 0)
+            )];
+            console.log('[IAE member load] Looking for audit rows with user_name in:', nameVariants);
+            if(!nameVariants.length){ console.warn('[IAE member load] No name variants found'); return; }
+
+            // Query for ALL name variants using .in() filter
             const {data:myAudit,error:auditErr} = await _supa.from('audit')
-              .select('*').eq('user_name',_myName).gte('created_at',since)
+              .select('*').in('user_name', nameVariants).gte('created_at',since)
               .order('created_at',{ascending:false}).limit(200);
+
+            console.log('[IAE member load] Query result:', auditErr ? 'ERROR: '+auditErr.message : (myAudit?.length||0)+' rows found');
+
             if(!auditErr && myAudit && myAudit.length){
               // Merge without overwriting any records already in DB.audit (from realtime)
               const existIds = new Set((DB.audit||[]).map(a=>String(a._dbid||a.id||'')));
               const newMapped = myAudit.map(mapAudit).filter(a=>!existIds.has(String(a._dbid||a.id||'')));
-              if(newMapped.length) DB.audit = [...(DB.audit||[]), ...newMapped];
+              if(newMapped.length){
+                DB.audit = [...(DB.audit||[]), ...newMapped];
+                console.log('[IAE member load] Merged', newMapped.length, 'audit rows into DB.audit (total now:', DB.audit.length, ')');
+              }
               _rebuildAuditMap();
+              console.log('[IAE member load] _iaeByTxn size:', window._iaeByTxn?.size||0);
               // Re-render Release page rows so blinking badge appears immediately
               if(_currentPage==='release2' && document.getElementById('rlTbody')){
                 try{ renderRLRows(pgSlice('rl')); }catch(e){}
               }
+              // Also trigger popup check for any unacked errors
+              if(typeof _showInternalAuditAlert==='function'){
+                setTimeout(()=>{ try{ _showInternalAuditAlert(); }catch(e){} }, 300);
+              }
             }
-          }catch(e){ console.warn('[member audit load]',e.message); }
-        }, 1500); // 1.5s after boot — non-blocking
+          }catch(e){ console.warn('[IAE member load] error:',e.message); }
+        }, 1500);
       }
     }
 
@@ -13307,15 +13330,9 @@ function kpiShowTab(id){
     const _ef = tab.ef || '_created';
 
     // Build date-bucketed counts using fast string slicing
-    // IMPORTANT: Use ONLY r[_ef] (the tab's canonical date field).
-    // r._created is a display-formatted string (DD-MM-YYYY HH:MM) — slicing
-    // it as YYYY-MM-DD produces garbage like "01-04-202". Never fall back to it here.
     const bucketMap = {};
     data.forEach(r=>{
-      const raw = String(r[_ef] || '');
-      // Detect DD-MM-YYYY display format and convert to YYYY-MM-DD for sorting
-      const ddmm = raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
-      const ymd = ddmm ? `${ddmm[3]}-${ddmm[2]}-${ddmm[1]}` : raw.slice(0,10);
+      const ymd = String(r._created || r[_ef] || '').slice(0,10);
       if(!ymd || ymd.length < 10) return;
       let key = ymd;
       if(_trendPeriod === 'weekly'){
@@ -13379,9 +13396,6 @@ function kpiShowTab(id){
       const avgY = PAD + (1 - (avg-minV)/(maxV-minV||1)) * (H - PAD*2);
 
       const colorRgb = tab.color.startsWith('#') ? hexToRgb(tab.color) : '77,121,255';
-      // Unique gradient ID per tab+period prevents browsers from serving a stale
-      // cached <defs> gradient when innerHTML is replaced on toggle clicks.
-      const _gradId = `trendGrad_${tab.id}_${_trendPeriod}`;
 
       trendSection = `
       <div class="tw" style="margin-bottom:20px">
@@ -13401,9 +13415,9 @@ function kpiShowTab(id){
           </div>
         </div>
         <div style="padding:8px 12px 4px">
-          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="xMidYMid meet">
+          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="none">
             <defs>
-              <linearGradient id="${_gradId}" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="trendGrad_${tab.id}" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
                 <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.02"/>
               </linearGradient>
@@ -13420,7 +13434,7 @@ function kpiShowTab(id){
                   stroke="${tab.color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
             <text x="${W-PAD+3}" y="${avgY+3}" font-size="8" fill="${tab.color}" opacity="0.7">avg</text>
             <!-- Area fill -->
-            <path d="${areaPath}" fill="url(#${_gradId})"/>
+            <path d="${areaPath}" fill="url(#trendGrad_${tab.id})"/>
             <!-- Trend line -->
             <polyline points="${polyline}" fill="none" stroke="${tab.color}" stroke-width="2.5"
                       stroke-linejoin="round" stroke-linecap="round"/>
@@ -20576,10 +20590,14 @@ async function _iaeSafetyPoll(){
     if(typeof isPanelOpen==='function' && isPanelOpen()) return;
     // v7: Fetch my unacked AUDIT rows from the last 30 days
     const since = new Date(Date.now() - 30*24*3600*1000).toISOString();
-    const myName = (CU.name||'').trim();
-    if(!myName) return;
+    // Use all name variants to handle mismatch between login_users and audit table
+    const nameVariants = [...new Set(
+      [CU.name, CU.empName, CU.username, CU.loginName]
+        .filter(Boolean).map(n=>n.trim()).filter(n=>n.length>0)
+    )];
+    if(!nameVariants.length) return;
     const {data: rows, error} = await _supa.from('audit').select('*')
-      .eq('user_name', myName)
+      .in('user_name', nameVariants)
       .is('user_ack_at', null)
       .gte('created_at', since)
       .order('created_at', {ascending:false})
@@ -24835,19 +24853,15 @@ window.addEventListener('beforeunload', function(e){
     }
   });
 
-  // Tab becomes visible → sync strategy depends on connection mode
+  // Tab becomes visible → light refresh only, never full globalRefresh
   document.addEventListener('visibilitychange', function(){
     if(!document.hidden && typeof CU !== 'undefined' && CU && typeof _supa !== 'undefined' && _supa){
+      // Always do a lightweight silent refresh of the current page — fast and non-blocking
+      // Never call globalRefresh() here as it triggers a full data reload (5+ second block)
       setTimeout(()=>{
         try{
-          if(typeof _rtConnected !== 'undefined' && _rtConnected){
-            // Realtime is live — WebSocket auto-delivers missed events on reconnect
-            // Just do a light refresh of the current page to show any queued changes
-            if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen())
-              _silentRefreshPage(_currentPage);
-          } else if(typeof _bgPollInterval !== 'undefined' && _bgPollInterval){
-            // Poll mode — trigger immediate refresh
-            globalRefresh();
+          if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen()){
+            _silentRefreshPage(_currentPage);
           }
         }catch(e){}
       }, 400);
