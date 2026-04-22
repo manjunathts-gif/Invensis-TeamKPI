@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_8_txn-multirow-fix_2026-04-22" data-build-id="audit-iae-v7.8-txn-multirow-fix">
+<html lang="en" data-build-stamp="V7_9_map-priority-1fix_2026-04-22" data-build-id="audit-iae-v7.9-map-priority-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3958,12 +3958,24 @@ window._auditByTxn = new Map();
 // Cached globally so renderRLRows doesn't rebuild from scratch on every render
 window._iaeByTxn = new Map();
 function _rebuildAuditMap(){
-  window._auditByTxn = new Map((DB.audit||[]).map(a=>[String(a.txn),a]));
-  // Rebuild IAE map in the same pass.
-  // FIX: use AND (isRealErr && isLowSc) — same condition as _getMyUnackedIAE and
-  // the realtime handler. The old OR caused phantom blinking badges for records
-  // that have a real error type but null score (or vice versa), because the badge
-  // appeared but _getMyUnackedIAE found nothing and the popup never fired.
+  // FIX: Multiple audit rows may share the same txn (re-audits, corrections).
+  // Old Map() approach kept the LAST entry arbitrarily — wrong row got updated.
+  // Now: prefer UNACKED real-error row (priority=2), then acked error (1), then anything (0).
+  const _rowPriority = a => {
+    const et = a.errorType||''; const sc = parseFloat(a.score);
+    const isErr = et && et!=='Good Job' && et!=='None' && et!=='—' && !isNaN(sc) && sc<100;
+    return isErr ? (a.userAckAt ? 1 : 2) : 0;
+  };
+  const txnBest = new Map();
+  (DB.audit||[]).forEach(a=>{
+    if(!a || a.txn==null) return;
+    const k = String(a.txn);
+    const prev = txnBest.get(k);
+    if(!prev || _rowPriority(a) > _rowPriority(prev)) txnBest.set(k, a);
+  });
+  window._auditByTxn = txnBest;
+
+  // Rebuild IAE map — only real-error rows, prefer unacked
   const iaeMap = new Map();
   (DB.audit||[]).forEach(a=>{
     if(!a || a.txn==null) return;
@@ -3971,7 +3983,7 @@ function _rebuildAuditMap(){
     const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
     const isRealErr = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
     const isLowSc   = sc!=null && sc<100;
-    if(!isRealErr || !isLowSc) return; // must meet BOTH conditions
+    if(!isRealErr || !isLowSc) return;
     const k = String(a.txn);
     const prev = iaeMap.get(k);
     if(!prev || (prev.userAckAt && !a.userAckAt)) iaeMap.set(k, a);
