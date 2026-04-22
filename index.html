@@ -3959,7 +3959,11 @@ window._auditByTxn = new Map();
 window._iaeByTxn = new Map();
 function _rebuildAuditMap(){
   window._auditByTxn = new Map((DB.audit||[]).map(a=>[String(a.txn),a]));
-  // Rebuild IAE map in the same pass
+  // Rebuild IAE map in the same pass.
+  // FIX: use AND (isRealErr && isLowSc) — same condition as _getMyUnackedIAE and
+  // the realtime handler. The old OR caused phantom blinking badges for records
+  // that have a real error type but null score (or vice versa), because the badge
+  // appeared but _getMyUnackedIAE found nothing and the popup never fired.
   const iaeMap = new Map();
   (DB.audit||[]).forEach(a=>{
     if(!a || a.txn==null) return;
@@ -3967,7 +3971,7 @@ function _rebuildAuditMap(){
     const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
     const isRealErr = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
     const isLowSc   = sc!=null && sc<100;
-    if(!isRealErr && !isLowSc) return;
+    if(!isRealErr || !isLowSc) return; // must meet BOTH conditions
     const k = String(a.txn);
     const prev = iaeMap.get(k);
     if(!prev || (prev.userAckAt && !a.userAckAt)) iaeMap.set(k, a);
@@ -5063,14 +5067,22 @@ function _silentRefreshPage(id){
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
-    if(id==='audit' && document.querySelector('.dash-ed')){
-      // ── SILENT in-place audit refresh — NO full rebuild, NO flicker ──
-      // Recompute counts and update only the stat cards + tab labels in-place.
-      // Only rebuilds the table rows (auditTabContent) — not the whole page.
+    if(id==='audit' && document.getElementById('auditTabContent')){
+      // ── SILENT in-place audit refresh — NO full rebuild, NO flicker, NO scroll jump ──
+      // Guard uses #auditTabContent (always present when audit page is loaded).
+      // The old guard used .dash-ed which is ONLY on the dashboard — it was never
+      // found on the audit page, so every realtime event fell through to a full
+      // showPage() rebuild, causing constant scroll resets and flickering.
       (()=>{
         const _todayYMD = (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
         const _todayStr = new Date().toDateString();
-        const _teamRecs = window._auditTeamRecords || [];
+        // FIX: Guard against empty _auditTeamRecords during rapid refresh cycles.
+        // If the cached value is empty but DB.release2 has data, rebuild from DB
+        // directly rather than showing zero counts.
+        let _teamRecs = window._auditTeamRecords || [];
+        if(!_teamRecs.length && DB.release2 && DB.release2.length){
+          _teamRecs = DB.release2; // fallback to full dataset — avoids zero flash
+        }
         const _auditedSet = new Set(DB.audit.map(a=>String(a.txn)));
         const _isAud = r => _auditedSet.has(String(r.txn)) || (r.qualityScore!=null && String(r.qualityScore)!=='');
         const _done = _teamRecs.filter(r=>_isAud(r));
@@ -5099,16 +5111,15 @@ function _silentRefreshPage(id){
         if(_pb) _pb.textContent = '⏳ Pending ('+_pend.length+')';
         if(_db) _db.textContent = '✅ Audited ('+_done.length+')';
         if(_ab) _ab.textContent = '📋 All ('+_trueTotal.toLocaleString()+')';
-        // Update pending badge
-        const _badge = document.querySelector('[style*="991b1b"],[style*="166534"]');
         // Only rebuild rows — not the whole page
-        // FIX: restore persisted filters before re-rendering so silent refresh
-        // always applies the user's active date/search/mode/team filters.
         _restoreAuditFilters();
         if(typeof renderAuditTab==='function') renderAuditTab(window._auditActiveTab||'pending');
-        // Update _auditPending/_auditDone for export/other use
-        window._auditPending = _pend;
-        window._auditDone = _done;
+        // Only update cached state if new data is non-empty (prevents zero-flash on race)
+        if(_teamRecs.length){
+          window._auditPending = _pend;
+          window._auditDone = _done;
+          window._auditTeamRecords = _teamRecs;
+        }
       })();
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
@@ -15232,8 +15243,10 @@ function renderMyStatus(c){
     return d;
   };
 
+  const myNameLC = myName.trim().toLowerCase();
   // Pre-build a Map<dateKey, count> for the last 7 days so daily rows is O(n)
   const myRecs=[];
+  const teamTodayArr=[]; // real array of today's records for all team members (TL table)
   const dailyBucket = new Map(); // toDateString() → count (for user)
   const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
   const hourCounts={}; hours.forEach(h=>hourCounts[h]=0);
@@ -15243,7 +15256,9 @@ function renderMyStatus(c){
   const myFld = tm.fld;
 
   for(const r of (tm.db||[])){
-    if(r[myFld] !== myName) continue;
+    // FIX: normalize name comparison — trim+lowercase prevents missed matches
+    // when the DB has a trailing space or different casing vs CU.name
+    if((r[myFld]||'').trim().toLowerCase() !== myNameLC) continue;
     myRecs.push(r);
     _getDate(r);
     if(r._dateKey === todayKey){
@@ -15268,7 +15283,7 @@ function renderMyStatus(c){
   let teamTodayCnt=0, teamMonthCnt=0, teamHoldCnt=0, teamTatOkCnt=0, teamTatMissCnt=0;
   for(const r of teamRecs){
     _getDate(r);
-    if(r._dateKey === todayKey) teamTodayCnt++;
+    if(r._dateKey === todayKey){ teamTodayCnt++; teamTodayArr.push(r); }
     if(r._dateYM === curYM) teamMonthCnt++;
     const st = (r.status||'').toLowerCase();
     if(st==='hold') teamHoldCnt++;
@@ -15287,7 +15302,10 @@ function renderMyStatus(c){
   const holdRecs  = { length: holdCnt };
   const tatOkArr   = { length: tatOkCnt };
   const tatMissArr = { length: tatMissCnt };
-  const teamTodayRecs = { length: teamTodayCnt };
+  // FIX: teamTodayRecs must be a real array (not a fake {length} object) because
+  // the TL Team View table calls .slice(0,50).map(...) on it — a plain object
+  // with only .length crashes silently and shows an empty table.
+  const teamTodayRecs = teamTodayArr; // real array, built during team loop above
   const teamMonthRecs = { length: teamMonthCnt };
   const teamHold      = { length: teamHoldCnt };
   const teamTatOk     = { length: teamTatOkCnt };
@@ -17033,7 +17051,10 @@ function renderAudit(c){
     const m=modes.find(x=>x.toLowerCase()===(r.mode||'').toLowerCase());
     if(!m) return;
     _modeBuckets[m].total++;
-    if(auditedSet.has(r.txn)){
+    // FIX: must use String(r.txn) — auditedSet was built with String(a.txn) keys
+    // but r.txn may be a number, so a direct .has(r.txn) always returns false,
+    // meaning done=0 and 0% audited for every mode card.
+    if(auditedSet.has(String(r.txn))){
       _modeBuckets[m].done++;
       const sc=parseFloat(auditMap.get(String(r.txn))?.score)||0;
       if(sc>0){_modeBuckets[m].scoreSum+=sc;_modeBuckets[m].scoreCnt++;}
@@ -17124,16 +17145,20 @@ function renderAudit(c){
     <div id="auditTabContent"></div>
   </div>`;
 
-  window._auditTeamRecords=teamRecords;
-  window._auditPending=pending;
-  window._auditDone=done;
+  window._auditTeamRecords = teamRecords.length ? teamRecords : (window._auditTeamRecords||[]);
+  window._auditPending = pending;
+  window._auditDone = done;
   // FIX: Only reset tab + page on a FIRST load (no saved tab), not on silent refresh.
   // This preserves the user's active tab (Pending/Audited/All) across re-renders.
   if(!window._auditActiveTab) window._auditActiveTab='pending';
   if(!window._auditPageNum)   window._auditPageNum=1;
-  // Defer table — skeleton shows instantly, data fills after paint
+  // Defer table fill — but only set the loading skeleton if auditTabContent is empty
+  // (i.e., true first load). On subsequent full rebuilds triggered by _forceRefresh
+  // the existing content stays visible until renderAuditTab replaces it — no flash.
   const _atc=document.getElementById('auditTabContent');
-  if(_atc) _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
+  if(_atc && !_atc.textContent.trim()){
+    _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
+  }
   requestAnimationFrame(()=>{ setTimeout(()=>{
     // FIX: Restore saved filter values into freshly-rebuilt DOM inputs so silent
     // refresh / realtime re-render never wipes the user's active date/search filters.
