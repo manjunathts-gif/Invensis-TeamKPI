@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_FILTER_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_RENDINGERE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5102,6 +5102,9 @@ function _silentRefreshPage(id){
         // Update pending badge
         const _badge = document.querySelector('[style*="991b1b"],[style*="166534"]');
         // Only rebuild rows — not the whole page
+        // FIX: restore persisted filters before re-rendering so silent refresh
+        // always applies the user's active date/search/mode/team filters.
+        _restoreAuditFilters();
         if(typeof renderAuditTab==='function') renderAuditTab(window._auditActiveTab||'pending');
         // Update _auditPending/_auditDone for export/other use
         window._auditPending = _pend;
@@ -17243,11 +17246,16 @@ window._auditPageNum=window._auditPageNum||1;
 function pgGoAudit(p){ window._auditPageNum=p; renderAuditTab(window._auditActiveTab||'pending'); }
 
 function renderAuditTab(tab){
-  const q=(document.getElementById('audit_search')?.value||'').toLowerCase();
-  const d1=document.getElementById('audit_fd1')?.value;
-  const d2=document.getElementById('audit_fd2')?.value;
-  const fMode=(document.getElementById('audit_fmode')?.value||'').toLowerCase();
-  const fTeam=(document.getElementById('audit_fteam')?.value||'').toLowerCase();
+  // Read filters from window._auditFilters first (authoritative, survives re-renders),
+  // then fall back to DOM inputs as a secondary source. This eliminates the race
+  // condition where requestAnimationFrame fires renderAuditTab before
+  // _restoreAuditFilters has re-populated the DOM inputs, causing blank filters.
+  const _af = window._auditFilters || {};
+  const q    = (_af.search  !== undefined ? _af.search  : (document.getElementById('audit_search')?.value||'')).toLowerCase();
+  const d1   =  _af.d1     !== undefined ? _af.d1     : (document.getElementById('audit_fd1')?.value||'');
+  const d2   =  _af.d2     !== undefined ? _af.d2     : (document.getElementById('audit_fd2')?.value||'');
+  const fMode=  (_af.mode  !== undefined ? _af.mode   : (document.getElementById('audit_fmode')?.value||'')).toLowerCase();
+  const fTeam=  (_af.team  !== undefined ? _af.team   : (document.getElementById('audit_fteam')?.value||'')).toLowerCase();
   const auditedTxns=new Set(DB.audit.map(a=>String(a.txn)));
   const _isTabAud=r=>auditedTxns.has(String(r.txn))||(r.qualityScore!=null&&String(r.qualityScore)!=='');
   const all=window._auditTeamRecords||[];
@@ -17255,8 +17263,18 @@ function renderAuditTab(tab){
            tab==='done'?all.filter(r=>_isTabAud(r)):all;
   if(fMode) data=data.filter(r=>(r.mode||'').toLowerCase()===fMode);
   if(fTeam) data=data.filter(r=>(r.team||'').toLowerCase()===fTeam);
-  if(d1) data=data.filter(r=>r._created&&parseAppDate(r._created)>=new Date(d1));
-  if(d2) data=data.filter(r=>r._created&&parseAppDate(r._created)<=new Date(d2+'T23:59:59'));
+  if(d1||d2){
+    data=data.filter(r=>{
+      // Normalize r._created to YYYY-MM-DD regardless of display format
+      const raw = String(r._created||r.submitted||r.submittedTime||'');
+      const ddmm = raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+      const ymd  = ddmm ? `${ddmm[3]}-${ddmm[2]}-${ddmm[1]}` : raw.slice(0,10);
+      if(!ymd||ymd.length<10) return !d1; // no date — include only if no lower bound
+      if(d1 && ymd < d1) return false;
+      if(d2 && ymd > d2) return false;
+      return true;
+    });
+  }
   if(q){ window._auditPageNum=1; data=data.filter(r=>(r.txn+'').includes(q)||(r.clientname||'').toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)||(r.user||'').toLowerCase().includes(q)); }
   const cont=document.getElementById('auditTabContent');
   if(!cont) return;
