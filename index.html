@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_LINEE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_FILTER_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -16948,6 +16948,8 @@ function renderAudit(c){
   // Smart re-render: if already on audit page, just refresh the tab content
   if(c.querySelector('#auditTabContent') && !window._forceRefresh){
     _rebuildAuditMap();
+    // Restore any persisted filter values (in case DOM was partially replaced)
+    _restoreAuditFilters();
     renderAuditTab(window._auditActiveTab||'pending');
     return;
   }
@@ -17114,7 +17116,7 @@ function renderAudit(c){
         <input class="fi2" id="audit_fd1" type="date" onchange="filterAuditTab()" style="font-size:11px"/>
         <span style="font-size:11px;color:var(--text3)">to</span>
         <input class="fi2" id="audit_fd2" type="date" onchange="filterAuditTab()" style="font-size:11px"/>
-        <input class="fi2" id="audit_search" placeholder="🔍 Txn / Client / User" style="min-width:150px;font-size:11px" oninput="_debounce('audit',filterAuditTab)"/>
+        <input class="fi2" id="audit_search" placeholder="🔍 Txn / Client / User" style="min-width:150px;font-size:11px" oninput="_saveAuditFilters();_debounce('audit',filterAuditTab)"/>
         <button class="btn-cl" style="font-size:11px;padding:4px 10px" onclick="clearAuditFilter()">Clear</button>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-bottom:8px">
@@ -17166,12 +17168,22 @@ function renderAudit(c){
   window._auditTeamRecords=teamRecords;
   window._auditPending=pending;
   window._auditDone=done;
-  window._auditActiveTab='pending';
-  window._auditPageNum=1;
+  // FIX: Only reset tab + page on a FIRST load (no saved tab), not on silent refresh.
+  // This preserves the user's active tab (Pending/Audited/All) across re-renders.
+  if(!window._auditActiveTab) window._auditActiveTab='pending';
+  if(!window._auditPageNum)   window._auditPageNum=1;
   // Defer table — skeleton shows instantly, data fills after paint
   const _atc=document.getElementById('auditTabContent');
   if(_atc) _atc.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">⏳ Loading audit data...</div>';
-  requestAnimationFrame(()=>{ setTimeout(()=>{ renderAuditTab('pending'); },0); });
+  requestAnimationFrame(()=>{ setTimeout(()=>{
+    // FIX: Restore saved filter values into freshly-rebuilt DOM inputs so silent
+    // refresh / realtime re-render never wipes the user's active date/search filters.
+    _restoreAuditFilters();
+    // Restore active tab highlight button state
+    const _at = window._auditActiveTab || 'pending';
+    ['pending','done','all'].forEach(t=>{const b=document.getElementById('atab_'+t);if(b)b.classList.toggle('active',t===_at);});
+    renderAuditTab(_at);
+  },0); });
 }
 
 function switchAuditTab(tab){
@@ -17187,11 +17199,42 @@ function switchAuditTab(tab){
   if(ab)ab.textContent='📋 All ('+_ar.length+')';
 }
 
-function filterAuditTab(){ window._auditPageNum=1; renderAuditTab(window._auditActiveTab||'pending'); }
+// ── Audit filter persistence — survives silent refresh / full re-render ──
+// Filters are stored in window._auditFilters so renderAudit() can restore
+// them into freshly-rebuilt DOM inputs before calling renderAuditTab().
+window._auditFilters = window._auditFilters || {d1:'',d2:'',search:'',mode:'',team:''};
+
+function _saveAuditFilters(){
+  window._auditFilters = {
+    d1:     document.getElementById('audit_fd1')?.value     || '',
+    d2:     document.getElementById('audit_fd2')?.value     || '',
+    search: document.getElementById('audit_search')?.value  || '',
+    mode:   document.getElementById('audit_fmode')?.value   || '',
+    team:   document.getElementById('audit_fteam')?.value   || ''
+  };
+}
+
+function _restoreAuditFilters(){
+  const f = window._auditFilters || {};
+  const set = (id, val) => { const e=document.getElementById(id); if(e && val) e.value=val; };
+  set('audit_fd1',    f.d1);
+  set('audit_fd2',    f.d2);
+  set('audit_search', f.search);
+  set('audit_fmode',  f.mode);
+  set('audit_fteam',  f.team);
+}
+
+function filterAuditTab(){
+  _saveAuditFilters(); // persist before render so silent refresh can restore
+  window._auditPageNum=1;
+  renderAuditTab(window._auditActiveTab||'pending');
+}
 
 function clearAuditFilter(){
+  window._auditFilters = {d1:'',d2:'',search:'',mode:'',team:''};
   ['audit_fd1','audit_fd2','audit_search','audit_fmode','audit_fteam'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  filterAuditTab();
+  window._auditPageNum=1;
+  renderAuditTab(window._auditActiveTab||'pending');
 }
 
 const AUDIT_PAGE_SIZE=50;
