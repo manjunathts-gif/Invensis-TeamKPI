@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_9_map-priority-1fix_2026-04-22" data-build-id="audit-iae-v7.9-map-priority-fix">
+<html lang="en" data-build-stamp="V7_10_rawfetch-f1ix_2026-04-22" data-build-id="audit-iae-v7.10-rawfetch-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3673,6 +3673,7 @@ function _makeSupaClient(){
       lt(c,v){_filters.push(c+'=lt.'+v);return builder;},
       lte(c,v){_filters.push(c+'=lte.'+v);return builder;},
       in(c,vals){_filters.push(c+'=in.('+vals.map(v=>encodeURIComponent(v)).join(',')+')');return builder;},
+      is(c,v){_filters.push(c+'=is.'+encodeURIComponent(String(v)));return builder;},  // FIX: was missing — caused _iaeSafetyPoll to crash
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
       limit(n){_to=(_from||0)+n-1;return builder;},
@@ -21066,37 +21067,50 @@ function submitInternalAuditErrorAck(){
   rec.acknowledgedAt  = nowIso;
   rec.acknowledgedBy  = ackBy;
 
-  // Persist to DB: UPDATE the audit row (v7 flow)
-  if(window._supa && dbId){
-    const updatePayload = {
+  // Persist to DB: Raw fetch PATCH — bypasses custom client to guarantee correct execution
+  if(dbId){
+    const _updatePayload = {
       user_response:     fullResponse,
-      user_acknowledged: true,        // FIX: boolean column — was sending string status e.g. "Acknowledged"
+      user_acknowledged: true,
       user_ack_at:       nowIso
     };
-    console.log('[IAE-Ack v7] UPDATE audit id', dbId, 'payload:', updatePayload);
-    if(typeof dbUpdate==='function'){
-      dbUpdate('audit', dbId, updatePayload).then(r => {
-        console.log('[IAE-Ack v7] UPDATE result:', r);
-      }).catch(err => {
-        console.warn('[IAE-Ack v7] UPDATE failed:', err);
-        if(typeof showToast==='function') showToast('⚠️ Ack saved locally but DB update failed: '+(err?.message||'unknown'), true);
-      });
-    } else {
-      // Direct Supabase fallback
-      _supa.from('audit').update({
-        user_response:     fullResponse,
-        user_acknowledged: true,      // FIX: boolean column
-        user_ack_at:       nowIso
-      }).eq('id', dbId).select().then(res => {
-        console.log('[IAE-Ack v7] direct update result:', res);
-        if(res && res.error){
-          console.warn('[IAE-Ack v7] direct update error:', res.error);
-          if(typeof showToast==='function') showToast('⚠️ DB update error: '+res.error.message, true);
+    console.log('[IAE-Ack v7] PATCH audit id='+dbId+' payload:', JSON.stringify(_updatePayload));
+    (async()=>{
+      try{
+        // Build URL and key from SUPA_URL and SUPA_ANON (always defined in this app)
+        const _base  = (typeof SUPA_URL !=='undefined' ? SUPA_URL : '') + '/rest/v1/';
+        const _key   = (typeof SUPA_ANON!=='undefined' ? SUPA_ANON : '');
+        const _url   = _base + 'audit?id=eq.' + encodeURIComponent(dbId);
+        const _res   = await fetch(_url, {
+          method:  'PATCH',
+          headers: {
+            'Content-Type':  'application/json',
+            'apikey':        _key,
+            'Authorization': 'Bearer ' + _key,
+            'Prefer':        'return=representation'
+          },
+          body: JSON.stringify(_updatePayload)
+        });
+        const _txt = await _res.text();
+        console.log('[IAE-Ack v7] PATCH status:', _res.status, 'body:', _txt.slice(0,300));
+        if(!_res.ok){
+          console.error('[IAE-Ack v7] PATCH failed:', _res.status, _txt);
+          if(typeof showToast==='function') showToast('⚠️ DB save failed ('+_res.status+'): '+_txt.slice(0,120), true);
+          return;
         }
-      }).catch(err => {
-        console.warn('[IAE-Ack v7] direct update threw:', err);
-      });
-    }
+        let _saved = null;
+        try{ _saved = JSON.parse(_txt); }catch(e){}
+        if(Array.isArray(_saved) && _saved.length===0){
+          console.warn('[IAE-Ack v7] PATCH matched 0 rows — id='+dbId+' not found in audit table');
+          if(typeof showToast==='function') showToast('⚠️ Ack not saved: audit record id='+dbId+' not matched in DB', true);
+        } else {
+          console.log('[IAE-Ack v7] PATCH success — saved row:', _saved);
+        }
+      }catch(_e){
+        console.error('[IAE-Ack v7] PATCH threw:', _e);
+        if(typeof showToast==='function') showToast('⚠️ DB save error: '+(_e?.message||'unknown'), true);
+      }
+    })();
   }
 
   if(typeof showToast==='function') showToast(`✅ Acknowledgement submitted (${status}) — thank you!`);
