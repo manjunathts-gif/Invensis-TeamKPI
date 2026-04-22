@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_RENDINGERE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -17036,43 +17036,6 @@ function renderAudit(c){
     </div>`;
   }).join('');
 
-  // ── Audit Analytics: Error Type × Count + User × Error Count ──
-  const auditErrRecs = DB.audit.filter(a=>teamTxnSet.has(String(a.txn))&&a.errorType&&a.errorType!=='Good Job'&&a.errorType!=='None'&&a.errorType!=='—'&&a.errorType!=='');
-  const errTypeMap = {};
-  auditErrRecs.forEach(a=>{ errTypeMap[a.errorType]=(errTypeMap[a.errorType]||0)+1; });
-  const errTypeSorted = Object.entries(errTypeMap).sort((a,b)=>b[1]-a[1]);
-  const errTypeMax = errTypeSorted.length?errTypeSorted[0][1]:1;
-  const errTypeBars = errTypeSorted.map(([type,cnt])=>{
-    const pct = Math.max(5, Math.round(cnt/errTypeMax*100));
-    const color = cnt>=5?'#dc2626':cnt>=3?'#ea580c':cnt>=2?'#f59e0b':'#fbbf24';
-    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <div style="width:180px;font-size:12px;font-weight:700;color:#374151;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${type}">${type}</div>
-      <div style="flex:1;height:22px;background:#f3f4f6;border-radius:4px;overflow:hidden;position:relative">
-        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${color},${color}dd);border-radius:4px;transition:width .4s"></div>
-        <div style="position:absolute;top:0;left:8px;line-height:22px;font-size:11px;font-weight:800;color:#1f2937">${cnt}</div>
-      </div>
-      <div style="width:50px;font-size:11px;font-weight:800;color:${color};text-align:right;flex-shrink:0">${cnt}</div>
-    </div>`;
-  }).join('');
-
-  // User × Error count breakdown
-  const userErrMap = {};
-  auditErrRecs.forEach(a=>{
-    const u=a.user||a.user_name||'—';
-    if(!userErrMap[u]) userErrMap[u]={total:0,types:{}};
-    userErrMap[u].total++;
-    userErrMap[u].types[a.errorType]=(userErrMap[u].types[a.errorType]||0)+1;
-  });
-  const userErrSorted = Object.entries(userErrMap).sort((a,b)=>b[1].total-a[1].total);
-  const userErrRows = userErrSorted.map(([user,data])=>{
-    const topType = Object.entries(data.types).sort((a,b)=>b[1]-a[1])[0];
-    const sev = data.total>=5?'#dc2626':data.total>=3?'#ea580c':data.total>=2?'#f59e0b':'#16a34a';
-    return `<tr>
-      <td style="padding:8px 12px;font-weight:700;border-left:3px solid ${sev}">${user}</td>
-      <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${sev};font-size:14px">${data.total}</td>
-      <td style="padding:8px 12px;font-size:12px;color:#374151">${topType?`${topType[0]} <span style="color:var(--text3);font-size:10px">(${topType[1]})</span>`:'—'}</td>
-    </tr>`;
-  }).join('');
 
   c.innerHTML=`
   <div class="ph">
@@ -17130,42 +17093,6 @@ function renderAudit(c){
       </div>
     </div>
     <div id="auditTabContent"></div>
-  </div>
-
-  <!-- Audit Analytics — Error Type × No. of Errors + User breakdown -->
-  <div class="tw" style="margin-bottom:14px">
-    <div class="th2">
-      <div class="tt">📊 Audit Analytics</div>
-      <div class="tc">Error type distribution &amp; users with most errors</div>
-    </div>
-    <div style="padding:16px">
-      ${errTypeSorted.length===0?`
-        <div style="padding:24px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">✅ No errors recorded yet — all audits are Good Job!</div>
-      `:`
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="dash-ed-two">
-          <div>
-            <div style="font-size:12px;font-weight:800;color:#374151;letter-spacing:.04em;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-              <span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:6px;font-size:11px">⚠️ ERROR TYPE × COUNT</span>
-              <span style="color:var(--text3);font-size:10px;font-weight:600">${auditErrRecs.length} total errors</span>
-            </div>
-            ${errTypeBars}
-          </div>
-          <div>
-            <div style="font-size:12px;font-weight:800;color:#374151;letter-spacing:.04em;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-              <span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:6px;font-size:11px">👤 USERS WITH MOST ERRORS</span>
-            </div>
-            ${userErrRows?`<div style="overflow-x:auto"><table class="dt" style="font-size:12px">
-              <thead><tr>
-                <th style="min-width:130px">User</th>
-                <th style="text-align:center">Errors</th>
-                <th>Most Common Error</th>
-              </tr></thead>
-              <tbody>${userErrRows}</tbody>
-            </table></div>`:'<div style="color:var(--text3);font-style:italic;padding:10px">No user errors to report</div>'}
-          </div>
-        </div>
-      `}
-    </div>
   </div>`;
 
   window._auditTeamRecords=teamRecords;
@@ -22119,12 +22046,13 @@ function renderQualityAnalytics(c){
 
   // ── Tab nav ──
   var tabs=[
-    {key:'mode',    label:'🚚 Mode-wise'},
-    {key:'client',  label:'🏢 Client-wise'},
-    {key:'user',    label:'👤 User Performance'},
-    {key:'auditor', label:'🔍 Auditor Performance'},
-    {key:'improve', label:'📈 Improvements & Progress'},
-    {key:'summary', label:'📋 Summary Report'},
+    {key:'mode',         label:'🚚 Mode-wise'},
+    {key:'client',       label:'🏢 Client-wise'},
+    {key:'user',         label:'👤 User Performance'},
+    {key:'auditor',      label:'🔍 Auditor Performance'},
+    {key:'audit-errors', label:'📊 Audit Analytics'},
+    {key:'improve',      label:'📈 Improvements & Progress'},
+    {key:'summary',      label:'📋 Summary Report'},
   ];
   var tabNav='<div class="stat-tabs" style="margin-bottom:20px">';
   tabs.forEach(function(t){
@@ -22132,13 +22060,95 @@ function renderQualityAnalytics(c){
   });
   tabNav+='</div>';
 
+  // ════ Audit Analytics Tab — Error Type × Count + User × Error breakdown ════
+  // Moved here from the Audit page so all quality data lives in one place.
+  function buildAuditErrorsTab(){
+    var auditErrRecs = audits.filter(function(a){
+      return a.errorType && a.errorType!=='Good Job' && a.errorType!=='None' && a.errorType!=='—' && a.errorType!=='';
+    });
+
+    if(!auditErrRecs.length){
+      return '<div class="tw" style="margin-bottom:16px"><div class="th2">'
+        +'<div class="tt">📊 Audit Analytics</div>'
+        +'<div class="tc">Error type distribution &amp; users with most errors</div>'
+        +'</div>'
+        +'<div style="padding:40px;text-align:center;color:var(--text3);font-style:italic;font-size:13px">'
+        +'✅ No internal audit errors recorded for this period — all audits are Good Job!'
+        +'</div></div>';
+    }
+
+    // Error type × count bars
+    var errTypeMap2={};
+    auditErrRecs.forEach(function(a){ errTypeMap2[a.errorType]=(errTypeMap2[a.errorType]||0)+1; });
+    var errTypeSorted2=Object.entries(errTypeMap2).sort(function(a,b){return b[1]-a[1];});
+    var errTypeMax2=errTypeSorted2.length?errTypeSorted2[0][1]:1;
+    var errTypeBars2=errTypeSorted2.map(function(entry){
+      var type=entry[0], cnt=entry[1];
+      var pct=Math.max(5,Math.round(cnt/errTypeMax2*100));
+      var color=cnt>=5?'#dc2626':cnt>=3?'#ea580c':cnt>=2?'#f59e0b':'#fbbf24';
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        +'<div style="width:200px;font-size:12px;font-weight:700;color:#374151;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+type+'">'+type+'</div>'
+        +'<div style="flex:1;height:22px;background:#f3f4f6;border-radius:4px;overflow:hidden;position:relative">'
+        +'<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,'+color+','+color+'dd);border-radius:4px;transition:width .4s"></div>'
+        +'<div style="position:absolute;top:0;left:8px;line-height:22px;font-size:11px;font-weight:800;color:#1f2937">'+cnt+'</div>'
+        +'</div>'
+        +'<div style="width:50px;font-size:11px;font-weight:800;color:'+color+';text-align:right;flex-shrink:0">'+cnt+'</div>'
+        +'</div>';
+    }).join('');
+
+    // User × error count breakdown
+    var userErrMap2={};
+    auditErrRecs.forEach(function(a){
+      var u=a.user||'—';
+      if(!userErrMap2[u]) userErrMap2[u]={total:0,types:{}};
+      userErrMap2[u].total++;
+      userErrMap2[u].types[a.errorType]=(userErrMap2[u].types[a.errorType]||0)+1;
+    });
+    var userErrSorted2=Object.entries(userErrMap2).sort(function(a,b){return b[1].total-a[1].total;});
+    var userErrRows2=userErrSorted2.map(function(entry){
+      var user=entry[0], d=entry[1];
+      var topType=Object.entries(d.types).sort(function(a,b){return b[1]-a[1];})[0];
+      var sev=d.total>=5?'#dc2626':d.total>=3?'#ea580c':d.total>=2?'#f59e0b':'#16a34a';
+      return '<tr>'
+        +'<td style="padding:8px 12px;font-weight:700;border-left:3px solid '+sev+'">'+user+'</td>'
+        +'<td style="text-align:center;font-family:var(--mono);font-weight:800;color:'+sev+';font-size:14px">'+d.total+'</td>'
+        +'<td style="padding:8px 12px;font-size:12px;color:#374151">'+(topType?topType[0]+' <span style="color:var(--text3);font-size:10px">('+topType[1]+')</span>':'—')+'</td>'
+        +'</tr>';
+    }).join('');
+
+    return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px" class="dash-ed-two">'
+      // Left: Error type bars
+      +'<div class="tw" style="margin-bottom:0">'
+      +'<div class="th2"><div class="tt">⚠️ Error Type × Count</div>'
+      +'<div class="tc">'+auditErrRecs.length+' total internal audit errors</div></div>'
+      +'<div style="padding:16px">'+errTypeBars2+'</div>'
+      +'</div>'
+      // Right: Users with most errors
+      +'<div class="tw" style="margin-bottom:0">'
+      +'<div class="th2"><div class="tt">👤 Users with Most Errors</div>'
+      +'<div class="tc">'+userErrSorted2.length+' users flagged</div></div>'
+      +(userErrRows2
+        ?'<div style="overflow-x:auto"><table class="dt" style="font-size:12px">'
+          +'<thead><tr>'
+          +'<th style="min-width:130px">User</th>'
+          +'<th style="text-align:center">Errors</th>'
+          +'<th>Most Common Error</th>'
+          +'</tr></thead>'
+          +'<tbody>'+userErrRows2+'</tbody>'
+          +'</table></div>'
+        :'<div style="padding:20px;color:var(--text3);font-style:italic">No user errors to report</div>')
+      +'</div>'
+      +'</div>';
+  }
+
   var tabBody='';
-  if(tab==='mode')     tabBody=buildModeTab();
-  else if(tab==='client')   tabBody=buildClientTab();
-  else if(tab==='user')     tabBody=buildUserTab();
-  else if(tab==='auditor')  tabBody=buildAuditorTab();
-  else if(tab==='improve')  tabBody=buildImprovTab();
-  else if(tab==='summary')  tabBody=buildSummaryTab();
+  if(tab==='mode')         tabBody=buildModeTab();
+  else if(tab==='client')  tabBody=buildClientTab();
+  else if(tab==='user')    tabBody=buildUserTab();
+  else if(tab==='auditor') tabBody=buildAuditorTab();
+  else if(tab==='audit-errors') tabBody=buildAuditErrorsTab();
+  else if(tab==='improve') tabBody=buildImprovTab();
+  else if(tab==='summary') tabBody=buildSummaryTab();
 
   // ════ TAB 6 — SUMMARY REPORT ════
   function buildSummaryTab(){
