@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_atte_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4453,7 +4453,7 @@ function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.erro
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
-function mapLoginUser(r){const _n=r.emp_name||r.name||'';return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:r.active!==false,_dbid:r.id};}
+function mapLoginUser(r){const _n=r.emp_name||r.name||'';const _a=r.active;const _isActive=_a===true||_a==='true'||_a===1||_a==='TRUE'||(typeof _a==='undefined'?true:(_a!==false&&_a!=='false'&&_a!=='FALSE'&&_a!==0&&_a!==null));return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:_isActive,_dbid:r.id};}
 function mapClient(r){return{id:parseInt(r.id)||r.id,name:r.name,team:r.team||''};}
 
 // ── Sanitize loginUsers before caching — mask passwords ──
@@ -7798,7 +7798,17 @@ function _attChangeMonth(){
   const m = parseInt(document.getElementById('att_month')?.value);
   if(y) window._attYear  = y;
   if(m) window._attMonth = m;
-  renderAttendancePage(document.getElementById('pc'));
+  // Show skeleton and defer heavy render so the change handler returns fast
+  const c = document.getElementById('pc');
+  if(c){
+    const monthName = new Date(y||new Date().getFullYear(), (m||1)-1, 1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+    c.innerHTML = `<div style="padding:32px 24px">
+      <div style="height:28px;width:220px;border-radius:8px;background:var(--border);margin-bottom:20px;animation:skPulse 1.2s ease-in-out infinite"></div>
+      <div style="height:16px;width:100%;border-radius:6px;background:var(--border);margin-bottom:10px;animation:skPulse 1.2s ease-in-out infinite"></div>
+      <div style="font-size:13px;color:var(--text3);margin-top:16px;text-align:center">⏳ Loading ${monthName}...</div>
+    </div>`;
+  }
+  setTimeout(()=>{ renderAttendancePage(document.getElementById('pc')); }, 0);
 }
 
 function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
@@ -7852,6 +7862,18 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   function _avCol(name){ let h=0;for(let i=0;i<(name||'').length;i++) h=(h*31+name.charCodeAt(i))%_avColors.length; return _avColors[h]; }
   function _av(name){ return `<div style="width:28px;height:28px;border-radius:50%;background:${_avCol(name)};display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;flex-shrink:0;margin-right:7px">${(name||'?').charAt(0).toUpperCase()}</div>`; }
 
+  // ── PERF: O(1) user lookup Map — replaces O(n) allUsers.find() per row ──
+  const _userMap = new Map();
+  allUsers.forEach(u => {
+    const key = u.loginName||u.username||'';
+    if(key) _userMap.set(key, u);
+    if(u.empName) _userMap.set(u.empName.toLowerCase(), u);
+    if(u.name) _userMap.set(u.name.toLowerCase(), u);
+  });
+  function _lookupUser(uname){
+    return _userMap.get(uname) || _userMap.get((uname||'').toLowerCase()) || {};
+  }
+
   // ── Summary cards data ──
   // Normalize date comparison — handle any leftover timestamp format from DB
   // Match local IST date, ET today, AND ET yesterday — Indian morning = prev ET date
@@ -7878,24 +7900,22 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   const avgMins = completedToday.length ? Math.round(completedToday.reduce((s,r)=>s+(r.total_minutes||0),0)/completedToday.length) : 0;
   const avgHrs  = Math.floor(avgMins/60), avgMin2 = avgMins%60;
 
-  // ── Transaction count (today) ──
-  function _countTxnToday(uname, name){
-    let total=0;
-    const allArrays=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
-    allArrays.forEach(arr=>{
-      if(!arr) return;
-      arr.forEach(r=>{
-        const assigned=String(r.assignedTo||r.user||r.user_name||'').toLowerCase().trim();
-        if(!assigned) return;
-        if(assigned!==(name||'').toLowerCase().trim()&&assigned!==(uname||'').toLowerCase().trim()) return;
-        try{
-          // Use local date slice for comparison — not UTC toISOString
-          const recDate=(r._created||'').slice(0,10);
-          if(_validTodayDates.has(recDate)) total++;
-        }catch(e){}
-      });
+  // ── Transaction count (today) — pre-computed Map for O(1) per user ──
+  const _txnTodayMap = new Map();
+  const allArrays=[DB.lvs,DB.cls,DB.comp,DB.parsDocs,DB.oceanDocs,DB.partLot,DB.release2,DB.oceanTT,DB.b2entries];
+  allArrays.forEach(arr=>{
+    if(!arr) return;
+    arr.forEach(r=>{
+      const recDate=(r._created||'').slice(0,10);
+      if(!_validTodayDates.has(recDate)) return;
+      const assigned=String(r.assignedTo||r.user||r.user_name||'').toLowerCase().trim();
+      if(!assigned) return;
+      _txnTodayMap.set(assigned, (_txnTodayMap.get(assigned)||0)+1);
     });
-    return total;
+  });
+  function _countTxnToday(uname, name){
+    return (_txnTodayMap.get((name||'').toLowerCase().trim())||0)
+         + (uname!==name ? (_txnTodayMap.get((uname||'').toLowerCase().trim())||0) : 0);
   }
 
   // ── Build user list ──
@@ -7910,10 +7930,10 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
       const uname = u.loginName||u.username||'';
       if(uname) attendedSet.add(uname);
     });
-    // Sort by name for display
+    // Sort by name for display — O(n log n) using cached Map lookup
     userList = [...attendedSet].sort((a,b)=>{
-      const nameA = (allUsers.find(u=>(u.loginName||u.username)===a)?.empName||a).toLowerCase();
-      const nameB = (allUsers.find(u=>(u.loginName||u.username)===b)?.empName||b).toLowerCase();
+      const nameA = (_lookupUser(a)?.empName||a).toLowerCase();
+      const nameB = (_lookupUser(b)?.empName||b).toLowerCase();
       return nameA.localeCompare(nameB);
     });
   } else {
@@ -7925,9 +7945,7 @@ function _renderAttendanceContent(c, rows, allUsers, year, month, monthName){
   // BUILD TABLE ROWS
   // ══════════════════════════════════════════════════════════════
   const tableRows = userList.map((uname,i) => {
-    const luObj = allUsers.find(u=>(u.loginName||u.username)===uname)
-      || allUsers.find(u=>(u.empName||u.name||'').toLowerCase()===uname.toLowerCase())
-      || {};
+    const luObj = _lookupUser(uname);
     const name  = luObj.empName||luObj.name||uname;
     const task  = luObj.task||Object.values(byUser[uname]||{})[0]?.[0]?.task||'—';
     const uDays = byUser[uname]||{}; // {date: [session,...]}
@@ -24949,7 +24967,8 @@ window.addEventListener('beforeunload', function(e){
   // Show banner when user switches away from the tab (potential close)
   document.addEventListener('visibilitychange', function(){
     if(document.hidden && CU){
-      _showLogoutReminderBanner();
+      // Defer banner creation so visibilitychange handler returns immediately
+      setTimeout(_showLogoutReminderBanner, 0);
     }
   });
 
