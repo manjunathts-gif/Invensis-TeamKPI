@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_ccc_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -15638,9 +15638,11 @@ function renderErrorReport(c){
       : allErrors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase()));
   const today=todayDateStringET();
 
-  const errTasks=['Release','LVS','Classifier','PARS Docs Clerk','Ocean Docs Clerk'];
-  const errorTypes=['Wrong classification','Missing document','Incorrect entry','Wrong client','Data entry error','Calculation error','Duplicate entry','Missed deadline','Other'];
-  const modes=['Truck','Ocean','Air','Rail','N/A'];
+  const errTasks=['Release','LVS','Classifier','Compliance','PARS Docs Clerk','Ocean Docs Clerk','Part Lot','Ocean T&T','B2 Entries'];
+  // Error types from Audit — same list used for both audit and error report
+  const errorTypes=Object.keys(AUDIT_ERROR_SCORES).filter(t=>t!=='Good Job');
+  const modes=['Truck','Ocean','Air','Rail'];
+  const errorSources=['DC ERROR','CANADINA TEAM','AUDITOR'];
 
   c.innerHTML=`
   <div class="ph">
@@ -15788,10 +15790,15 @@ function renderErrorReport(c){
         ${modes.map(m=>`<option>${m}</option>`).join('')}
       </select>
     </div>
-    <!-- 7. Client Comments | Source of Error Reported -->
+    <!-- 7. Client Comments | Source of Error Reported (dropdown) -->
     <div class="frow">
       <div class="fpg"><label class="fpl" for="ep_clientcomments">Client Comments</label><textarea class="fpta" id="ep_clientcomments" placeholder="Client's feedback or remarks..." style="min-height:60px"></textarea></div>
-      <div class="fpg"><label class="fpl" for="ep_source">Source of Error Reported</label><textarea class="fpta" id="ep_source" placeholder="e.g. Client email, QC check..." style="min-height:60px"></textarea></div>
+      <div class="fpg"><label class="fpl" for="ep_source">Source of Error Reported <span class="req">*</span></label>
+        <select class="fps" id="ep_source">
+          <option value="">— Select Source —</option>
+          ${errorSources.map(s=>`<option>${s}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <!-- 8. Team Lead Comments -->
     <div class="fpg"><label class="fpl" for="ep_tlcomments">Team Lead Comments <span style="font-size:10px;color:var(--indigo,#4d79ff);font-weight:700;background:#eef2ff;padding:2px 7px;border-radius:4px;margin-left:4px">Team Lead Only</span></label><textarea class="fpta" id="ep_tlcomments" placeholder="Team Lead feedback or notes for the user..." style="min-height:60px"></textarea></div>
