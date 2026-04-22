@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_atte_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4450,7 +4450,7 @@ function mapB2(r){
   return{id:r.id,txn:r.txn,source:r.source,assigneddate:r.assigned_date,adjtype:r.adj_type,tasktype:r.task_type,lines:r.lines,status:r.status,user:r.user_name,comments:r.comments,start:startDisp,completed:compDisp,completedB2:compDisp,duration:dur,tat:r.tat||'',_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
 function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,qualityScore:r.quality_score,errorDetail:r.error_detail,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||null,userAckAt:r.user_ack_at||null,_created:r.submitted||r.created_at,_dbid:r.id};}
-function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at,_dbid:r.id};}
+function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,reportedAt:r.reported_at||null,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at||r.reported_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
 function mapLoginUser(r){const _n=r.emp_name||r.name||'';const _a=r.active;const _isActive=_a===true||_a==='true'||_a===1||_a==='TRUE'||(typeof _a==='undefined'?true:(_a!==false&&_a!=='false'&&_a!=='FALSE'&&_a!==0&&_a!==null));return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:_isActive,_dbid:r.id};}
@@ -15921,7 +15921,17 @@ function saveErrorRecord(){
   const userName=document.getElementById('ep_user').value;
   const errorType=document.getElementById('ep_errortype').value;
   if(!date||!task||!userName||!errorType){showToast('\u26a0\ufe0f Date, Task, User and Error Type are required',true);return;}
+
+  // ── Prevent double-click duplicate inserts ──
+  const saveBtn=document.querySelector('#errPanel .btn-save');
+  if(saveBtn){
+    if(saveBtn.dataset.saving==='1'){showToast('⏳ Already saving...');return;}
+    saveBtn.dataset.saving='1'; saveBtn.disabled=true; saveBtn.textContent='⏳ Saving...';
+  }
+  const _resetBtn=()=>{if(saveBtn){saveBtn.dataset.saving='0';saveBtn.disabled=false;saveBtn.textContent='💾 Save Error Record';}};
+
   const editIdx=parseInt(document.getElementById('ep_edit_idx').value);
+  const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
   const rec={
     date,task,txn:document.getElementById('ep_txn').value||'',
     client:document.getElementById('ep_client').value||'',
@@ -15930,74 +15940,63 @@ function saveErrorRecord(){
     userName,errorType,
     percentage:document.getElementById('ep_pct').value||'',
     mode:document.getElementById('ep_mode').value||'',
+    reportedAt:nowIso,
     sourceOfError:document.getElementById('ep_source')?.value||'',
     clientComments:document.getElementById('ep_clientcomments')?.value||'',
     userComments:document.getElementById('ep_usercomments').value||'',
     tlComments:document.getElementById('ep_tlcomments')?.value||'',
     createdBy:document.getElementById('ep_createdby').value||CU.name,
-    _created:editIdx>=0?DB.errors[editIdx]._created:nowISOET(),
+    _created:editIdx>=0?DB.errors[editIdx]._created:nowIso,
   };
-  const dbRow={
-    date:rec.date, task:rec.task, txn:rec.txn||null,
-    client:rec.client?parseInt(rec.client)||null:null,
-    client_name:rec.clientName||null, team:rec.team||null,
-    user_name:rec.userName, error_type:rec.errorType,
-    percentage:rec.percentage?parseFloat(rec.percentage)||null:null,
-    mode:rec.mode||null,
-    source_of_error:rec.sourceOfError||null,
-    client_comments:rec.clientComments||null,
-    user_comments:rec.userComments||null,
-    created_by:rec.createdBy||CU.name,
-    created_at:rec._created,
-  };
+
+  // ── DB column mapping (new table structure) ──
+  const _toDbRow=(r)=>({
+    date:r.date, task:r.task||null, txn:r.txn||null,
+    client:r.client?parseInt(r.client)||null:null,
+    client_name:r.clientName||null, team:r.team||null,
+    user_name:r.userName, error_type:r.errorType,
+    percentage:r.percentage?parseFloat(r.percentage)||null:null,
+    mode:r.mode||null,
+    reported_at:r.reportedAt||nowIso,
+    source_of_error:r.sourceOfError||null,
+    client_comments:r.clientComments||null,
+    user_comments:r.userComments||null,
+    tl_comments:r.tlComments||null,
+    created_by:r.createdBy||CU.name,
+  });
+
   if(editIdx>=0){
     const existing=DB.errors[editIdx];
     DB.errors[editIdx]={...rec,_idx:editIdx,_dbid:existing._dbid,id:existing.id};
     if(_supa&&existing._dbid){
-      const updatePatch={
-        date:rec.date, task:rec.task||null, txn:rec.txn||null,
-        client:rec.client?parseInt(rec.client)||null:null,
-        client_name:rec.clientName||null, team:rec.team||null,
-        user_name:rec.userName, error_type:rec.errorType,
-        percentage:rec.percentage?parseFloat(rec.percentage)||null:null,
-        mode:rec.mode||null,
-        source_of_error:rec.sourceOfError||null,
-        client_comments:rec.clientComments||null,
-        user_comments:rec.userComments||null,
-        created_by:rec.createdBy||CU.name,
-        tl_comments:rec.tlComments||null,
-      };
-      dbUpdate('client_errors',existing._dbid,updatePatch)
-        .then(()=>showToast('\u2705 Error record updated in database!'))
-        .catch(e=>showToast('\u26a0\ufe0f DB update failed: '+e.message,true));
-    } else { showToast('\u2705 Error record updated!'); }
+      dbUpdate('client_errors',existing._dbid,_toDbRow(rec))
+        .then(()=>{showToast('\u2705 Error record updated in database!');_resetBtn();})
+        .catch(e=>{showToast('\u26a0\ufe0f DB update failed: '+e.message,true);_resetBtn();});
+    } else { showToast('\u2705 Error record updated!'); _resetBtn(); }
   } else {
+    // ── Duplicate guard: check if same txn+user+date already exists in DB.errors ──
+    const txnVal=rec.txn;
+    if(txnVal){
+      const isDup=DB.errors.some(e=>String(e.txn)===String(txnVal)&&e.userName===rec.userName&&e.date===rec.date&&e.errorType===rec.errorType);
+      if(isDup){
+        showToast('⚠️ This error record already exists (same Txn + User + Date + Type)',true);
+        _resetBtn();
+        return;
+      }
+    }
     rec._idx=DB.errors.length;
     DB.errors.push(rec);
     DB.errors.forEach((e,i)=>e._idx=i);
     if(_supa){
-      const insertRow={
-        date:rec.date, txn:rec.txn||null,
-        client:rec.client?parseInt(rec.client)||null:null,
-        client_name:rec.clientName||null, team:rec.team||null,
-        user_name:rec.userName, error_type:rec.errorType,
-        percentage:rec.percentage?parseFloat(rec.percentage)||null:null,
-        mode:rec.mode||null,
-        source_of_error:rec.sourceOfError||null,
-        client_comments:rec.clientComments||null,
-        user_comments:rec.userComments||null,
-        tl_comments:rec.tlComments||null,
-        created_by:rec.createdBy||CU.name,
-        task:rec.task||null,
-      };
-      dbInsert('client_errors',insertRow).then(saved=>{
+      dbInsert('client_errors',_toDbRow(rec)).then(saved=>{
         if(saved&&Array.isArray(saved)&&saved[0]){
-          const last=DB.errors.find(e=>!e._dbid&&e.userName===rec.userName&&e.date===rec.date);
+          const last=DB.errors.find(e=>!e._dbid&&e.userName===rec.userName&&e.date===rec.date&&e.txn===rec.txn);
           if(last){ last._dbid=saved[0].id; last.id=saved[0].id; }
         }
         showToast('\u2705 Error record saved to database!');
-      }).catch(e=>{ showToast('\u26a0\ufe0f DB insert failed: '+e.message,true); });
-    } else { showToast('\u2705 Error record added!'); }
+        _resetBtn();
+      }).catch(e=>{ showToast('\u26a0\ufe0f DB insert failed: '+e.message,true); _resetBtn(); });
+    } else { showToast('\u2705 Error record added!'); _resetBtn(); }
   }
   closeErrorPanel();
   showPage(_currentPage||'errorreport');
