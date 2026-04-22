@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_ccc_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_duplicate_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -15929,13 +15929,12 @@ function saveErrorRecord(){
   const errorType=document.getElementById('ep_errortype').value;
   if(!date||!task||!userName||!errorType){showToast('\u26a0\ufe0f Date, Task, User and Error Type are required',true);return;}
 
-  // ── Prevent double-click duplicate inserts ──
+  // ── Prevent double-click / re-entry ──
+  if(window._errSaving){showToast('⏳ Already saving...');return;}
+  window._errSaving=true;
   const saveBtn=document.querySelector('#errPanel .btn-save');
-  if(saveBtn){
-    if(saveBtn.dataset.saving==='1'){showToast('⏳ Already saving...');return;}
-    saveBtn.dataset.saving='1'; saveBtn.disabled=true; saveBtn.textContent='⏳ Saving...';
-  }
-  const _resetBtn=()=>{if(saveBtn){saveBtn.dataset.saving='0';saveBtn.disabled=false;saveBtn.textContent='💾 Save Error Record';}};
+  if(saveBtn){ saveBtn.disabled=true; saveBtn.textContent='⏳ Saving...'; }
+  const _resetBtn=()=>{window._errSaving=false;if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='💾 Save Error Record';}};
 
   const editIdx=parseInt(document.getElementById('ep_edit_idx').value);
   const nowIso = (typeof nowISOET==='function') ? nowISOET() : new Date().toISOString();
@@ -15972,6 +15971,9 @@ function saveErrorRecord(){
     created_by:r.createdBy||CU.name,
   });
 
+  // ── Close panel immediately so user can't double-submit ──
+  closeErrorPanel();
+
   if(editIdx>=0){
     const existing=DB.errors[editIdx];
     DB.errors[editIdx]={...rec,_idx:editIdx,_dbid:existing._dbid,id:existing.id};
@@ -15980,33 +15982,36 @@ function saveErrorRecord(){
         .then(()=>{showToast('\u2705 Error record updated in database!');_resetBtn();})
         .catch(e=>{showToast('\u26a0\ufe0f DB update failed: '+e.message,true);_resetBtn();});
     } else { showToast('\u2705 Error record updated!'); _resetBtn(); }
+    showPage(_currentPage||'errorreport');
   } else {
-    // ── Duplicate guard: check if same txn+user+date already exists in DB.errors ──
+    // ── Duplicate guard: check if same txn+user+date+type already exists ──
     const txnVal=rec.txn;
     if(txnVal){
       const isDup=DB.errors.some(e=>String(e.txn)===String(txnVal)&&e.userName===rec.userName&&e.date===rec.date&&e.errorType===rec.errorType);
       if(isDup){
-        showToast('⚠️ This error record already exists (same Txn + User + Date + Type)',true);
+        showToast('⚠️ Duplicate — this error record already exists',true);
         _resetBtn();
         return;
       }
     }
+    // ── Mark as own insert so realtime handler reconciles instead of duplicating ──
+    rec._pendingOwnInsert = true;
     rec._idx=DB.errors.length;
     DB.errors.push(rec);
     DB.errors.forEach((e,i)=>e._idx=i);
+    showPage(_currentPage||'errorreport');
     if(_supa){
       dbInsert('client_errors',_toDbRow(rec)).then(saved=>{
         if(saved&&Array.isArray(saved)&&saved[0]){
-          const last=DB.errors.find(e=>!e._dbid&&e.userName===rec.userName&&e.date===rec.date&&e.txn===rec.txn);
-          if(last){ last._dbid=saved[0].id; last.id=saved[0].id; }
+          // Stamp the DB id onto the local record — prevents realtime from adding a duplicate
+          const last=DB.errors.find(e=>e._pendingOwnInsert&&e.userName===rec.userName&&e.date===rec.date&&String(e.txn)===String(rec.txn));
+          if(last){ last._dbid=saved[0].id; last.id=saved[0].id; delete last._pendingOwnInsert; }
         }
         showToast('\u2705 Error record saved to database!');
         _resetBtn();
       }).catch(e=>{ showToast('\u26a0\ufe0f DB insert failed: '+e.message,true); _resetBtn(); });
     } else { showToast('\u2705 Error record added!'); _resetBtn(); }
   }
-  closeErrorPanel();
-  showPage(_currentPage||'errorreport');
 }
 
 function editErrorRecord(idx){
