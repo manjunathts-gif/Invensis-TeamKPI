@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_erro onsole dup_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_popupfix it_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5589,7 +5589,16 @@ function _applyRealtimeRow(table, row, eventType){
   } else if(eventType==='UPDATE' && row){
     const mapped = rtEntry.map(row);
     const idx = arr.findIndex(r=>String(r._dbid||r.id||'')===String(row.id));
-    if(idx>=0){ arr[idx]={...arr[idx],...mapped}; }
+    if(idx>=0){
+      // FIX: Never let a server RT UPDATE overwrite a locally-set userAckAt with null.
+      // If the DB write for the ack is still in-flight (or silently failed), any
+      // unrelated RT UPDATE on the same audit row (e.g. TL edits score/comments)
+      // would come back from Supabase with user_ack_at=null → mapped.userAckAt=null
+      // → overwrites the optimistic ack → _getMyUnackedIAE treats it as unacked
+      // → popup fires again. Preserve the local ack timestamp in that case.
+      if(arr[idx].userAckAt && !mapped.userAckAt) mapped.userAckAt = arr[idx].userAckAt;
+      arr[idx]={...arr[idx],...mapped};
+    }
     else{ arr.unshift(mapped); _sortAllTaskArrays(arr); /* PERF: sort only this array */ }
   } else if(eventType==='DELETE'){
     const rowId = String((row||{}).id||'');
@@ -5627,7 +5636,15 @@ function _applyRealtimeRow(table, row, eventType){
       const sc = (row.score!=null && !isNaN(parseFloat(row.score))) ? parseFloat(row.score) : null;
       const isRealError = errType && errType!=='Good Job' && errType!=='None' && errType!=='—' && errType!=='';
       const isLowScore = sc!=null && sc<100;
-      const notAcked = !row.user_ack_at;
+      // FIX: check BOTH the incoming server row AND the local DB.audit copy.
+      // If the user already acked locally (optimistic update), the server row
+      // may still have user_ack_at=null until the DB write confirms. Without
+      // this second check any non-ack RT UPDATE (TL edits comments etc.)
+      // would see notAcked=true and re-fire the popup after acknowledgment.
+      const notAckedServer = !row.user_ack_at;
+      const localRec = (DB.audit||[]).find(a=>String(a._dbid||a.id||'')===String(row.id));
+      const notAckedLocal  = !localRec?.userAckAt;
+      const notAcked = notAckedServer && notAckedLocal; // both must agree it's unacked
       if(targetName && myNames.has(targetName) && notAcked && (isRealError && isLowScore)){
         if(typeof showToast==='function'){
           showToast(`⚠️ New audit error reported on Txn ${row.txn} — please review`, true);
@@ -5661,7 +5678,8 @@ function setupRealtime(){
   // Stops automatically the moment WebSocket connects successfully
   startBgPoll();
 
-  // Fallback timer — just update indicator if WS still not connected after 20s
+  // Fallback timer — clear any previous timer first to avoid duplicate fires on reconnect
+  if(_rtFallbackTimer){ clearTimeout(_rtFallbackTimer); _rtFallbackTimer=null; }
   _rtFallbackTimer = setTimeout(()=>{
     if(!_rtConnected){
       _setRTIndicator('polling');
@@ -10085,6 +10103,7 @@ function doLogout(){
 
   // ── Stop background poll on logout ──
   stopBgPoll();
+  stopKeepAlive(); // FIX: was missing — _keepAliveInterval leaked across sessions
   if(typeof _stopIAEHeartbeat==='function') _stopIAEHeartbeat();
   if(typeof _rtFallbackTimer!=='undefined' && _rtFallbackTimer){ clearTimeout(_rtFallbackTimer); _rtFallbackTimer=null; }
   if(typeof _rtConnected!=='undefined') _rtConnected=false;
@@ -10385,21 +10404,13 @@ function closeMobSidebar(){
   const bd = document.getElementById('mobSidebarBackdrop');
   if(sb) sb.classList.remove('mob-open');
   if(bd) bd.classList.remove('show');
+  document.body.style.overflow = ''; // FIX: was missing — body scroll stayed locked after sidebar close
 }
 
 // Mobile bottom nav task page mapping
 let _mobTaskPage = 'release2';
 
-function mobNavGo(page){
-  closeMobSidebar();
-  showPage(page);
-  // Update active state
-  document.querySelectorAll('.mob-nav-item').forEach(b => b.classList.remove('active'));
-  const map = {dashboard:'mnHome', status:'mnStatus'};
-  const activeId = map[page] || 'mnTask';
-  const el = document.getElementById(activeId);
-  if(el) el.classList.add('active');
-}
+// mobNavGo defined below (line ~25125) — removed duplicate stub here
 
 function _updateMobNav(page){
   if(window.innerWidth > 767) return;
@@ -12737,7 +12748,7 @@ function _renderIdleContent(){
   if(cw) cw.innerHTML = cards;
 }
 
-function buildIdleRows(dateStr,q){return '';}
+// buildIdleRows defined below (full implementation) — removed empty stub here
 
 function renderUsers(c){
   const rc={Manager:'#e11d48','Co-ordinator':'#2563eb','Team Member':'#0d9488','Team Lead':'#7c3aed','Supervisor':'#d97706','Co-Ordinator':'#2563eb'};
@@ -20846,8 +20857,9 @@ function _closeIAEPopup(){
   if(overlay) overlay.style.display = 'none';
   setTimeout(()=>{
     if(popup.style.opacity === '0') popup.style.display = 'none';
-    window._iaeActiveTxn = null;
-    window._iaeActiveRec = null;
+    window._iaeActiveTxn   = null;
+    window._iaeActiveRec   = null;
+    window._iaeActiveAudit = null; // FIX: was missing — stale reference caused next open to write to wrong DB.audit element
   }, 260);
 }
 
@@ -20959,10 +20971,13 @@ async function _iaeSafetyPoll(){
         try{ renderRLRows(pgSlice('rl')); }catch(e){}
       }
     }
-    // FIX: Always fire _showInternalAuditAlert regardless of whether new rows were
-    // added — existing unacked rows already in DB.audit need to trigger the popup
-    // on the first heartbeat run too (e.g. member refreshes the page).
-    _showInternalAuditAlert();
+    // FIX: Only fire _showInternalAuditAlert when DB actually returned unacked rows
+    // for this user (errs.length > 0). The old "always fire" approach meant the popup
+    // check ran every 30s regardless — benign when local state is correct, but caused
+    // phantom re-popups when a stale server row (user_ack_at=null due to failed write)
+    // triggered _getMyUnackedIAE to find the row via a race with the RT UPDATE overwrite.
+    // With FIX 1 (preserve local userAckAt on RT UPDATE), this is now belt-and-suspenders.
+    if(errs.length > 0) _showInternalAuditAlert();
   }catch(_e){
     console.warn('[IAE poll v7] failed:', _e && _e.message);
   }
@@ -21051,6 +21066,11 @@ function submitInternalAuditErrorAck(){
   }
 
   if(typeof showToast==='function') showToast(`✅ Acknowledgement submitted (${status}) — thank you!`);
+
+  // FIX: Rebuild the IAE map immediately so _iaeByTxn reflects the ack
+  // before the chain check runs. Without this the blinking badge and _getMyUnackedIAE
+  // could still see the old unacked entry for up to the next full rebuild cycle.
+  if(typeof _rebuildAuditMap==='function') try{ _rebuildAuditMap(); }catch(e){}
 
   // Close popup (now allowed because acknowledgedAt is set)
   _closeIAEPopup();
