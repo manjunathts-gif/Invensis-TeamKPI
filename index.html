@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_popupfix it_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_7_boolED-fix_2026-04-22" data-build-id="audit-iae-v7.7-bool-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4334,7 +4334,9 @@ async function dbUpdate(table,id,patch){
   const safePatch={...patch};
   delete safePatch.created_at;
   delete safePatch.id;
-  const {data,error}=await _supa.from(table).update(safePatch).eq('id',id);
+  // NOTE: Supabase JS v2 requires .select() after .update() to return rows AND
+  // to surface RLS-blocked updates (otherwise error=null, data=null silently).
+  const {data,error}=await _supa.from(table).update(safePatch).eq('id',id).select();
   if(error){
     const code=error.code||'';
     const emsg=error.message||'Update failed';
@@ -4348,6 +4350,10 @@ async function dbUpdate(table,id,patch){
     }
     console.error('Update '+table,error);
     throw new Error(emsg);
+  }
+  // If data is an empty array, the UPDATE matched 0 rows — likely blocked by RLS.
+  if(Array.isArray(data) && data.length===0){
+    console.warn('[KPI] dbUpdate on "'+table+'" id='+id+' returned 0 rows. Possible RLS block or ID mismatch. Check Supabase RLS policies for UPDATE on this table.');
   }
   return data;
 }
@@ -21012,8 +21018,10 @@ function submitInternalAuditErrorAck(){
     if(typeof showToast==='function') showToast('Already acknowledged', false);
     return;
   }
-  const comments = (document.getElementById('iaeUserComments')?.value||'').trim();
-  const status   = (document.getElementById('iaeUserStatus')?.value||'').trim();
+  const comments  = (document.getElementById('iaeUserComments')?.value||'').trim();
+  const status    = (document.getElementById('iaeUserStatus')?.value||'').trim();
+  // user_acknowledged is a boolean column — store the status label inside user_response
+  const fullResponse = status ? `[${status}] ${comments}` : comments;
   if(!status){
     if(typeof showToast==='function') showToast('⚠️ Please select a status (Acknowledged / In Progress / Resolved)', true);
     return;
@@ -21028,10 +21036,10 @@ function submitInternalAuditErrorAck(){
   const dbId   = auditRec._dbid || auditRec.id;
 
   // Optimistic local update on the audit record
-  auditRec.userResponse     = comments;
-  auditRec.userAcknowledged = status;
+  auditRec.userResponse     = fullResponse;
+  auditRec.userAcknowledged = true;   // FIX: boolean column — was storing string status
   auditRec.userAckAt        = nowIso;
-  rec.userComments    = comments;
+  rec.userComments    = fullResponse;
   rec.userStatus      = status;
   rec.acknowledgedAt  = nowIso;
   rec.acknowledgedBy  = ackBy;
@@ -21039,8 +21047,8 @@ function submitInternalAuditErrorAck(){
   // Persist to DB: UPDATE the audit row (v7 flow)
   if(window._supa && dbId){
     const updatePayload = {
-      user_response:     comments,
-      user_acknowledged: status,
+      user_response:     fullResponse,
+      user_acknowledged: true,        // FIX: boolean column — was sending string status e.g. "Acknowledged"
       user_ack_at:       nowIso
     };
     console.log('[IAE-Ack v7] UPDATE audit id', dbId, 'payload:', updatePayload);
@@ -21053,7 +21061,11 @@ function submitInternalAuditErrorAck(){
       });
     } else {
       // Direct Supabase fallback
-      _supa.from('audit').update(updatePayload).eq('id', dbId).then(res => {
+      _supa.from('audit').update({
+        user_response:     fullResponse,
+        user_acknowledged: true,      // FIX: boolean column
+        user_ack_at:       nowIso
+      }).eq('id', dbId).select().then(res => {
         console.log('[IAE-Ack v7] direct update result:', res);
         if(res && res.error){
           console.warn('[IAE-Ack v7] direct update error:', res.error);
