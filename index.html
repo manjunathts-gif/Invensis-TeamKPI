@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_11_delete-fixED ERROR POP DELETE_2026-04-22" data-build-id="audit-iae-v7.11-delete-fix">
+<html lang="en" data-build-stamp="V8_0_error-history-pars-odc-release-followup_2026-04-22" data-build-id="audit-iae-v8.0-error-history-enhanced">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -182,6 +182,45 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes pulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(111,66,193,.3);}50%{box-shadow:0 0 0 8px rgba(111,66,193,0);}}
+/* ── Error History Popup — per-error blink animations ── */
+@keyframes errCardBlink{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.6),inset 0 0 0 0 rgba(220,38,38,.05);}50%{box-shadow:0 0 0 8px rgba(220,38,38,0),inset 0 0 16px rgba(220,38,38,.08);}}
+@keyframes errTypeBlink{0%,100%{background:#dc2626;transform:scale(1);}50%{background:#f97316;transform:scale(1.04);}}
+@keyframes instrTabBlink{0%,100%{color:#dc2626;border-color:rgba(220,38,38,.6);background:rgba(220,38,38,.05);}50%{color:#b91c1c;border-color:rgba(220,38,38,.15);background:transparent;}}
+@keyframes instrContentBlink{0%,100%{border-left-color:#0ea5e9;}50%{border-left-color:#dc2626;}}
+.err-card-unacked{animation:errCardBlink 1.8s ease-in-out infinite!important;}
+.err-type-badge-blink{animation:errTypeBlink 1.3s ease-in-out infinite!important;}
+.err-instr-tab-blink{animation:instrTabBlink 1.3s ease-in-out infinite!important;}
+.err-instr-content-blink{animation:instrContentBlink 1.5s ease-in-out infinite!important;}
+/* ── Centered Error Popup (larger) ── */
+.err-popup-centered{
+  display:none;position:fixed;top:50%;left:50%;
+  width:min(860px,92vw);max-height:88vh;z-index:499;
+  background:#fff;flex-direction:column;overflow:hidden;border-radius:18px;
+  border:2.5px solid #dc2626;
+  box-shadow:0 24px 80px rgba(0,0,0,.35),0 8px 24px rgba(220,38,38,.15);
+  transform:translate(-50%,-50%) scale(.92);opacity:0;
+  transition:transform .28s cubic-bezier(.34,1.56,.64,1),opacity .22s ease;
+}
+.err-popup-centered.open{transform:translate(-50%,-50%) scale(1);opacity:1;}
+/* ── Popup tabs ── */
+.err-popup-tab-bar{display:flex;border-bottom:2px solid rgba(220,38,38,.12);background:#fff;flex-shrink:0;}
+.err-popup-tab{flex:1;padding:11px 8px;font-size:12px;font-weight:800;text-align:center;cursor:pointer;color:#9ca3af;border-bottom:3px solid transparent;transition:all .18s;letter-spacing:.3px;text-transform:uppercase;}
+.err-popup-tab.active{color:#dc2626;border-bottom-color:#dc2626;background:rgba(220,38,38,.04);}
+.err-popup-tab-pane{display:none;flex:1;overflow-y:auto;padding:18px 20px;flex-direction:column;gap:14px;background:#fafafa;}
+.err-popup-tab-pane.active{display:flex;}
+/* ── Rich text toolbar ── */
+.rte-toolbar{display:flex;gap:5px;flex-wrap:wrap;padding:8px 10px;background:#f3f4f6;border:1.5px solid #e5e7eb;border-radius:10px 10px 0 0;border-bottom:none;}
+.rte-btn{padding:4px 9px;border:1.5px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:#374151;transition:all .12s;font-family:inherit;}
+.rte-btn:hover{border-color:#dc2626;color:#dc2626;background:#fff8f8;}
+.rte-btn.active{background:#dc2626;color:#fff;border-color:#dc2626;}
+.rte-sep{width:1px;background:#d1d5db;margin:2px 3px;align-self:stretch;}
+.rte-select{padding:4px 7px;border:1.5px solid #d1d5db;border-radius:6px;font-size:12px;font-weight:700;color:#374151;background:#fff;cursor:pointer;}
+.rte-editor{min-height:140px;padding:12px 14px;border:1.5px solid #e5e7eb;border-radius:0 0 10px 10px;background:#fff;font-size:13px;line-height:1.7;outline:none;color:#1f2937;}
+.rte-editor:focus{border-color:#0ea5e9;}
+/* ── Per-error ack button ── */
+.per-err-ack-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;border:1.5px solid rgba(220,38,38,.4);background:#fff8f8;color:#dc2626;font-size:11px;font-weight:800;cursor:pointer;transition:all .18s;font-family:inherit;}
+.per-err-ack-btn:hover{background:#dc2626;color:#fff;border-color:#dc2626;}
+.per-err-ack-btn.acked{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.4);color:#059669;cursor:default;}
 
 /* ════════════════════════════
    LOGIN PAGE — Single Card (Clean)
@@ -2130,36 +2169,81 @@ body.style-modern .fs2:focus{
 <div class="overlay" id="overlay"></div>
 
 <!-- ═══ RELEASE CLIENT ERROR HISTORY POPUP ═══ -->
-<div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
-<div id="rlErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
-  background:#fff;flex-direction:column;overflow:hidden;
-  border-left:4px solid #dc2626;
-  box-shadow:-8px 0 60px rgba(0,0,0,.22);
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+<div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:498;backdrop-filter:blur(3px);"></div>
+<div id="rlErrPopup" class="err-popup-centered" style="z-index:499;">
 
   <!-- Header -->
-  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
-    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 24px 16px;flex-shrink:0;position:relative;overflow:hidden;border-radius:16px 16px 0 0;">
+    <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="position:absolute;bottom:-30px;left:60px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04);pointer-events:none;"></div>
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">⚠️</div>
         <div>
-          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
-          <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
+          <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px;line-height:1.2">🚨 Error History Alert — Release</div>
+          <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px;font-weight:500;">Loading...</div>
         </div>
       </div>
-      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
-        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
+      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:36px;height:36px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
+        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">✕</button>
     </div>
     <div id="rlErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
   </div>
 
-  <!-- Body -->
-  <div id="rlErrPopupBody" style="flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#fafafa;"></div>
+  <!-- Tabs -->
+  <div class="err-popup-tab-bar">
+    <div class="err-popup-tab active" id="rlTabErr" onclick="_switchErrTab('rl','err')">🚨 Error History</div>
+    <div class="err-popup-tab" id="rlTabInstr" onclick="_switchErrTab('rl','instr')">📋 Instruction Follow-up</div>
+  </div>
+
+  <!-- Tab: Error History -->
+  <div class="err-popup-tab-pane active" id="rlPaneErr">
+    <div id="rlErrPopupBody" style="display:flex;flex-direction:column;gap:14px;"></div>
+  </div>
+
+  <!-- Tab: Instruction Follow-up -->
+  <div class="err-popup-tab-pane" id="rlPaneInstr">
+    <div id="rlInstrBody" style="display:flex;flex-direction:column;gap:16px;"></div>
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;display:flex;align-items:center;gap:6px;">✏️ Add / Edit Instruction Follow-up Note</div>
+      <!-- Rich Text Toolbar -->
+      <div class="rte-toolbar">
+        <button class="rte-btn" onclick="document.execCommand('bold')" title="Bold"><b>B</b></button>
+        <button class="rte-btn" onclick="document.execCommand('italic')" title="Italic"><i>I</i></button>
+        <button class="rte-btn" onclick="document.execCommand('underline')" title="Underline"><u>U</u></button>
+        <div class="rte-sep"></div>
+        <select class="rte-select" onchange="document.execCommand('fontSize',false,this.value)" title="Font Size">
+          <option value="">Size</option>
+          <option value="2">Small</option>
+          <option value="3" selected>Normal</option>
+          <option value="4">Large</option>
+          <option value="5">Larger</option>
+          <option value="6">X-Large</option>
+        </select>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Color:</span>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#dc2626')" style="color:#dc2626;border-color:#dc2626;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#2563eb')" style="color:#2563eb;border-color:#2563eb;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#059669')" style="color:#059669;border-color:#059669;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#d97706')" style="color:#d97706;border-color:#d97706;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#1f2937')" style="color:#1f2937;">A</button>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Highlight:</span>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fef08a')" style="background:#fef08a;border-color:#ca8a04;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bbf7d0')" style="background:#bbf7d0;border-color:#059669;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bfdbfe')" style="background:#bfdbfe;border-color:#2563eb;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fecaca')" style="background:#fecaca;border-color:#dc2626;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'transparent')" title="Remove highlight">✕H</button>
+      </div>
+      <div id="rlRteEditor" class="rte-editor" contenteditable="true" data-placeholder="Type follow-up instruction here — what to avoid next time, action required, etc...">
+      </div>
+      <button onclick="_saveFollowupInstruction('rl')" style="margin-top:10px;width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#0369a1,#0ea5e9);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);letter-spacing:.2px;">💾 Save Instruction Follow-up</button>
+    </div>
+  </div>
 
   <!-- Acknowledgment footer -->
-  <div style="flex-shrink:0;padding:16px 20px 20px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
-    <label id="rlErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:14px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);border-radius:12px;transition:all .15s;margin-bottom:12px;"
+  <div style="flex-shrink:0;padding:14px 20px 18px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="rlErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);border-radius:12px;transition:all .15s;margin-bottom:10px;"
       onmouseover="this.style.background='#fff0f0';this.style.borderColor='rgba(220,38,38,.4)'"
       onmouseout="this.style.background='#fff8f8';this.style.borderColor='rgba(220,38,38,.2)'">
       <input type="checkbox" id="rlErrAckBox" onchange="_rlErrAckChanged()" style="width:20px;height:20px;accent-color:#dc2626;flex-shrink:0;margin-top:2px;cursor:pointer"/>
@@ -2167,7 +2251,7 @@ body.style-modern .fs2:focus{
     </label>
     <button id="rlErrAckBtn" onclick="_rlErrConfirm()" disabled
       style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
-      &#10003; Acknowledged — Continue to Form
+      ✓ Acknowledged — Continue to Form
     </button>
   </div>
 </div>
@@ -2232,43 +2316,81 @@ body.style-modern .fs2:focus{
   </div>
 </div>
 <!-- ═══ LVS CLIENT ERROR HISTORY POPUP ═══ -->
-<div id="lvsErrPopupOverlay" onclick="_closeLvsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
-<div id="lvsErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
-  background:#fff;flex-direction:column;overflow:hidden;
-  border-left:4px solid #dc2626;
-  box-shadow:-8px 0 60px rgba(0,0,0,.22);
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+<div id="lvsErrPopupOverlay" onclick="_closeLvsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:498;backdrop-filter:blur(3px);"></div>
+<div id="lvsErrPopup" class="err-popup-centered" style="z-index:499;">
 
   <!-- ── TOP HEADER ── -->
-  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
-    <!-- decorative circle -->
-    <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+  <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 24px 16px;flex-shrink:0;position:relative;overflow:hidden;border-radius:16px 16px 0 0;">
+    <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="position:absolute;bottom:-30px;left:60px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.04);pointer-events:none;"></div>
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);
-          display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">⚠️</div>
         <div>
-          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
-          <div id="lvsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
+          <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px;line-height:1.2">🚨 Error History Alert — LVS</div>
+          <div id="lvsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px;font-weight:500;">Loading...</div>
         </div>
       </div>
-      <button onclick="_closeLvsErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);
-        color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;
-        display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
-        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
+      <button onclick="_closeLvsErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:36px;height:36px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
+        onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">✕</button>
     </div>
     <!-- Error type badges -->
     <div id="lvsErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
   </div>
 
-  <!-- ── BODY ── -->
-  <div id="lvsErrPopupBody" style="flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:#fafafa;"></div>
+  <!-- Tabs -->
+  <div class="err-popup-tab-bar">
+    <div class="err-popup-tab active" id="lvsTabErr" onclick="_switchErrTab('lvs','err')">🚨 Error History</div>
+    <div class="err-popup-tab" id="lvsTabInstr" onclick="_switchErrTab('lvs','instr')">📋 Instruction Follow-up</div>
+  </div>
+
+  <!-- Tab: Error History -->
+  <div class="err-popup-tab-pane active" id="lvsPaneErr">
+    <div id="lvsErrPopupBody" style="display:flex;flex-direction:column;gap:14px;"></div>
+  </div>
+
+  <!-- Tab: Instruction Follow-up -->
+  <div class="err-popup-tab-pane" id="lvsPaneInstr">
+    <div id="lvsInstrBody" style="display:flex;flex-direction:column;gap:16px;"></div>
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;display:flex;align-items:center;gap:6px;">✏️ Add / Edit Instruction Follow-up Note</div>
+      <div class="rte-toolbar">
+        <button class="rte-btn" onclick="document.execCommand('bold')" title="Bold"><b>B</b></button>
+        <button class="rte-btn" onclick="document.execCommand('italic')" title="Italic"><i>I</i></button>
+        <button class="rte-btn" onclick="document.execCommand('underline')" title="Underline"><u>U</u></button>
+        <div class="rte-sep"></div>
+        <select class="rte-select" onchange="document.execCommand('fontSize',false,this.value)">
+          <option value="">Size</option>
+          <option value="2">Small</option>
+          <option value="3" selected>Normal</option>
+          <option value="4">Large</option>
+          <option value="5">Larger</option>
+          <option value="6">X-Large</option>
+        </select>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Color:</span>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#dc2626')" style="color:#dc2626;border-color:#dc2626;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#2563eb')" style="color:#2563eb;border-color:#2563eb;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#059669')" style="color:#059669;border-color:#059669;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#d97706')" style="color:#d97706;border-color:#d97706;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#1f2937')" style="color:#1f2937;">A</button>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Highlight:</span>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fef08a')" style="background:#fef08a;border-color:#ca8a04;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bbf7d0')" style="background:#bbf7d0;border-color:#059669;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bfdbfe')" style="background:#bfdbfe;border-color:#2563eb;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fecaca')" style="background:#fecaca;border-color:#dc2626;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'transparent')" title="Remove highlight">✕H</button>
+      </div>
+      <div id="lvsRteEditor" class="rte-editor" contenteditable="true">
+      </div>
+      <button onclick="_saveFollowupInstruction('lvs')" style="margin-top:10px;width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#0369a1,#0ea5e9);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);letter-spacing:.2px;">💾 Save Instruction Follow-up</button>
+    </div>
+  </div>
 
   <!-- ── ACKNOWLEDGMENT FOOTER ── -->
-  <div style="flex-shrink:0;padding:16px 20px 20px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
-    <label id="lvsErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;
-      padding:14px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);
-      border-radius:12px;transition:all .15s;margin-bottom:12px;"
+  <div style="flex-shrink:0;padding:14px 20px 18px;background:#fff;border-top:2px solid rgba(220,38,38,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="lvsErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px 16px;background:#fff8f8;border:2px solid rgba(220,38,38,.2);border-radius:12px;transition:all .15s;margin-bottom:10px;"
       onmouseover="this.style.background='#fff0f0';this.style.borderColor='rgba(220,38,38,.4)'"
       onmouseout="this.style.background='#fff8f8';this.style.borderColor='rgba(220,38,38,.2)'">
       <input type="checkbox" id="lvsErrAckBox" onchange="_lvsErrAckChanged()"
@@ -2278,10 +2400,141 @@ body.style-modern .fs2:focus{
       </span>
     </label>
     <button id="lvsErrAckBtn" onclick="_lvsErrConfirm()" disabled
-      style="width:100%;padding:14px;border-radius:12px;border:none;
-      background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;
-      cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
-      &#10003; Acknowledged — Continue to Form
+      style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;letter-spacing:.2px;">
+      ✓ Acknowledged — Continue to Form
+    </button>
+  </div>
+</div>
+<!-- ═══ PARS DOCS CLERK — CLIENT ERROR HISTORY POPUP (DC ERROR) ═══ -->
+<div id="parsErrPopupOverlay" onclick="_closeParsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:498;backdrop-filter:blur(3px);"></div>
+<div id="parsErrPopup" class="err-popup-centered" style="z-index:499;">
+  <div style="background:linear-gradient(135deg,#1e3a5f 0%,#0369a1 55%,#0ea5e9 100%);padding:20px 24px 16px;flex-shrink:0;position:relative;overflow:hidden;border-radius:16px 16px 0 0;">
+    <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px;line-height:1.2">&#128680; DC Error History &mdash; PARS Team</div>
+          <div id="parsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px;font-weight:500;">Loading...</div>
+        </div>
+      </div>
+      <button onclick="_closeParsErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:36px;height:36px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">&#x2715;</button>
+    </div>
+    <div id="parsErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
+  </div>
+  <div class="err-popup-tab-bar">
+    <div class="err-popup-tab active" id="parsTabErr" onclick="_switchErrTab('pars','err')">&#128680; DC Error History</div>
+    <div class="err-popup-tab" id="parsTabInstr" onclick="_switchErrTab('pars','instr')">&#128203; Instruction Follow-up</div>
+  </div>
+  <div class="err-popup-tab-pane active" id="parsPaneErr">
+    <div id="parsErrPopupBody" style="display:flex;flex-direction:column;gap:14px;"></div>
+  </div>
+  <div class="err-popup-tab-pane" id="parsPaneInstr">
+    <div id="parsInstrBody" style="display:flex;flex-direction:column;gap:16px;"></div>
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:800;color:#0369a1;margin-bottom:8px;">&#9999;&#65039; Add / Edit Instruction Follow-up Note</div>
+      <div class="rte-toolbar">
+        <button class="rte-btn" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button class="rte-btn" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button class="rte-btn" onclick="document.execCommand('underline')"><u>U</u></button>
+        <div class="rte-sep"></div>
+        <select class="rte-select" onchange="document.execCommand('fontSize',false,this.value)">
+          <option value="">Size</option><option value="2">Small</option><option value="3" selected>Normal</option><option value="4">Large</option><option value="5">Larger</option><option value="6">X-Large</option>
+        </select>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Color:</span>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#dc2626')" style="color:#dc2626;border-color:#dc2626;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#0369a1')" style="color:#0369a1;border-color:#0369a1;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#059669')" style="color:#059669;border-color:#059669;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#d97706')" style="color:#d97706;border-color:#d97706;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#1f2937')" style="color:#1f2937;">A</button>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Highlight:</span>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fef08a')" style="background:#fef08a;border-color:#ca8a04;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bbf7d0')" style="background:#bbf7d0;border-color:#059669;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bfdbfe')" style="background:#bfdbfe;border-color:#2563eb;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fecaca')" style="background:#fecaca;border-color:#dc2626;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'transparent')">&#x2715;H</button>
+      </div>
+      <div id="parsRteEditor" class="rte-editor" contenteditable="true"></div>
+      <button onclick="_saveFollowupInstruction('pars')" style="margin-top:10px;width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#0369a1,#0ea5e9);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);">&#128190; Save Instruction Follow-up</button>
+    </div>
+  </div>
+  <div style="flex-shrink:0;padding:14px 20px 18px;background:#fff;border-top:2px solid rgba(3,105,161,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="parsErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px 16px;background:#f0f9ff;border:2px solid rgba(3,105,161,.2);border-radius:12px;transition:all .15s;margin-bottom:10px;">
+      <input type="checkbox" id="parsErrAckBox" onchange="_parsErrAckChanged()" style="width:20px;height:20px;accent-color:#0369a1;flex-shrink:0;margin-top:2px;cursor:pointer"/>
+      <span style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.6;">I have reviewed all DC error records &amp; instructions above and acknowledge them before processing this PARS entry</span>
+    </label>
+    <button id="parsErrAckBtn" onclick="_parsErrConfirm()" disabled
+      style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;">
+      &#10003; Acknowledged &mdash; Continue to PARS Form
+    </button>
+  </div>
+</div>
+
+<!-- ═══ OCEAN DOCS CLERK — CLIENT ERROR HISTORY POPUP (DC ERROR) ═══ -->
+<div id="odErrPopupOverlay" onclick="_closeOdErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:498;backdrop-filter:blur(3px);"></div>
+<div id="odErrPopup" class="err-popup-centered" style="z-index:499;">
+  <div style="background:linear-gradient(135deg,#064e3b 0%,#0d9488 55%,#14b8a6 100%);padding:20px 24px 16px;flex-shrink:0;position:relative;overflow:hidden;border-radius:16px 16px 0 0;">
+    <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.06);pointer-events:none;"></div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;">&#9888;&#65039;</div>
+        <div>
+          <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px;line-height:1.2">&#128680; DC Error History &mdash; Ocean DC</div>
+          <div id="odErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.8);margin-top:4px;font-weight:500;">Loading...</div>
+        </div>
+      </div>
+      <button onclick="_closeOdErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:36px;height:36px;cursor:pointer;font-size:20px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">&#x2715;</button>
+    </div>
+    <div id="odErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
+  </div>
+  <div class="err-popup-tab-bar">
+    <div class="err-popup-tab active" id="odTabErr" onclick="_switchErrTab('od','err')">&#128680; DC Error History</div>
+    <div class="err-popup-tab" id="odTabInstr" onclick="_switchErrTab('od','instr')">&#128203; Instruction Follow-up</div>
+  </div>
+  <div class="err-popup-tab-pane active" id="odPaneErr">
+    <div id="odErrPopupBody" style="display:flex;flex-direction:column;gap:14px;"></div>
+  </div>
+  <div class="err-popup-tab-pane" id="odPaneInstr">
+    <div id="odInstrBody" style="display:flex;flex-direction:column;gap:16px;"></div>
+    <div style="margin-top:8px;">
+      <div style="font-size:12px;font-weight:800;color:#0d9488;margin-bottom:8px;">&#9999;&#65039; Add / Edit Instruction Follow-up Note</div>
+      <div class="rte-toolbar">
+        <button class="rte-btn" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button class="rte-btn" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button class="rte-btn" onclick="document.execCommand('underline')"><u>U</u></button>
+        <div class="rte-sep"></div>
+        <select class="rte-select" onchange="document.execCommand('fontSize',false,this.value)">
+          <option value="">Size</option><option value="2">Small</option><option value="3" selected>Normal</option><option value="4">Large</option><option value="5">Larger</option><option value="6">X-Large</option>
+        </select>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Color:</span>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#dc2626')" style="color:#dc2626;border-color:#dc2626;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#0d9488')" style="color:#0d9488;border-color:#0d9488;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#2563eb')" style="color:#2563eb;border-color:#2563eb;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#d97706')" style="color:#d97706;border-color:#d97706;">A</button>
+        <button class="rte-btn" onclick="document.execCommand('foreColor',false,'#1f2937')" style="color:#1f2937;">A</button>
+        <div class="rte-sep"></div>
+        <span style="font-size:11px;font-weight:700;color:#6b7280;align-self:center;">Highlight:</span>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fef08a')" style="background:#fef08a;border-color:#ca8a04;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bbf7d0')" style="background:#bbf7d0;border-color:#059669;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#bfdbfe')" style="background:#bfdbfe;border-color:#2563eb;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'#fecaca')" style="background:#fecaca;border-color:#dc2626;">H</button>
+        <button class="rte-btn" onclick="document.execCommand('hiliteColor',false,'transparent')">&#x2715;H</button>
+      </div>
+      <div id="odRteEditor" class="rte-editor" contenteditable="true"></div>
+      <button onclick="_saveFollowupInstruction('od')" style="margin-top:10px;width:100%;padding:11px;border-radius:10px;border:none;background:linear-gradient(135deg,#0d9488,#14b8a6);color:#fff;font-size:14px;font-weight:800;cursor:pointer;font-family:var(--font);">&#128190; Save Instruction Follow-up</button>
+    </div>
+  </div>
+  <div style="flex-shrink:0;padding:14px 20px 18px;background:#fff;border-top:2px solid rgba(13,148,136,.15);box-shadow:0 -4px 20px rgba(0,0,0,.06);">
+    <label id="odErrAckLabel" style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:12px 16px;background:#f0fdfa;border:2px solid rgba(13,148,136,.2);border-radius:12px;transition:all .15s;margin-bottom:10px;">
+      <input type="checkbox" id="odErrAckBox" onchange="_odErrAckChanged()" style="width:20px;height:20px;accent-color:#0d9488;flex-shrink:0;margin-top:2px;cursor:pointer"/>
+      <span style="font-size:13px;font-weight:700;color:#1f2937;line-height:1.6;">I have reviewed all DC error records &amp; instructions above and acknowledge them before processing this Ocean DC entry</span>
+    </label>
+    <button id="odErrAckBtn" onclick="_odErrConfirm()" disabled
+      style="width:100%;padding:14px;border-radius:12px;border:none;background:#e5e7eb;color:#9ca3af;font-size:15px;font-weight:800;cursor:not-allowed;font-family:var(--font);transition:all .25s;">
+      &#10003; Acknowledged &mdash; Continue to Ocean DC Form
     </button>
   </div>
 </div>
@@ -2764,12 +3017,25 @@ body.style-modern .fs2:focus{
       <div class="frow">
         <div class="fpg">
           <label class="fpl" for="pd_client">Client No</label>
-          <input class="fpi" id="pd_client" type="number" placeholder="Enter client number" oninput="lookupClientPD(this)" autocomplete="off"/>
+          <input class="fpi" id="pd_client" type="number" placeholder="Enter client number" oninput="lookupClientPD(this);pdCheckClientErrors()" autocomplete="off"/>
         </div>
         <div class="fpg">
           <label class="fpl" for="pd_clientname">Client Name</label>
           <input class="fpi auto" id="pd_clientname" readonly placeholder="Auto-filled"/>
         </div>
+      </div>
+      <!-- PARS Error Alert Badge -->
+      <div id="pd_err_trigger_badge" style="display:none;margin-top:10px;padding:11px 14px;
+        background:rgba(3,105,161,.07);border:2px solid rgba(3,105,161,.3);border-radius:12px;
+        align-items:center;gap:10px;cursor:pointer;transition:background .15s"
+        onclick="_openParsErrPopup()">
+        <span style="font-size:20px;flex-shrink:0">&#9888;&#65039;</span>
+        <div style="flex:1;min-width:0">
+          <div id="pd_err_badge_title" style="font-size:13px;font-weight:800;color:#0369a1;line-height:1.3">DC Error History Found</div>
+          <div id="pd_err_badge_sub" style="font-size:11px;color:#0369a1;margin-top:2px">Click to review &amp; acknowledge before processing</div>
+        </div>
+        <span style="font-size:11px;font-weight:700;color:#0369a1;background:rgba(3,105,161,.12);padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">View &#8594;</span>
+      </div>
       </div>
       <div class="fpg">
         <label class="fpl" for="pd_team">Team #</label>
@@ -2884,12 +3150,25 @@ body.style-modern .fs2:focus{
       <div class="frow">
         <div class="fpg">
           <label class="fpl" for="od_client">Client No</label>
-          <input class="fpi" id="od_client" type="number" placeholder="Enter client number" oninput="lookupClientOD(this)" autocomplete="off"/>
+          <input class="fpi" id="od_client" type="number" placeholder="Enter client number" oninput="lookupClientOD(this);odCheckClientErrors()" autocomplete="off"/>
         </div>
         <div class="fpg">
           <label class="fpl" for="od_clientname">Client Name</label>
           <input class="fpi auto" id="od_clientname" readonly placeholder="Auto-filled"/>
         </div>
+      </div>
+      <!-- Ocean DC Error Alert Badge -->
+      <div id="od_err_trigger_badge" style="display:none;margin-top:10px;padding:11px 14px;
+        background:rgba(13,148,136,.07);border:2px solid rgba(13,148,136,.3);border-radius:12px;
+        align-items:center;gap:10px;cursor:pointer;transition:background .15s"
+        onclick="_openOdErrPopup()">
+        <span style="font-size:20px;flex-shrink:0">&#9888;&#65039;</span>
+        <div style="flex:1;min-width:0">
+          <div id="od_err_badge_title" style="font-size:13px;font-weight:800;color:#0d9488;line-height:1.3">DC Error History Found</div>
+          <div id="od_err_badge_sub" style="font-size:11px;color:#0d9488;margin-top:2px">Click to review &amp; acknowledge before processing</div>
+        </div>
+        <span style="font-size:11px;font-weight:700;color:#0d9488;background:rgba(13,148,136,.12);padding:4px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">View &#8594;</span>
+      </div>
       </div>
       <div class="fpg">
         <label class="fpl" for="od_team">Team #</label>
@@ -3861,6 +4140,42 @@ _initSupaRT();
 // Tables that do NOT have a created_at column
 // Tables without created_at column — order by id or name instead
 const NO_CREATED_AT=['clients','users','login_users','cls','lvs','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','client_errors','idle_log']; // productivity_log removed — disabled
+
+/*
+ ════════════════════════════════════════════════════════════
+ DB SCHEMA REQUIREMENTS — v8.0 Error History Enhancement
+ Run the following SQL in Supabase → SQL Editor:
+ ════════════════════════════════════════════════════════════
+
+ -- 1. client_errors table: ensure per-error acknowledgement columns exist
+ ALTER TABLE public.client_errors
+   ADD COLUMN IF NOT EXISTS acknowledged_at  TEXT,
+   ADD COLUMN IF NOT EXISTS acknowledged_by  TEXT,
+   ADD COLUMN IF NOT EXISTS tl_comments      TEXT,
+   ADD COLUMN IF NOT EXISTS task             TEXT,
+   ADD COLUMN IF NOT EXISTS source_of_error  TEXT,
+   ADD COLUMN IF NOT EXISTS client_comments  TEXT;
+
+ -- 2. instructions table: add followup_content for rich-text editor storage
+ ALTER TABLE public.instructions
+   ADD COLUMN IF NOT EXISTS followup_content TEXT,
+   ADD COLUMN IF NOT EXISTS task             TEXT,
+   ADD COLUMN IF NOT EXISTS updated_by       TEXT,
+   ADD COLUMN IF NOT EXISTS updated_at       TEXT;
+
+ -- 3. Recommended indexes for error history popup performance
+ CREATE INDEX IF NOT EXISTS idx_client_errors_client ON public.client_errors(client);
+ CREATE INDEX IF NOT EXISTS idx_client_errors_source ON public.client_errors(source_of_error);
+ CREATE INDEX IF NOT EXISTS idx_client_errors_task   ON public.client_errors(task);
+ CREATE INDEX IF NOT EXISTS idx_instructions_client  ON public.instructions(client_no);
+
+ -- FILTER LOGIC (enforced in JS):
+ --   PARS popup   → task IN ('PARS','PARS Docs Clerk') AND source_of_error = 'DC ERROR'
+ --   Ocean DC popup → task = 'Ocean Docs Clerk' AND source_of_error = 'DC ERROR'
+ --   Release popup  → task = 'Release' AND source_of_error IN ('CANADIAN TEAM','AUDIT ERROR','AUDITOR')
+ --   LVS popup      → all sources (no filter)
+ ════════════════════════════════════════════════════════════
+*/
 
 // ★ Per-table sort column mapping (matches SQL schema filter fields)
 // Each task table is ordered by its own submission/completion timestamp DESC
@@ -20413,147 +20728,310 @@ function epSelectUser(name){
   if(drop) drop.style.display='none';
 }
 
-// ── Build rich RL popup body (shared by rlCheckClientErrors + retry) ──
-function _buildRlErrPopup(clientNo){
-  const sub    = document.getElementById('rlErrPopupSub');
-  const badges = document.getElementById('rlErrPopupBadges');
-  const body   = document.getElementById('rlErrPopupBody');
+// ════════════════════════════════════════════════════════════
+// SHARED ERROR POPUP BUILDER (RL · LVS · PARS · OD)
+// ════════════════════════════════════════════════════════════
+// sourceFilter: null = show all, array = only matching sourceOfError values
+// taskFilter: null = any task, string/array = only matching task values
+function _buildErrPopup(cfg){
+  // cfg: {prefix, clientNo, nameElId, bodyId, badgesId, subId, instrBodyId, rteId,
+  //        accentColor, sourceFilter, taskFilter}
+  const {prefix,clientNo,nameElId,bodyId,badgesId,subId,instrBodyId,rteId,accentColor='#dc2626',sourceFilter,taskFilter}=cfg;
+  const body   = document.getElementById(bodyId);
+  const badges = document.getElementById(badgesId);
+  const sub    = document.getElementById(subId);
+  const instrBody = document.getElementById(instrBodyId);
   if(!body) return;
 
-  const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
+  // Filter client errors by source + task if specified
+  let allClientErrors = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
+  let clientErrors = allClientErrors;
+  if(sourceFilter && sourceFilter.length){
+    clientErrors = allClientErrors.filter(e=>{
+      const src=(e.sourceOfError||'').trim().toUpperCase();
+      return sourceFilter.some(f=>src===f.toUpperCase());
+    });
+  }
+  if(taskFilter){
+    const tf=Array.isArray(taskFilter)?taskFilter:[taskFilter];
+    clientErrors = clientErrors.filter(e=>{
+      const t=(e.task||'').trim().toUpperCase();
+      return tf.some(f=>t===f.toUpperCase())||!e.task; // include no-task entries
+    });
+  }
+
   const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
-  const nameEl  = document.getElementById('rl_clientname');
-  const clientName = clientErrors[0]?.clientName || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
+  const nameEl  = nameElId ? document.getElementById(nameElId) : null;
+  const clientName = clientErrors[0]?.clientName || allClientErrors[0]?.clientName || clientInstructions[0]?.clientName || (nameEl?.value) || 'Client #'+clientNo;
 
   if(sub) sub.textContent = clientName + ' · ' + (clientErrors.length + clientInstructions.length) + ' record(s) on file';
 
-  // Header badges
+  // ── Header badges ──
   if(badges){
-    let bh = '';
+    let bh='';
     if(clientInstructions.length){
-      bh += `<span style="background:rgba(14,165,233,.28);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">📋 ${clientInstructions.length} Instruction${clientInstructions.length>1?'s':''}</span>`;
+      bh+=`<span style="background:rgba(14,165,233,.28);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">&#128203; ${clientInstructions.length} Instruction${clientInstructions.length>1?'s':''}</span>`;
     }
     if(clientErrors.length){
-      const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-      bh += `<span style="background:rgba(255,255,255,.22);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.3);">${clientErrors.length} Error${clientErrors.length>1?'s':''} Total</span>`;
-      for(const [type,count] of Object.entries(byType)){
-        bh += `<span style="background:rgba(0,0,0,.2);color:#fecaca;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;">${type}: ${count}</span>`;
+      const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+      bh+=`<span style="background:rgba(255,255,255,.22);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.3);">${clientErrors.length} Error${clientErrors.length>1?'s':''} Total</span>`;
+      for(const[type,count] of Object.entries(byType)){
+        bh+=`<span style="background:rgba(0,0,0,.2);color:#fecaca;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;">${type}: ${count}</span>`;
       }
     }
-    badges.innerHTML = bh;
+    if(sourceFilter) bh+=`<span style="background:rgba(245,158,11,.25);color:#fef3c7;border-radius:20px;padding:4px 10px;font-size:10px;font-weight:700;border:1px solid rgba(245,158,11,.4);">&#128269; Filter: ${sourceFilter.join(' · ')}</span>`;
+    badges.innerHTML=bh;
   }
 
-  let html = '';
-
-  // ── Instructions card ──
-  if(clientInstructions.length){
-    html += `<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">
-      <div style="background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(14,165,233,.04));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">
-        <span style="font-size:16px;">📋</span>
-        <span style="font-size:13px;font-weight:800;color:#0369a1;">INSTRUCTION FOLLOWUP — ${clientName}</span>
-      </div>
-      <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">`;
-    clientInstructions.forEach(r=>{
-      html += `<div style="font-size:13px;color:#1e293b;line-height:1.7;padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;white-space:pre-wrap;">${r.instruction||''}</div>`;
-    });
-    html += `</div></div>`;
+  // ── Instruction Follow-up tab body ──
+  if(instrBody){
+    let ih='';
+    if(clientInstructions.length){
+      ih+=`<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,rgba(14,165,233,.1),rgba(14,165,233,.05));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">&#128203;</span>
+          <span style="font-size:13px;font-weight:800;color:#0369a1;">SAVED INSTRUCTIONS — ${clientName}</span>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;">`;
+      clientInstructions.forEach(r=>{
+        const instrHtml=r.followup_content||r.instruction||'';
+        ih+=`<div class="err-instr-content-blink" style="font-size:13px;color:#1e293b;line-height:1.7;padding:12px 14px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 10px 10px 0;white-space:pre-wrap;">${instrHtml}</div>`;
+      });
+      ih+=`</div></div>`;
+    } else {
+      ih+=`<div style="padding:20px;text-align:center;color:#6b7280;font-size:13px;background:#f9fafb;border-radius:10px;border:2px dashed #e5e7eb;">
+        <div style="font-size:28px;margin-bottom:8px;">&#128203;</div>
+        No saved instructions yet. Use the editor below to add follow-up instructions for this client.
+      </div>`;
+    }
+    instrBody.innerHTML=ih;
   }
 
-  // ── Error summary + individual cards ──
-  if(clientErrors.length){
-    const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-    // Summary mini-grid
-    html += `<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">
+  // Populate RTE with existing instruction if any
+  const rteEl=rteId?document.getElementById(rteId):null;
+  if(rteEl && clientInstructions.length){
+    rteEl.innerHTML=clientInstructions[0].followup_content||clientInstructions[0].instruction||'';
+  }
+
+  // ── Error History tab body ──
+  let html='';
+
+  if(!clientErrors.length){
+    html=`<div style="text-align:center;padding:32px 20px;color:#6b7280;font-size:13px;background:#f9fafb;border-radius:12px;border:2px dashed #e5e7eb;">
+      <div style="font-size:32px;margin-bottom:10px;">&#9989;</div>
+      <div style="font-weight:700;color:#374151;margin-bottom:4px;">No matching error records found</div>
+      ${sourceFilter?`<div style="font-size:11px;">Filtered by: ${sourceFilter.join(', ')}</div>`:''}
+      <div style="font-size:11px;margin-top:4px;">Check the Instruction Follow-up tab for any standing instructions.</div>
+    </div>`;
+  } else {
+    // ── Error type summary grid ──
+    const byType=clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
+    html+=`<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">
       <div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">${clientErrors.length} Error Record${clientErrors.length>1?'s':''} on File</span></div>
+        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">&#128680;</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">${clientErrors.length} Error Record${clientErrors.length>1?'s':''} on File</span></div>
         <span style="font-size:11px;font-weight:700;color:#b91c1c;background:rgba(220,38,38,.1);padding:3px 10px;border-radius:20px;">${clientName}</span>
       </div>
       <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;">`;
-    for(const [type,count] of Object.entries(byType)){
-      const pct = Math.round(count/clientErrors.length*100);
-      html += `<div style="flex:1;min-width:130px;background:#fff8f8;border:1.5px solid rgba(220,38,38,.18);border-radius:10px;padding:10px 12px;">
+    for(const[type,count] of Object.entries(byType)){
+      const pct=Math.round(count/clientErrors.length*100);
+      html+=`<div style="flex:1;min-width:120px;background:#fff8f8;border:1.5px solid rgba(220,38,38,.18);border-radius:10px;padding:10px 12px;">
         <div style="font-size:12px;font-weight:800;color:#dc2626;">${type}</div>
         <div style="font-size:24px;font-weight:900;color:#1e293b;letter-spacing:-1px;margin:4px 0;">${count}</div>
-        <div style="height:5px;background:#fee2e2;border-radius:3px;overflow:hidden;margin-bottom:4px;">
-          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#dc2626,#f87171);border-radius:3px;"></div>
-        </div>
+        <div style="height:5px;background:#fee2e2;border-radius:3px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#dc2626,#f87171);border-radius:3px;"></div></div>
         <div style="font-size:10px;color:#9ca3af;">${pct}% of errors</div>
       </div>`;
     }
-    html += `</div>`;
+    html+=`</div>`;
 
-    // Individual error cards — full detail
-    const sorted2 = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
-    html += `<div style="border-top:1.5px solid rgba(220,38,38,.1);padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
-      <div style="font-size:10px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px;">All ${sorted2.length} Error Record${sorted2.length>1?'s':''} — Full Detail</div>`;
-    sorted2.forEach(e=>{
-      const dateStr   = e.date || String(e._created||'').slice(0,10) || '—';
-      const errType   = e.errorType    || '—';
-      const mode      = e.mode         || '—';
-      const txn       = e.txn          || '—';
-      const task      = e.task         || '—';
-      const pct       = e.percentage   || '';
-      const createdBy = e.createdBy    || '—';
-      const srcErr    = e.sourceOfError|| '';
-      const clientCmt = e.clientComments || '';
-      const userCmt   = e.userComments   || '';
-      const tlCmt     = e.tlComments     || '';
-      const ackBy     = e.acknowledgedBy || '';
-      const ackAt     = e.acknowledgedAt || '';
+    // ── Individual error cards ──
+    const sorted=[...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
+    html+=`<div style="border-top:1.5px solid rgba(220,38,38,.1);padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:10px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px;">All ${sorted.length} Error Record${sorted.length>1?'s':''} — Full Detail</div>`;
+    sorted.forEach((e,idx)=>{
+      const dateStr=e.date||String(e._created||'').slice(0,10)||'—';
+      const errType=e.errorType||'—';
+      const mode=e.mode||'—';
+      const txn=e.txn||'—';
+      const task=e.task||'—';
+      const pct2=e.percentage||'';
+      const createdBy=e.createdBy||'—';
+      const srcErr=e.sourceOfError||'';
+      const clientCmt=e.clientComments||'';
+      const userCmt=e.userComments||'';
+      const tlCmt=e.tlComments||'';
+      const ackBy=e.acknowledgedBy||'';
+      const ackAt=e.acknowledgedAt||'';
+      const isAcked=!!ackBy;
+      const errId=e._dbid||e.id||'';
+      const isInternal=srcErr==='Internal Audit';
+      const borderClr=isInternal?'#7c3aed':'#dc2626';
+      const cardClass=isAcked?'':`err-card-unacked`;
 
-      html += `<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid ${srcErr==='Internal Audit'?'#7c3aed':'#dc2626'};overflow:hidden;">`;
+      html+=`<div class="${cardClass}" data-errid="${errId}" style="background:${isAcked?'#f8fffe':'#fff8f8'};border:1px solid ${isAcked?'rgba(16,185,129,.25)':'rgba(220,38,38,.18)'};border-radius:12px;border-left:4px solid ${isAcked?'#10b981':borderClr};overflow:hidden;transition:all .3s;">`;
 
       // Card header
-      html += `<div style="padding:9px 13px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;border-bottom:1px solid rgba(220,38,38,.1);">
+      html+=`<div style="padding:9px 13px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;border-bottom:1px solid ${isAcked?'rgba(16,185,129,.1)':'rgba(220,38,38,.1)'};">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          ${srcErr==='Internal Audit'?`<span style="background:linear-gradient(135deg,#7c3aed,#9333ea);color:#fff;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">🔍 INTERNAL AUDIT</span>`:''}
-          <span style="background:${srcErr==='Internal Audit'?'#7c3aed':'#dc2626'};color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;">${errType}</span>
+          ${isInternal?`<span style="background:linear-gradient(135deg,#7c3aed,#9333ea);color:#fff;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">&#128269; INTERNAL AUDIT</span>`:''}
+          ${srcErr&&!isInternal?`<span style="background:rgba(220,38,38,.12);color:#b91c1c;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;">&#128681; ${srcErr}</span>`:''}
+          <span class="${isAcked?'':'err-type-badge-blink'}" style="background:${isInternal?'#7c3aed':'#dc2626'};color:#fff;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:800;">${errType}</span>
           <span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${mode}</span>
           ${task&&task!=='—'?`<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${task}</span>`:''}
-          ${pct?`<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${pct}%</span>`:''}
+          ${pct2?`<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;">${pct2}%</span>`:''}
         </div>
         <span style="font-size:10px;color:#9ca3af;font-family:var(--mono);">${dateStr}</span>
       </div>`;
 
       // Meta grid
-      html += `<div style="padding:8px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;border-bottom:1px solid rgba(220,38,38,.07);">
-        <div>
-          <div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div>
-          <div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.07);padding:3px 8px;border-radius:5px;display:inline-block;">${txn}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Created By</div>
-          <div style="font-size:12px;font-weight:600;color:#374151;">${createdBy}</div>
-        </div>
-        ${srcErr?`<div style="grid-column:span 2;"><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Source of Error Reported</div><div style="font-size:12px;font-weight:600;color:#374151;">${srcErr}</div></div>`:''}
+      html+=`<div style="padding:8px 13px;display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;border-bottom:1px solid rgba(220,38,38,.07);">
+        <div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div><div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.07);padding:3px 8px;border-radius:5px;display:inline-block;">${txn}</div></div>
+        <div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Created By</div><div style="font-size:12px;font-weight:600;color:#374151;">${createdBy}</div></div>
+        ${srcErr?`<div style="grid-column:span 2;"><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Source of Error</div><div style="font-size:12px;font-weight:700;color:#b91c1c;">${srcErr}</div></div>`:''}
       </div>`;
 
       // Comment blocks
-      const hasComments = clientCmt || userCmt || tlCmt;
-      if(hasComments){
-        html += `<div style="padding:8px 13px 10px;display:flex;flex-direction:column;gap:7px;">`;
-        if(clientCmt) html += `<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">🔴 Client Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${clientCmt}</div></div>`;
-        if(userCmt)   html += `<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">👤 User Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${userCmt}</div></div>`;
-        if(tlCmt)     html += `<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">👔 Team Lead Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${tlCmt}</div></div>`;
-        html += `</div>`;
+      if(clientCmt||userCmt||tlCmt){
+        html+=`<div style="padding:8px 13px 10px;display:flex;flex-direction:column;gap:7px;">`;
+        if(clientCmt) html+=`<div class="${isAcked?'':'err-type-badge-blink'}" style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.2);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">&#128308; Client Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;animation:none;">${clientCmt}</div></div>`;
+        if(userCmt) html+=`<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">&#128100; User Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${userCmt}</div></div>`;
+        if(tlCmt) html+=`<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 10px;"><div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">&#128084; Team Lead Comments</div><div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">${tlCmt}</div></div>`;
+        html+=`</div>`;
       }
 
-      // Acknowledged badge
-      if(ackBy){
-        html += `<div style="padding:0 13px 10px;"><div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;"><span style="font-size:12px;">✅</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by ${ackBy}${ackAt?' · '+String(ackAt).slice(0,10):''}</span></div></div>`;
+      // Per-error acknowledge button
+      if(isAcked){
+        html+=`<div style="padding:6px 13px 10px;"><div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;"><span style="font-size:12px;">&#9989;</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by ${ackBy}${ackAt?' · '+String(ackAt).slice(0,10):''}</span></div></div>`;
+      } else if(errId){
+        html+=`<div style="padding:6px 13px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span style="font-size:11px;color:#b91c1c;font-weight:600;">&#128680; This error requires your acknowledgement</span>
+          <button class="per-err-ack-btn" onclick="_ackSingleError('${errId}','${prefix}',this)" data-errid="${errId}">&#10003; Acknowledge this error</button>
+        </div>`;
       }
-      html += `</div>`;
+
+      html+=`</div>`;
     });
-    html += `</div></div>`;
+    html+=`</div></div>`;
   }
 
   // ── Warning banner ──
-  html += `<div style="padding:12px 14px;background:#fffbeb;border:2px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:600;display:flex;align-items:flex-start;gap:8px;">
-    <span style="font-size:18px;flex-shrink:0;">⚡</span>
-    <span>Review all error patterns &amp; instructions above carefully before processing this shipment. Tick the acknowledgment below to proceed.</span>
+  html+=`<div style="padding:12px 14px;background:#fffbeb;border:2px solid #fcd34d;border-radius:10px;font-size:12px;color:#92400e;font-weight:700;display:flex;align-items:flex-start;gap:8px;flex-shrink:0;">
+    <span style="font-size:18px;flex-shrink:0;">&#9889;</span>
+    <span>Read all errors &amp; instructions carefully. Acknowledge each error, then check the box below to proceed. Repeat errors cost the client relationship!</span>
   </div>`;
 
-  body.innerHTML = html;
+  body.innerHTML=html;
+}
+
+// ── Per-error single acknowledge ──
+function _ackSingleError(errId, prefix, btn){
+  if(!errId||!CU) return;
+  const nowStr=new Date().toISOString();
+  const ackBy=CU.name||CU.email||'User';
+  // Update in DB
+  dbUpdate('client_errors', parseInt(errId)||errId, {acknowledged_by:ackBy, acknowledged_at:nowStr})
+    .then(ok=>{
+      if(ok||ok===undefined){
+        // Update local DB
+        const rec=(DB.errors||[]).find(e=>String(e._dbid||e.id)===String(errId));
+        if(rec){ rec.acknowledgedBy=ackBy; rec.acknowledgedAt=nowStr; }
+        // Update card UI
+        const card=btn?.closest('[data-errid]');
+        if(card){
+          card.classList.remove('err-card-unacked');
+          card.style.background='#f8fffe';
+          card.style.border='1px solid rgba(16,185,129,.25)';
+          card.style.borderLeft='4px solid #10b981';
+          // Replace blink badges
+          card.querySelectorAll('.err-type-badge-blink').forEach(el=>el.classList.remove('err-type-badge-blink'));
+          // Replace per-error ack section
+          const ackDiv=btn?.closest('div[style*="padding:6px 13px"]');
+          if(ackDiv) ackDiv.innerHTML=`<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;"><span>&#9989;</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by ${ackBy} · Now</span></div>`;
+        }
+        showToast('&#9989; Error acknowledged — well done!');
+        // Check if all errors are now acknowledged — if so, auto-check overall ack box
+        const popupBody=document.getElementById(prefix==='rl'?'rlErrPopupBody':prefix==='lvs'?'lvsErrPopupBody':prefix==='pars'?'parsErrPopupBody':'odErrPopupBody');
+        if(popupBody){
+          const remaining=popupBody.querySelectorAll('.err-card-unacked');
+          if(remaining.length===0){
+            const ackBox=document.getElementById(prefix+'ErrAckBox');
+            if(ackBox&&!ackBox.checked){ ackBox.checked=true; window['_'+prefix+'ErrAckChanged']&&window['_'+prefix+'ErrAckChanged'](); }
+          }
+        }
+      } else {
+        showToast('&#10006; Failed to save acknowledgement — try again.', true);
+      }
+    }).catch(()=>showToast('&#10006; Network error saving acknowledgement.', true));
+}
+
+// ── Tab switcher ──
+function _switchErrTab(prefix, tab){
+  const errPane=document.getElementById(prefix+'PaneErr');
+  const instrPane=document.getElementById(prefix+'PaneInstr');
+  const errTab=document.getElementById(prefix+'TabErr');
+  const instrTab=document.getElementById(prefix+'TabInstr');
+  if(!errPane||!instrPane) return;
+  if(tab==='err'){
+    errPane.classList.add('active'); instrPane.classList.remove('active');
+    if(errTab){errTab.classList.add('active');errTab.classList.remove('err-instr-tab-blink');}
+    if(instrTab) instrTab.classList.remove('active');
+  } else {
+    instrPane.classList.add('active'); errPane.classList.remove('active');
+    if(instrTab){instrTab.classList.add('active');instrTab.classList.remove('err-instr-tab-blink');}
+    if(errTab) errTab.classList.remove('active');
+  }
+}
+
+// ── Save Instruction Follow-up ──
+function _saveFollowupInstruction(prefix){
+  const rteId=prefix+'RteEditor';
+  const rte=document.getElementById(rteId);
+  if(!rte){ showToast('Editor not found', true); return; }
+  const html=rte.innerHTML.trim();
+  if(!html||html==='<br>'){ showToast('Please type an instruction first.', true); return; }
+  const clientNo=prefix==='rl'?parseInt(document.getElementById('rl_client')?.value)
+                :prefix==='lvs'?parseInt(document.getElementById('lf_client')?.value)
+                :prefix==='pars'?parseInt(document.getElementById('pd_client')?.value)
+                :parseInt(document.getElementById('od_client')?.value);
+  if(!clientNo||isNaN(clientNo)){ showToast('No client selected.', true); return; }
+  const clientName=prefix==='rl'?document.getElementById('rl_clientname')?.value
+                  :prefix==='lvs'?document.getElementById('lf_clientName')?.value
+                  :prefix==='pars'?document.getElementById('pd_clientname')?.value
+                  :document.getElementById('od_clientname')?.value;
+  const existing=(DB.instructions||[]).find(r=>parseInt(r.clientNo)==clientNo);
+  const taskLabel=prefix==='rl'?'Release':prefix==='lvs'?'LVS':prefix==='pars'?'PARS Docs Clerk':'Ocean Docs Clerk';
+  const row={client_no:clientNo,client_name:clientName||'',followup_content:html,instruction:rte.textContent||'',task:taskLabel,updated_by:CU?.name||'',updated_at:new Date().toISOString()};
+  const savePromise=existing?dbUpdate('instructions',existing._dbid||existing.id,row):dbInsert('instructions',row);
+  savePromise.then(r=>{
+    if(r){
+      if(!existing){ DB.instructions=DB.instructions||[]; DB.instructions.push({...row,id:r.id,_dbid:r.id,clientNo}); }
+      else{ Object.assign(existing,{...row}); }
+      showToast('&#128190; Instruction saved!');
+      // Refresh instruction tab
+      _buildErrPopup({prefix,clientNo,nameElId:prefix==='rl'?'rl_clientname':prefix==='lvs'?'lf_clientName':prefix==='pars'?'pd_clientname':'od_clientname',bodyId:prefix+'ErrPopupBody',badgesId:prefix+'ErrPopupBadges',subId:prefix+'ErrPopupSub',instrBodyId:prefix+'InstrBody',rteId:prefix+'RteEditor',
+        sourceFilter:prefix==='rl'?['CANADIAN TEAM','AUDIT ERROR','AUDITOR']:prefix==='pars'||prefix==='od'?['DC ERROR']:null,
+        taskFilter:prefix==='rl'?['Release']:prefix==='pars'?['PARS','PARS Docs Clerk']:prefix==='od'?['Ocean Docs Clerk']:null});
+      // Blink the instruction tab to show it was updated
+      const instrTab=document.getElementById(prefix+'TabInstr');
+      if(instrTab){instrTab.classList.add('err-instr-tab-blink');setTimeout(()=>instrTab.classList.remove('err-instr-tab-blink'),6000);}
+    } else { showToast('Failed to save instruction.', true); }
+  }).catch(()=>showToast('Network error saving instruction.', true));
+}
+
+// ── Build rich RL popup body (shared by rlCheckClientErrors + retry) ──
+function _buildRlErrPopup(clientNo){
+  _buildErrPopup({
+    prefix:'rl',
+    clientNo,
+    nameElId:'rl_clientname',
+    bodyId:'rlErrPopupBody',
+    badgesId:'rlErrPopupBadges',
+    subId:'rlErrPopupSub',
+    instrBodyId:'rlInstrBody',
+    rteId:'rlRteEditor',
+    accentColor:'#dc2626',
+    sourceFilter:['CANADIAN TEAM','AUDIT ERROR','AUDITOR'],
+    taskFilter:['Release']
+  });
 }
 
 function rlCheckClientErrors(){
@@ -20672,20 +21150,183 @@ function _openRlErrPopup(){
   if(!popup) return;
   popup.style.display='flex';
   if(overlay) overlay.style.display='block';
-  requestAnimationFrame(()=>{ popup.style.transform='translateX(0)'; });
+  requestAnimationFrame(()=>{ popup.classList.add('open'); });
 }
 function _closeRlErrPopup(){
   const popup=document.getElementById('rlErrPopup');
   const overlay=document.getElementById('rlErrPopupOverlay');
   if(!popup) return;
-  popup.style.transform='translateX(100%)';
+  popup.classList.remove('open');
   if(overlay) overlay.style.display='none';
-  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
+  setTimeout(()=>{ if(!popup.classList.contains('open')) popup.style.display='none'; },300);
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// INTERNAL AUDIT ERROR POPUP — Batch 2
-// ═══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+// PARS DOCS CLERK — Error Popup Functions (DC ERROR filter)
+// ════════════════════════════════════════════════════════════
+function pdCheckClientErrors(){
+  const clientNo=parseInt(document.getElementById('pd_client')?.value);
+  const badge=document.getElementById('pd_err_trigger_badge');
+  if(!clientNo||isNaN(clientNo)||String(clientNo).length<3){
+    _closeParsErrPopup();
+    if(badge) badge.style.display='none';
+    return;
+  }
+  clearTimeout(window._pdClientCheckTimer);
+  window._pdClientCheckTimer=setTimeout(function(){
+    const clientErrors=(DB.errors||[]).filter(e=>parseInt(e.client)==clientNo&&(e.sourceOfError||'').toUpperCase()==='DC ERROR');
+    const clientInstructions=(DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
+    if(clientErrors.length===0&&clientInstructions.length===0){
+      _closeParsErrPopup();
+      if(badge) badge.style.display='none';
+      return;
+    }
+    _buildErrPopup({prefix:'pars',clientNo,nameElId:'pd_clientname',bodyId:'parsErrPopupBody',badgesId:'parsErrPopupBadges',subId:'parsErrPopupSub',instrBodyId:'parsInstrBody',rteId:'parsRteEditor',accentColor:'#0369a1',sourceFilter:['DC ERROR'],taskFilter:['PARS','PARS Docs Clerk']});
+    const ackBox=document.getElementById('parsErrAckBox');
+    if(ackBox){ackBox.checked=false;_parsErrAckChanged();}
+    if(badge){
+      badge.style.display='flex';
+      badge.style.background='rgba(3,105,161,.07)';
+      badge.style.borderColor='rgba(3,105,161,.3)';
+      badge.onclick=_openParsErrPopup;
+      const bt=document.getElementById('pd_err_badge_title');
+      const bs=document.getElementById('pd_err_badge_sub');
+      if(bt){bt.textContent='DC Error History Found';bt.style.color='#0369a1';}
+      if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#0369a1';}
+    }
+    setTimeout(_openParsErrPopup,200);
+    window._parsErrClientNo=clientNo;
+  },400);
+}
+function _parsErrAckChanged(){
+  const ackBox=document.getElementById('parsErrAckBox');
+  const ackBtn=document.getElementById('parsErrAckBtn');
+  const label=document.getElementById('parsErrAckLabel');
+  if(!ackBox||!ackBtn) return;
+  const checked=ackBox.checked;
+  ackBtn.disabled=!checked;
+  ackBtn.style.background=checked?'linear-gradient(135deg,#0369a1,#0ea5e9)':'#e5e7eb';
+  ackBtn.style.color=checked?'#fff':'#9ca3af';
+  ackBtn.style.cursor=checked?'pointer':'not-allowed';
+  ackBtn.style.boxShadow=checked?'0 4px 16px rgba(3,105,161,.35)':'none';
+  if(label){label.style.background=checked?'#e0f2fe':'#f0f9ff';label.style.borderColor=checked?'rgba(3,105,161,.5)':'rgba(3,105,161,.2)';}
+}
+window._parsErrAckChanged=_parsErrAckChanged;
+function _parsErrConfirm(){
+  const ackBox=document.getElementById('parsErrAckBox');
+  if(!ackBox||!ackBox.checked) return;
+  const badge=document.getElementById('pd_err_trigger_badge');
+  if(badge){
+    badge.style.background='rgba(16,185,129,.07)';badge.style.borderColor='rgba(16,185,129,.35)';
+    const bt=document.getElementById('pd_err_badge_title');const bs=document.getElementById('pd_err_badge_sub');
+    if(bt){bt.textContent='✅ DC Error Acknowledged';bt.style.color='#059669';}
+    if(bs){bs.textContent='You may now proceed to save';bs.style.color='#047857';}
+    badge.onclick=_openParsErrPopup;
+  }
+  _closeParsErrPopup();
+  showToast('✅ DC error history acknowledged — proceed with PARS entry.');
+}
+function _openParsErrPopup(){
+  const popup=document.getElementById('parsErrPopup');
+  const overlay=document.getElementById('parsErrPopupOverlay');
+  if(!popup) return;
+  popup.style.display='flex';
+  if(overlay) overlay.style.display='block';
+  requestAnimationFrame(()=>popup.classList.add('open'));
+}
+function _closeParsErrPopup(){
+  const popup=document.getElementById('parsErrPopup');
+  const overlay=document.getElementById('parsErrPopupOverlay');
+  if(!popup) return;
+  popup.classList.remove('open');
+  if(overlay) overlay.style.display='none';
+  setTimeout(()=>{if(!popup.classList.contains('open')) popup.style.display='none';},300);
+}
+
+// ════════════════════════════════════════════════════════════
+// OCEAN DOCS CLERK — Error Popup Functions (DC ERROR filter)
+// ════════════════════════════════════════════════════════════
+function odCheckClientErrors(){
+  const clientNo=parseInt(document.getElementById('od_client')?.value);
+  const badge=document.getElementById('od_err_trigger_badge');
+  if(!clientNo||isNaN(clientNo)||String(clientNo).length<3){
+    _closeOdErrPopup();
+    if(badge) badge.style.display='none';
+    return;
+  }
+  clearTimeout(window._odClientCheckTimer);
+  window._odClientCheckTimer=setTimeout(function(){
+    const clientErrors=(DB.errors||[]).filter(e=>parseInt(e.client)==clientNo&&(e.sourceOfError||'').toUpperCase()==='DC ERROR');
+    const clientInstructions=(DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
+    if(clientErrors.length===0&&clientInstructions.length===0){
+      _closeOdErrPopup();
+      if(badge) badge.style.display='none';
+      return;
+    }
+    _buildErrPopup({prefix:'od',clientNo,nameElId:'od_clientname',bodyId:'odErrPopupBody',badgesId:'odErrPopupBadges',subId:'odErrPopupSub',instrBodyId:'odInstrBody',rteId:'odRteEditor',accentColor:'#0d9488',sourceFilter:['DC ERROR'],taskFilter:['Ocean Docs Clerk']});
+    const ackBox=document.getElementById('odErrAckBox');
+    if(ackBox){ackBox.checked=false;_odErrAckChanged();}
+    if(badge){
+      badge.style.display='flex';
+      badge.style.background='rgba(13,148,136,.07)';
+      badge.style.borderColor='rgba(13,148,136,.3)';
+      badge.onclick=_openOdErrPopup;
+      const bt=document.getElementById('od_err_badge_title');const bs=document.getElementById('od_err_badge_sub');
+      if(bt){bt.textContent='DC Error History Found';bt.style.color='#0d9488';}
+      if(bs){bs.textContent='Click to review & acknowledge before processing';bs.style.color='#0d9488';}
+    }
+    setTimeout(_openOdErrPopup,200);
+    window._odErrClientNo=clientNo;
+  },400);
+}
+function _odErrAckChanged(){
+  const ackBox=document.getElementById('odErrAckBox');
+  const ackBtn=document.getElementById('odErrAckBtn');
+  const label=document.getElementById('odErrAckLabel');
+  if(!ackBox||!ackBtn) return;
+  const checked=ackBox.checked;
+  ackBtn.disabled=!checked;
+  ackBtn.style.background=checked?'linear-gradient(135deg,#0d9488,#14b8a6)':'#e5e7eb';
+  ackBtn.style.color=checked?'#fff':'#9ca3af';
+  ackBtn.style.cursor=checked?'pointer':'not-allowed';
+  ackBtn.style.boxShadow=checked?'0 4px 16px rgba(13,148,136,.35)':'none';
+  if(label){label.style.background=checked?'#ccfbf1':'#f0fdfa';label.style.borderColor=checked?'rgba(13,148,136,.5)':'rgba(13,148,136,.2)';}
+}
+window._odErrAckChanged=_odErrAckChanged;
+function _odErrConfirm(){
+  const ackBox=document.getElementById('odErrAckBox');
+  if(!ackBox||!ackBox.checked) return;
+  const badge=document.getElementById('od_err_trigger_badge');
+  if(badge){
+    badge.style.background='rgba(16,185,129,.07)';badge.style.borderColor='rgba(16,185,129,.35)';
+    const bt=document.getElementById('od_err_badge_title');const bs=document.getElementById('od_err_badge_sub');
+    if(bt){bt.textContent='✅ DC Error Acknowledged';bt.style.color='#059669';}
+    if(bs){bs.textContent='You may now proceed to save';bs.style.color='#047857';}
+    badge.onclick=_openOdErrPopup;
+  }
+  _closeOdErrPopup();
+  showToast('✅ DC error history acknowledged — proceed with Ocean DC entry.');
+}
+function _openOdErrPopup(){
+  const popup=document.getElementById('odErrPopup');
+  const overlay=document.getElementById('odErrPopupOverlay');
+  if(!popup) return;
+  popup.style.display='flex';
+  if(overlay) overlay.style.display='block';
+  requestAnimationFrame(()=>popup.classList.add('open'));
+}
+function _closeOdErrPopup(){
+  const popup=document.getElementById('odErrPopup');
+  const overlay=document.getElementById('odErrPopupOverlay');
+  if(!popup) return;
+  popup.classList.remove('open');
+  if(overlay) overlay.style.display='none';
+  setTimeout(()=>{if(!popup.classList.contains('open')) popup.style.display='none';},300);
+}
+
+// ════════════════════════════════════════════════════════════
+// LVS Error Popup — updated to use shared builder
+// ════════════════════════════════════════════════════════════
 window._iaeActiveTxn = null;
 window._iaeActiveRec = null;
 
@@ -25427,19 +26068,17 @@ function _openLvsErrPopup(){
   const overlay = document.getElementById('lvsErrPopupOverlay');
   if(!popup) return;
   popup.style.display   = 'flex';
-  overlay.style.display = 'block';
-  // Trigger CSS slide-in
-  requestAnimationFrame(()=>{ popup.style.transform = 'translateX(0)'; });
+  if(overlay) overlay.style.display = 'block';
+  requestAnimationFrame(()=>{ popup.classList.add('open'); });
 }
 
 function _closeLvsErrPopup(){
   const popup   = document.getElementById('lvsErrPopup');
   const overlay = document.getElementById('lvsErrPopupOverlay');
   if(!popup) return;
-  popup.style.transform = 'translateX(100%)';
-  overlay.style.display = 'none';
-  // After transition ends, hide display
-  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; }, 320);
+  popup.classList.remove('open');
+  if(overlay) overlay.style.display = 'none';
+  setTimeout(()=>{ if(!popup.classList.contains('open')) popup.style.display='none'; }, 300);
 }
 
 function _lvsErrAckChanged(){
@@ -25463,6 +26102,7 @@ function _lvsErrAckChanged(){
     if(lbl){ lbl.style.background='#fff8f8'; lbl.style.borderColor='rgba(220,38,38,.2)'; }
   }
 }
+window._lvsErrAckChanged = _lvsErrAckChanged;
 
 function _lvsErrConfirm(){
   const box = document.getElementById('lvsErrAckBox');
@@ -25539,139 +26179,19 @@ function _lvsErrConfirm(){
 })();
 
 function _buildLvsErrPopup(clientNo){
-  const sub      = document.getElementById('lvsErrPopupSub');
-  const badges   = document.getElementById('lvsErrPopupBadges');
-  const body     = document.getElementById('lvsErrPopupBody');
-  if(!body) return;
-
-  const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
-  const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
-  const nameEl             = document.getElementById('lf_clientName');
-  const clientName         = clientErrors[0]?.clientName || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
-
-  // Sub-header
-  if(sub) sub.textContent = clientName + ' · ' + (clientErrors.length+clientInstructions.length) + ' record(s) on file';
-
-  // Badges
-  if(badges){
-    badges.innerHTML = '';
-    if(clientInstructions.length){
-      badges.innerHTML += '<span style="background:rgba(14,165,233,.25);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">📋 '+clientInstructions.length+' Instruction'+(clientInstructions.length>1?'s':'')+'</span>';
-    }
-    if(clientErrors.length){
-      const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-      for(const [type,count] of Object.entries(byType)){
-        badges.innerHTML += '<span style="background:rgba(255,255,255,.2);color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(255,255,255,.3);">'+type+': '+count+'</span>';
-      }
-    }
-  }
-
-  // Body
-  let html = '';
-
-  // Instructions card
-  if(clientInstructions.length){
-    html += '<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">';
-    html += '<div style="background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(14,165,233,.04));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">';
-    html += '<span style="font-size:16px;">📋</span><span style="font-size:13px;font-weight:800;color:#0369a1;">INSTRUCTION FOLLOWUP — '+clientName+'</span></div>';
-    html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">';
-    clientInstructions.forEach(r=>{
-      html += '<div style="font-size:13px;color:#1e293b;line-height:1.7;padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;white-space:pre-wrap;">'+r.instruction+'</div>';
-    });
-    html += '</div></div>';
-  }
-
-  // Error history cards — full detail per record
-  if(clientErrors.length){
-    // Section header
-    html += '<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">';
-    html += '<div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">'+clientErrors.length+' Error Record'+(clientErrors.length>1?'s':'')+' on File</span></div>';
-    // Summary badges
-    const byType2 = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
-    let sumBadges = Object.entries(byType2).map(([t,c])=>'<span style="background:rgba(220,38,38,.12);color:#dc2626;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:800;border:1px solid rgba(220,38,38,.2);">'+t+': '+c+'</span>').join('');
-    html += '<div style="display:flex;gap:5px;flex-wrap:wrap;">'+sumBadges+'</div></div>';
-    html += '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;">';
-    const sorted = [...clientErrors].sort((a,b)=>new Date(b._created||0)-new Date(a._created||0));
-    sorted.forEach((e,idx)=>{
-      const dateStr    = e.date || String(e._created||'').slice(0,10) || '—';
-      const errType    = e.errorType    || '—';
-      const mode       = e.mode         || '—';
-      const txn        = e.txn          || '—';
-      const task       = e.task         || '—';
-      const pct        = e.percentage   || '';
-      const createdBy  = e.createdBy    || '—';
-      const srcErr     = e.sourceOfError|| '';
-      const clientCmt  = e.clientComments || '';
-      const userCmt    = e.userComments   || '';
-      const tlCmt      = e.tlComments     || '';
-      const ackBy      = e.acknowledgedBy || '';
-      const ackAt      = e.acknowledgedAt || '';
-
-      html += '<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid #dc2626;overflow:hidden;">';
-
-      // ── Card header row ──
-      html += '<div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(220,38,38,.1);">';
-      html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-      html += '<span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;">'+errType+'</span>';
-      html += '<span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+mode+'</span>';
-      if(task&&task!=='—') html += '<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+task+'</span>';
-      if(pct) html += '<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+pct+'%</span>';
-      html += '</div>';
-      html += '<span style="font-size:10px;color:#9ca3af;font-family:var(--mono);">'+dateStr+'</span>';
-      html += '</div>';
-
-      // ── Meta grid: TXN + Created By + Source ──
-      html += '<div style="padding:8px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;border-bottom:1px solid rgba(220,38,38,.07);">';
-      html += '<div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div>';
-      html += '<div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.06);padding:3px 8px;border-radius:5px;display:inline-block;">'+txn+'</div></div>';
-      html += '<div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Created By</div>';
-      html += '<div style="font-size:12px;font-weight:600;color:#374151;">'+createdBy+'</div></div>';
-      if(srcErr){
-        html += '<div style="grid-column:span 2;"><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Source of Error Reported</div>';
-        html += '<div style="font-size:12px;font-weight:600;color:#374151;">'+srcErr+'</div></div>';
-      }
-      html += '</div>';
-
-      // ── Comment blocks ──
-      let hasComments = clientCmt || userCmt || tlCmt;
-      if(hasComments){
-        html += '<div style="padding:8px 14px 10px;display:flex;flex-direction:column;gap:7px;">';
-        if(clientCmt){
-          html += '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔴 Client Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+clientCmt+'</div></div>';
-        }
-        if(userCmt){
-          html += '<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👤 User Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+userCmt+'</div></div>';
-        }
-        if(tlCmt){
-          html += '<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👔 Team Lead Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+tlCmt+'</div></div>';
-        }
-        html += '</div>';
-      }
-
-      // ── Acknowledged badge ──
-      if(ackBy){
-        html += '<div style="padding:0 14px 10px;">';
-        html += '<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">';
-        html += '<span style="font-size:13px;">✅</span><span style="font-size:11px;font-weight:700;color:#059669;">Acknowledged by '+ackBy+(ackAt?' · '+String(ackAt).slice(0,10):'')+'</span></div></div>';
-      }
-
-      html += '</div>'; // end card
-    });
-    html += '</div></div>'; // end section
-  }
-
-  if(!html){
-    html = '<div style="text-align:center;padding:40px;color:#6b7280;font-size:14px;">No records found.</div>';
-  }
-
-  body.innerHTML = html;
+  _buildErrPopup({
+    prefix:'lvs',
+    clientNo,
+    nameElId:'lf_clientName',
+    bodyId:'lvsErrPopupBody',
+    badgesId:'lvsErrPopupBadges',
+    subId:'lvsErrPopupSub',
+    instrBodyId:'lvsInstrBody',
+    rteId:'lvsRteEditor',
+    accentColor:'#dc2626',
+    sourceFilter:null, // LVS shows all sources
+    taskFilter:null
+  });
 }
 
 // Reset LVS popup when LVS panel is closed/cleared
