@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_5_FREEZE_FIX_2026-04-22" data-build-id="audit-iae-v7.5-freezefix">
+<html lang="en" data-build-stamp="V7_5_LINEE_FIX_2026-04-21" data-build-id="audit-iae-v7.5-freezefix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4752,10 +4752,18 @@ async function loadAllFromSupabase(){
               if(_currentPage==='release2' && document.getElementById('rlTbody')){
                 try{ renderRLRows(pgSlice('rl')); }catch(e){}
               }
-              // Also trigger popup check for any unacked errors
-              if(typeof _showInternalAuditAlert==='function'){
-                setTimeout(()=>{ try{ _showInternalAuditAlert(); }catch(e){} }, 300);
-              }
+              // FIX: Call _iaeSafetyPoll (full DB query + merge + popup) instead of
+              // _showInternalAuditAlert (local-only check). The heartbeat fires at 4s
+              // after login, but this background load fires at 1.5s. If audit rows
+              // arrived here AFTER the 4s heartbeat already ran and found nothing, the
+              // member waits 45s for the next poll. _iaeSafetyPoll re-queries Supabase
+              // directly so it catches rows even if the background merge missed any.
+              setTimeout(()=>{
+                try{
+                  if(typeof _iaeSafetyPoll==='function') _iaeSafetyPoll();
+                  else if(typeof _showInternalAuditAlert==='function') _showInternalAuditAlert();
+                }catch(e){}
+              }, 400);
             }
           }catch(e){ console.warn('[IAE member load] error:',e.message); }
         }, 1500);
@@ -13329,10 +13337,16 @@ function kpiShowTab(id){
     const _trendPeriod = window['_kpiTrend_'+tab.id] || 'daily';
     const _ef = tab.ef || '_created';
 
-    // Build date-bucketed counts using fast string slicing
+    // Build date-bucketed counts.
+    // ONLY use r[_ef] — the tab's canonical date field (e.g. submittedTime, completedTime).
+    // r._created is stored as a DD-MM-YYYY display string; slicing it as YYYY-MM-DD gives
+    // garbage like "01-04-202" which corrupts every bucket. Never fall back to _created here.
     const bucketMap = {};
     data.forEach(r=>{
-      const ymd = String(r._created || r[_ef] || '').slice(0,10);
+      const raw = String(r[_ef] || '');
+      // Support both YYYY-MM-DD (ISO) and DD-MM-YYYY (app display format)
+      const ddmm = raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+      const ymd  = ddmm ? `${ddmm[3]}-${ddmm[2]}-${ddmm[1]}` : raw.slice(0,10);
       if(!ymd || ymd.length < 10) return;
       let key = ymd;
       if(_trendPeriod === 'weekly'){
@@ -13396,6 +13410,10 @@ function kpiShowTab(id){
       const avgY = PAD + (1 - (avg-minV)/(maxV-minV||1)) * (H - PAD*2);
 
       const colorRgb = tab.color.startsWith('#') ? hexToRgb(tab.color) : '77,121,255';
+      // Unique gradient ID per tab+period — prevents browsers from serving a stale
+      // cached <defs> gradient when innerHTML is replaced on toggle, which is why
+      // the trend line disappeared after clicking Monthly/Weekly.
+      const _gradId = `trendGrad_${tab.id}_${_trendPeriod}`;
 
       trendSection = `
       <div class="tw" style="margin-bottom:20px">
@@ -13415,9 +13433,9 @@ function kpiShowTab(id){
           </div>
         </div>
         <div style="padding:8px 12px 4px">
-          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="none">
+          <svg viewBox="0 0 ${W} ${H+12}" style="width:100%;max-height:160px;display:block" preserveAspectRatio="xMidYMid meet">
             <defs>
-              <linearGradient id="trendGrad_${tab.id}" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="${_gradId}" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="${tab.color}" stop-opacity="0.25"/>
                 <stop offset="100%" stop-color="${tab.color}" stop-opacity="0.02"/>
               </linearGradient>
@@ -13434,7 +13452,7 @@ function kpiShowTab(id){
                   stroke="${tab.color}" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
             <text x="${W-PAD+3}" y="${avgY+3}" font-size="8" fill="${tab.color}" opacity="0.7">avg</text>
             <!-- Area fill -->
-            <path d="${areaPath}" fill="url(#trendGrad_${tab.id})"/>
+            <path d="${areaPath}" fill="url(#${_gradId})"/>
             <!-- Trend line -->
             <polyline points="${polyline}" fill="none" stroke="${tab.color}" stroke-width="2.5"
                       stroke-linejoin="round" stroke-linecap="round"/>
@@ -20540,20 +20558,26 @@ function _closeIAEPopup(){
 
 function _getMyUnackedIAE(){
   if(!CU) return [];
-  // v7: read from DB.audit (audit table is source of truth)
+  // Build a set of all possible name variants for this user (lowercase, trimmed)
   const myNames = new Set();
   const add = v => { if(v) myNames.add(String(v).trim().toLowerCase()); };
   add(CU.name); add(CU.empName); add(CU.username); add(CU.loginName);
   if(myNames.size === 0) return [];
   return (DB.audit||[]).filter(a => {
     if(!a) return false;
-    const userMatch = myNames.has(String(a.user||'').trim().toLowerCase());
+    // FIX: check both a.user (= user_name from DB, the auditee) AND a.auditor
+    // as a safety net. Primary match is a.user — that is always the auditee.
+    const userMatch = myNames.has(String(a.user||'').trim().toLowerCase())
+                   || myNames.has(String(a.auditor||'').trim().toLowerCase());
     if(!userMatch) return false;
+    // But if only auditor matched (not a.user), this is a record the user CREATED
+    // — they are the auditor, not the recipient. Skip it.
+    const isAuditee = myNames.has(String(a.user||'').trim().toLowerCase());
+    if(!isAuditee) return false;
     if(a.userAckAt) return false; // already acknowledged
     const sc = (a.score!=null && !isNaN(parseFloat(a.score))) ? parseFloat(a.score) : null;
     const et = a.errorType || '';
     // Only a REAL error type (not Good Job / None / —) triggers the popup
-    // Score < 100 alone does NOT trigger if error type is Good Job or empty
     const isRealError = et && et!=='Good Job' && et!=='None' && et!=='—' && et!=='';
     const isLowScore = sc!=null && sc<100;
     return isRealError && isLowScore; // BOTH must be true: real error AND score < 100
@@ -20627,12 +20651,14 @@ async function _iaeSafetyPoll(){
     if(added>0){
       if(typeof _rebuildAuditMap==='function') _rebuildAuditMap();
       console.log('[IAE poll v7] merged', added, 'new audit error(s) into DB.audit');
-      // Re-render Release table rows if visible so blinking badge appears immediately
-      if(_currentPage==='release2' && document.getElementById('rlTbody')){
+      // Re-render Release table rows on ANY page so blinking badge appears immediately
+      if(document.getElementById('rlTbody')){
         try{ renderRLRows(pgSlice('rl')); }catch(e){}
       }
     }
-    // Fire the popup if there is any unacked one for me
+    // FIX: Always fire _showInternalAuditAlert regardless of whether new rows were
+    // added — existing unacked rows already in DB.audit need to trigger the popup
+    // on the first heartbeat run too (e.g. member refreshes the page).
     _showInternalAuditAlert();
   }catch(_e){
     console.warn('[IAE poll v7] failed:', _e && _e.message);
@@ -20640,9 +20666,12 @@ async function _iaeSafetyPoll(){
 }
 function _startIAEHeartbeat(){
   if(window._iaeHeartbeat) return; // already running
-  window._iaeHeartbeat = setInterval(_iaeSafetyPoll, 45000); // every 45s
-  // First run after 4s so initial page load is not competing for resources
-  setTimeout(_iaeSafetyPoll, 4000);
+  window._iaeHeartbeat = setInterval(_iaeSafetyPoll, 30000); // every 30s (was 45s — more reliable)
+  // FIX: Delay first run to 6s (was 4s). The background audit load fires at 1.5s,
+  // merges rows at ~2s, then calls _iaeSafetyPoll at ~2.4s. Starting the heartbeat
+  // at 4s caused it to race against that fetch and sometimes find DB.audit still empty,
+  // then wait a full 45s before retrying. At 6s the background load is always complete.
+  setTimeout(_iaeSafetyPoll, 6000);
 }
 function _stopIAEHeartbeat(){
   if(window._iaeHeartbeat){ clearInterval(window._iaeHeartbeat); window._iaeHeartbeat = null; }
