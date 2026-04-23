@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-blink-rte_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-b1link-rte_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -220,6 +220,7 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 /* Centred rectangular error popup */
 .err-modal-center{
   position:fixed !important;
+  z-index:99999 !important;
   top:50% !important;left:50% !important;right:auto !important;bottom:auto !important;
   transform:translate(-50%,-50%) scale(.92) !important;
   width:min(1100px,96vw) !important;max-width:96vw !important;
@@ -230,6 +231,26 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
   opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .25s;
 }
 .err-modal-center.open{transform:translate(-50%,-50%) scale(1) !important;opacity:1 !important;}
+.err-modal-overlay-hi{z-index:99998 !important;}
+/* Lock close button until acknowledged */
+.err-close-locked{
+  background:rgba(255,255,255,.1) !important;
+  border:1.5px solid rgba(255,255,255,.2) !important;
+  color:rgba(255,255,255,.4) !important;
+  cursor:not-allowed !important;
+  position:relative;
+}
+.err-close-locked::after{
+  content:"🔒";font-size:11px;position:absolute;bottom:-2px;right:-2px;
+  background:#dc2626;color:#fff;border-radius:50%;width:14px;height:14px;
+  display:flex;align-items:center;justify-content:center;
+}
+.err-close-shake{animation:errShake .45s ease-in-out;}
+@keyframes errShake{
+  0%,100%{transform:translateX(0);}
+  20%{transform:translateX(-6px);}40%{transform:translateX(6px);}
+  60%{transform:translateX(-4px);}80%{transform:translateX(4px);}
+}
 /* Rich-text editor toolbar */
 .rte-toolbar{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;background:#f1f5f9;border:1.5px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;}
 .rte-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;font-family:var(--font);color:#111827;font-weight:700;transition:all .15s;}
@@ -2192,7 +2213,7 @@ body.style-modern .fs2:focus{
 <div class="overlay" id="overlay"></div>
 
 <!-- ═══ RELEASE CLIENT ERROR HISTORY POPUP ═══ -->
-<div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
+<div id="rlErrPopupOverlay" onclick="_blockedClose('rl')" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;backdrop-filter:blur(3px);"></div>
 <div id="rlErrPopup" class="err-modal-center" style="display:none;flex-direction:column;overflow:hidden;background:#fff;">
 
   <!-- Header -->
@@ -2206,7 +2227,7 @@ body.style-modern .fs2:focus{
           <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
         </div>
       </div>
-      <button onclick="_closeRlErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
+      <button id="rlErrCloseBtn" onclick="_tryCloseRl()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
         onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
     </div>
     <div id="rlErrPopupBadges" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;position:relative;"></div>
@@ -2290,7 +2311,7 @@ body.style-modern .fs2:focus{
   </div>
 </div>
 <!-- ═══ LVS CLIENT ERROR HISTORY POPUP ═══ -->
-<div id="lvsErrPopupOverlay" onclick="_closeLvsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
+<div id="lvsErrPopupOverlay" onclick="_blockedClose('lvs')" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99998;backdrop-filter:blur(3px);"></div>
 <div id="lvsErrPopup" class="err-modal-center" style="display:none;flex-direction:column;overflow:hidden;background:#fff;z-index:499;">
 
   <!-- ── TOP HEADER ── -->
@@ -2306,7 +2327,7 @@ body.style-modern .fs2:focus{
           <div id="lvsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
         </div>
       </div>
-      <button onclick="_closeLvsErrPopup()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);
+      <button id="lvsErrCloseBtn" onclick="_tryCloseLvs()" style="background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.3);
         color:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;
         display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;transition:background .15s;"
         onmouseover="this.style.background='rgba(255,255,255,.3)'" onmouseout="this.style.background='rgba(255,255,255,.18)'">&#x2715;</button>
@@ -3623,6 +3644,23 @@ function _rteCmd(cmd, val){
     document.execCommand(cmd, false, val || null);
   } catch(e) { console.warn('rteCmd failed:', e); }
 }
+
+// ═══ v7.12: Block Esc/keyboard shortcuts from closing the Error History popups
+// until the acknowledgement checkbox is ticked. Also blocks Tab so focus can't
+// escape the modal.
+document.addEventListener('keydown', function(ev){
+  const rl  = document.getElementById('rlErrPopup');
+  const lvs = document.getElementById('lvsErrPopup');
+  const rlOpen  = rl  && rl.classList.contains('open');
+  const lvsOpen = lvs && lvs.classList.contains('open');
+  if(!rlOpen && !lvsOpen) return;
+  if(ev.key === 'Escape'){
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(rlOpen  && typeof _tryCloseRl  === 'function') _tryCloseRl();
+    if(lvsOpen && typeof _tryCloseLvs === 'function') _tryCloseLvs();
+  }
+}, true);
 
 
 
@@ -20704,6 +20742,8 @@ function _rlErrAckChanged(){
     label.style.background   = checked ? '#fff0f0' : '#fff8f8';
     label.style.borderColor  = checked ? 'rgba(220,38,38,.5)' : 'rgba(220,38,38,.2)';
   }
+  // v7.12: unlock close button when acknowledged
+  if(typeof _updateRlCloseLock==='function') _updateRlCloseLock();
 }
 
 function _rlErrConfirm(){
@@ -20736,6 +20776,29 @@ function _openRlErrPopup(){
   popup.style.display='flex';
   if(overlay) overlay.style.display='block';
   requestAnimationFrame(()=>{ popup.classList.add('open'); popup.style.transform=''; });
+  // v7.12: lock close until acknowledged
+  _updateRlCloseLock();
+}
+function _isRlAcked(){
+  const box = document.getElementById('rlErrAckBox');
+  return box && box.checked;
+}
+function _updateRlCloseLock(){
+  const btn = document.getElementById('rlErrCloseBtn');
+  if(!btn) return;
+  if(_isRlAcked()){ btn.classList.remove('err-close-locked'); btn.title=''; }
+  else{ btn.classList.add('err-close-locked'); btn.title='Please tick the acknowledgement below first'; }
+}
+function _tryCloseRl(){
+  if(_isRlAcked()){ _closeRlErrPopup(); return; }
+  _shakeAndNagRl();
+}
+function _shakeAndNagRl(){
+  const popup=document.getElementById('rlErrPopup');
+  if(popup){ popup.classList.add('err-close-shake'); setTimeout(()=>popup.classList.remove('err-close-shake'),500); }
+  const label=document.getElementById('rlErrAckLabel');
+  if(label){ label.style.boxShadow='0 0 0 4px rgba(220,38,38,.3)'; setTimeout(()=>{label.style.boxShadow='';},1200); }
+  if(typeof showToast==='function') showToast('⚠️ You must read and acknowledge the Error History before closing',true);
 }
 function _closeRlErrPopup(){
   const popup=document.getElementById('rlErrPopup');
@@ -20745,6 +20808,11 @@ function _closeRlErrPopup(){
   if(overlay) overlay.style.display='none';
   setTimeout(()=>{ if(!popup.classList.contains('open')) popup.style.display='none'; },320);
 }
+// Unified blocked-close handler (called by overlay clicks)
+window._blockedClose = function(which){
+  if(which==='rl'){ _tryCloseRl(); }
+  else if(which==='lvs'){ _tryCloseLvs(); }
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // INTERNAL AUDIT ERROR POPUP — Batch 2
@@ -25528,8 +25596,29 @@ function _openLvsErrPopup(){
   popup.style.display   = 'flex';
   overlay.style.display = 'block';
   requestAnimationFrame(()=>{ popup.classList.add('open'); popup.style.transform=''; });
+  _updateLvsCloseLock();
 }
-
+function _isLvsAcked(){
+  const box = document.getElementById('lvsErrAckBox');
+  return box && box.checked;
+}
+function _updateLvsCloseLock(){
+  const btn = document.getElementById('lvsErrCloseBtn');
+  if(!btn) return;
+  if(_isLvsAcked()){ btn.classList.remove('err-close-locked'); btn.title=''; }
+  else{ btn.classList.add('err-close-locked'); btn.title='Please tick the acknowledgement below first'; }
+}
+function _tryCloseLvs(){
+  if(_isLvsAcked()){ _closeLvsErrPopup(); return; }
+  _shakeAndNagLvs();
+}
+function _shakeAndNagLvs(){
+  const popup=document.getElementById('lvsErrPopup');
+  if(popup){ popup.classList.add('err-close-shake'); setTimeout(()=>popup.classList.remove('err-close-shake'),500); }
+  const label=document.getElementById('lvsErrAckLabel');
+  if(label){ label.style.boxShadow='0 0 0 4px rgba(220,38,38,.3)'; setTimeout(()=>{label.style.boxShadow='';},1200); }
+  if(typeof showToast==='function') showToast('⚠️ You must read and acknowledge the Error History before closing',true);
+}
 function _closeLvsErrPopup(){
   const popup   = document.getElementById('lvsErrPopup');
   const overlay = document.getElementById('lvsErrPopupOverlay');
@@ -25559,6 +25648,8 @@ function _lvsErrAckChanged(){
     btn.style.boxShadow  = 'none';
     if(lbl){ lbl.style.background='#fff8f8'; lbl.style.borderColor='rgba(220,38,38,.2)'; }
   }
+  // v7.12: unlock close button when acknowledged
+  if(typeof _updateLvsCloseLock==='function') _updateLvsCloseLock();
 }
 
 function _lvsErrConfirm(){
