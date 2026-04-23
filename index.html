@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_11_delete-fix_2026-04-22" data-build-id="audit-iae-v7.11-delete-fix">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-blink-rte_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -182,6 +182,68 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes pulseBlue{0%,100%{box-shadow:0 0 0 0 rgba(111,66,193,.3);}50%{box-shadow:0 0 0 8px rgba(111,66,193,0);}}
+
+/* ═══════ Error-History blink + big header styles (v7.12) ═══════ */
+@keyframes errBlinkRed{
+  0%,100%{opacity:1;color:#dc2626;text-shadow:0 0 0 rgba(220,38,38,0);}
+  50%{opacity:.55;color:#991b1b;text-shadow:0 0 12px rgba(220,38,38,.55);}
+}
+@keyframes errBlinkBg{
+  0%,100%{background:#fff4f4;border-color:#dc2626;}
+  50%{background:#fee2e2;border-color:#991b1b;}
+}
+.err-blink-red{animation:errBlinkRed 1s ease-in-out infinite;color:#dc2626 !important;font-weight:900 !important;}
+.err-blink-box{animation:errBlinkBg 1.4s ease-in-out infinite;border:2px solid #dc2626;}
+.err-big-header{
+  font-size:28px !important;
+  font-weight:900 !important;
+  color:#fff !important;
+  letter-spacing:-.5px !important;
+  line-height:1.15 !important;
+  text-shadow:0 2px 8px rgba(0,0,0,.15);
+}
+.err-big-type{
+  display:inline-block;padding:8px 18px;border-radius:10px;
+  background:linear-gradient(135deg,#b91c1c,#dc2626);
+  color:#fff !important;font-size:20px;font-weight:900;
+  letter-spacing:.3px;text-transform:uppercase;
+  box-shadow:0 6px 16px rgba(220,38,38,.35);
+  animation:errBlinkRed 1.1s ease-in-out infinite;
+}
+.err-big-comment{
+  font-size:16px !important;font-weight:700 !important;
+  line-height:1.55 !important;color:#7f1d1d !important;
+  background:#fff4f4;border-left:5px solid #dc2626;
+  padding:10px 14px;border-radius:0 10px 10px 0;
+  animation:errBlinkRed 1.6s ease-in-out infinite;
+}
+/* Centred rectangular error popup */
+.err-modal-center{
+  position:fixed !important;
+  top:50% !important;left:50% !important;right:auto !important;bottom:auto !important;
+  transform:translate(-50%,-50%) scale(.92) !important;
+  width:min(1100px,96vw) !important;max-width:96vw !important;
+  height:auto !important;max-height:92vh !important;
+  border-radius:20px !important;
+  border:3px solid #dc2626 !important;
+  box-shadow:0 25px 80px rgba(0,0,0,.45),0 0 0 6px rgba(220,38,38,.12) !important;
+  opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .25s;
+}
+.err-modal-center.open{transform:translate(-50%,-50%) scale(1) !important;opacity:1 !important;}
+/* Rich-text editor toolbar */
+.rte-toolbar{display:flex;gap:4px;flex-wrap:wrap;padding:6px 8px;background:#f1f5f9;border:1.5px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;}
+.rte-toolbar button{background:#fff;border:1px solid #d1d5db;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer;font-family:var(--font);color:#111827;font-weight:700;transition:all .15s;}
+.rte-toolbar button:hover{background:#e0e7ff;border-color:#6366f1;color:#3730a3;}
+.rte-toolbar .rte-sep{width:1px;background:#cbd5e1;margin:2px 4px;}
+.rte-editor{min-height:120px;max-height:260px;overflow-y:auto;padding:10px 14px;border:1.5px solid var(--border);border-radius:0 0 10px 10px;background:#fff;font-family:var(--font);font-size:13px;line-height:1.6;color:#111827;outline:none;}
+.rte-editor:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(99,102,241,.12);}
+.rte-editor:empty::before{content:attr(data-placeholder);color:#9ca3af;pointer-events:none;}
+.rte-rendered{font-size:14px;line-height:1.65;color:#1e293b;}
+.rte-rendered ul,.rte-rendered ol{margin:6px 0 6px 24px;}
+.rte-rendered strong,.rte-rendered b{font-weight:800;color:#0f172a;}
+.rte-rendered em,.rte-rendered i{font-style:italic;}
+.rte-rendered u{text-decoration:underline;}
+/* ═══════ END v7.12 styles ═══════ */
 
 /* ════════════════════════════
    LOGIN PAGE — Single Card (Clean)
@@ -2131,11 +2193,7 @@ body.style-modern .fs2:focus{
 
 <!-- ═══ RELEASE CLIENT ERROR HISTORY POPUP ═══ -->
 <div id="rlErrPopupOverlay" onclick="_closeRlErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
-<div id="rlErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
-  background:#fff;flex-direction:column;overflow:hidden;
-  border-left:4px solid #dc2626;
-  box-shadow:-8px 0 60px rgba(0,0,0,.22);
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+<div id="rlErrPopup" class="err-modal-center" style="display:none;flex-direction:column;overflow:hidden;background:#fff;">
 
   <!-- Header -->
   <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
@@ -2144,7 +2202,7 @@ body.style-modern .fs2:focus{
       <div style="display:flex;align-items:center;gap:12px;">
         <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
         <div>
-          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
+          <div class="err-big-header" style="animation:errBlinkRed 1.4s ease-in-out infinite;">🚨 Error History Alert</div>
           <div id="rlErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
         </div>
       </div>
@@ -2233,11 +2291,7 @@ body.style-modern .fs2:focus{
 </div>
 <!-- ═══ LVS CLIENT ERROR HISTORY POPUP ═══ -->
 <div id="lvsErrPopupOverlay" onclick="_closeLvsErrPopup()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:498;backdrop-filter:blur(2px);"></div>
-<div id="lvsErrPopup" style="display:none;position:fixed;top:0;right:0;bottom:0;width:500px;max-width:96vw;z-index:499;
-  background:#fff;flex-direction:column;overflow:hidden;
-  border-left:4px solid #dc2626;
-  box-shadow:-8px 0 60px rgba(0,0,0,.22);
-  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);">
+<div id="lvsErrPopup" class="err-modal-center" style="display:none;flex-direction:column;overflow:hidden;background:#fff;z-index:499;">
 
   <!-- ── TOP HEADER ── -->
   <div style="background:linear-gradient(135deg,#7f1d1d 0%,#b91c1c 55%,#dc2626 100%);padding:20px 22px 16px;flex-shrink:0;position:relative;overflow:hidden;">
@@ -2248,7 +2302,7 @@ body.style-modern .fs2:focus{
         <div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.18);
           display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">&#9888;&#65039;</div>
         <div>
-          <div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px;line-height:1.2">Error History Alert</div>
+          <div class="err-big-header" style="animation:errBlinkRed 1.4s ease-in-out infinite;">🚨 Error History Alert</div>
           <div id="lvsErrPopupSub" style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px;font-weight:500;">Loading...</div>
         </div>
       </div>
@@ -3560,6 +3614,15 @@ body.style-modern .fs2:focus{
 
 
 <script>
+
+// ═══ v7.12: Rich-text editor helper (used by Instruction panel) ═══
+function _rteCmd(cmd, val){
+  try {
+    const rte = document.getElementById('instr_text_rte');
+    if (rte) rte.focus();
+    document.execCommand(cmd, false, val || null);
+  } catch(e) { console.warn('rteCmd failed:', e); }
+}
 
 
 
@@ -20672,15 +20735,15 @@ function _openRlErrPopup(){
   if(!popup) return;
   popup.style.display='flex';
   if(overlay) overlay.style.display='block';
-  requestAnimationFrame(()=>{ popup.style.transform='translateX(0)'; });
+  requestAnimationFrame(()=>{ popup.classList.add('open'); popup.style.transform=''; });
 }
 function _closeRlErrPopup(){
   const popup=document.getElementById('rlErrPopup');
   const overlay=document.getElementById('rlErrPopupOverlay');
   if(!popup) return;
-  popup.style.transform='translateX(100%)';
+  popup.classList.remove('open');
   if(overlay) overlay.style.display='none';
-  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; },320);
+  setTimeout(()=>{ if(!popup.classList.contains('open')) popup.style.display='none'; },320);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -24464,8 +24527,27 @@ function renderInstructions(c){
       </div>
       <div class="fpg" style="margin-bottom:12px">
         <label class="fpl" for="instr_text">Instruction <span class="req">*</span></label>
-        <textarea class="fpta" id="instr_text" placeholder="Enter specific processing instruction for this client..." style="min-height:100px;resize:vertical;"></textarea>
-        <div class="fnote">This instruction will appear in the Release form when this client number is entered.</div>
+        <!-- v7.12: Rich-text editor (contenteditable) replaces plain textarea -->
+        <div class="rte-toolbar" role="toolbar" aria-label="Formatting">
+          <button type="button" title="Bold" onmousedown="event.preventDefault()" onclick="_rteCmd('bold')"><b>B</b></button>
+          <button type="button" title="Italic" onmousedown="event.preventDefault()" onclick="_rteCmd('italic')"><i>I</i></button>
+          <button type="button" title="Underline" onmousedown="event.preventDefault()" onclick="_rteCmd('underline')"><u>U</u></button>
+          <span class="rte-sep"></span>
+          <button type="button" title="Bullet list" onmousedown="event.preventDefault()" onclick="_rteCmd('insertUnorderedList')">• List</button>
+          <button type="button" title="Numbered list" onmousedown="event.preventDefault()" onclick="_rteCmd('insertOrderedList')">1. List</button>
+          <span class="rte-sep"></span>
+          <button type="button" title="Red" onmousedown="event.preventDefault()" onclick="_rteCmd('foreColor','#dc2626')" style="color:#dc2626">A</button>
+          <button type="button" title="Blue" onmousedown="event.preventDefault()" onclick="_rteCmd('foreColor','#2563eb')" style="color:#2563eb">A</button>
+          <button type="button" title="Green" onmousedown="event.preventDefault()" onclick="_rteCmd('foreColor','#059669')" style="color:#059669">A</button>
+          <button type="button" title="Highlight yellow" onmousedown="event.preventDefault()" onclick="_rteCmd('hiliteColor','#fef08a')">🖍</button>
+          <span class="rte-sep"></span>
+          <button type="button" title="Heading" onmousedown="event.preventDefault()" onclick="_rteCmd('formatBlock','H4')">H</button>
+          <button type="button" title="Clear formatting" onmousedown="event.preventDefault()" onclick="_rteCmd('removeFormat')">⌫ fmt</button>
+        </div>
+        <div id="instr_text_rte" class="rte-editor" contenteditable="true"
+          data-placeholder="Enter specific processing instruction for this client. Use the toolbar above to format text..."></div>
+        <textarea id="instr_text" style="display:none"></textarea>
+        <div class="fnote">This instruction will appear in the Error History Alert when this client number is entered.</div>
       </div>
     </div>
     <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;background:var(--surface2);border-radius:0 0 16px 16px;">
@@ -24526,6 +24608,8 @@ function openInstructionPanel(idx){
   document.getElementById('instr_clientname').value='';
   document.getElementById('instr_team').value='';
   document.getElementById('instr_text').value='';
+  const _rte=document.getElementById('instr_text_rte');
+  if(_rte) _rte.innerHTML='';
   document.getElementById('instr_edit_idx').value='-1';
   document.getElementById('instrPanelTitle').textContent='➕ Add Instruction';
   if(idx!==undefined){
@@ -24534,7 +24618,13 @@ function openInstructionPanel(idx){
       document.getElementById('instr_clientno').value=r.clientNo||'';
       document.getElementById('instr_clientname').value=r.clientName||'';
       document.getElementById('instr_team').value=r.team||'';
-      document.getElementById('instr_text').value=r.instruction||'';
+      const txt=r.instruction||'';
+      document.getElementById('instr_text').value=txt;
+      if(_rte){
+        // If stored as HTML, load as-is; else convert line breaks
+        const looksHtml=/<[a-z][^>]*>/i.test(txt);
+        _rte.innerHTML=looksHtml?txt:txt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      }
       document.getElementById('instr_edit_idx').value=idx;
       document.getElementById('instrPanelTitle').textContent='✏️ Edit Instruction';
     }
@@ -24550,7 +24640,16 @@ function closeInstrPanel(){
 
 function saveInstruction(){
   const clientNo=document.getElementById('instr_clientno').value.trim();
-  const instruction=document.getElementById('instr_text').value.trim();
+  // v7.12: prefer rich-text editor HTML; fallback to textarea
+  const _rte=document.getElementById('instr_text_rte');
+  let instruction='';
+  if(_rte){
+    const html=(_rte.innerHTML||'').trim();
+    // Strip meaningless wrappers
+    const textOnly=(_rte.innerText||'').trim();
+    instruction = textOnly ? html : '';
+  }
+  if(!instruction){ instruction=document.getElementById('instr_text').value.trim(); }
   if(!clientNo){showToast('\u26a0\ufe0f Client number is required',true);return;}
   if(!instruction){showToast('\u26a0\ufe0f Instruction text is required',true);return;}
   const editIdx=parseInt(document.getElementById('instr_edit_idx').value);
@@ -25428,18 +25527,16 @@ function _openLvsErrPopup(){
   if(!popup) return;
   popup.style.display   = 'flex';
   overlay.style.display = 'block';
-  // Trigger CSS slide-in
-  requestAnimationFrame(()=>{ popup.style.transform = 'translateX(0)'; });
+  requestAnimationFrame(()=>{ popup.classList.add('open'); popup.style.transform=''; });
 }
 
 function _closeLvsErrPopup(){
   const popup   = document.getElementById('lvsErrPopup');
   const overlay = document.getElementById('lvsErrPopupOverlay');
   if(!popup) return;
-  popup.style.transform = 'translateX(100%)';
-  overlay.style.display = 'none';
-  // After transition ends, hide display
-  setTimeout(()=>{ if(popup.style.transform==='translateX(100%)') popup.style.display='none'; }, 320);
+  popup.classList.remove('open');
+  if(overlay) overlay.style.display = 'none';
+  setTimeout(()=>{ if(!popup.classList.contains('open')) popup.style.display='none'; }, 320);
 }
 
 function _lvsErrAckChanged(){
@@ -25546,17 +25643,30 @@ function _buildLvsErrPopup(clientNo){
 
   const clientErrors       = (DB.errors||[]).filter(e=>parseInt(e.client)==clientNo);
   const clientInstructions = (DB.instructions||[]).filter(r=>parseInt(r.clientNo)==clientNo);
+  // ── v7.12: Audit errors (Task=Release only) for this client ──────────
+  const clientAuditErrs    = (DB.audit||[]).filter(a=>{
+    if(parseInt(a.client)!=clientNo) return false;
+    // Only Release-task audits with a real error (not "Good Job"/100%)
+    const taskOk = !a.task || String(a.task).toLowerCase().includes('release');
+    const et = a.errorType||''; const sc = parseFloat(a.score);
+    const isRealErr = et && et!=='Good Job' && et!=='None' && et!=='\u2014' && !isNaN(sc) && sc<100;
+    return taskOk && isRealErr;
+  });
   const nameEl             = document.getElementById('lf_clientName');
-  const clientName         = clientErrors[0]?.clientName || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
+  const clientName         = clientErrors[0]?.clientName || clientAuditErrs[0]?.clientname || clientInstructions[0]?.clientName || nameEl?.value || 'Client #'+clientNo;
 
   // Sub-header
-  if(sub) sub.textContent = clientName + ' · ' + (clientErrors.length+clientInstructions.length) + ' record(s) on file';
+  const totalRec = clientErrors.length + clientAuditErrs.length + clientInstructions.length;
+  if(sub) sub.textContent = clientName + ' · ' + totalRec + ' record(s) on file';
 
   // Badges
   if(badges){
     badges.innerHTML = '';
     if(clientInstructions.length){
       badges.innerHTML += '<span style="background:rgba(14,165,233,.25);color:#e0f2fe;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:800;border:1px solid rgba(14,165,233,.4);">📋 '+clientInstructions.length+' Instruction'+(clientInstructions.length>1?'s':'')+'</span>';
+    }
+    if(clientAuditErrs.length){
+      badges.innerHTML += '<span class="err-blink-red" style="background:rgba(255,255,255,.25);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:900;border:1px solid rgba(255,255,255,.45);">🔍 '+clientAuditErrs.length+' Audit Error'+(clientAuditErrs.length>1?'s':'')+'</span>';
     }
     if(clientErrors.length){
       const byType = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
@@ -25569,25 +25679,66 @@ function _buildLvsErrPopup(clientNo){
   // Body
   let html = '';
 
-  // Instructions card
+  // Instructions card (renders HTML from rich-text editor; sanitised by browser when assigned with innerHTML but we
+  // keep the raw html stored from team lead contenteditable field)
   if(clientInstructions.length){
     html += '<div style="background:#fff;border:2px solid rgba(14,165,233,.3);border-radius:14px;overflow:hidden;">';
     html += '<div style="background:linear-gradient(135deg,rgba(14,165,233,.08),rgba(14,165,233,.04));padding:12px 16px;border-bottom:1.5px solid rgba(14,165,233,.2);display:flex;align-items:center;gap:8px;">';
     html += '<span style="font-size:16px;">📋</span><span style="font-size:13px;font-weight:800;color:#0369a1;">INSTRUCTION FOLLOWUP — '+clientName+'</span></div>';
     html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">';
     clientInstructions.forEach(r=>{
-      html += '<div style="font-size:13px;color:#1e293b;line-height:1.7;padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;white-space:pre-wrap;">'+r.instruction+'</div>';
+      // detect HTML (contains tags) → render via rte-rendered; else escape
+      const raw = r.instruction||'';
+      const looksHtml = /<[a-z][^>]*>/i.test(raw);
+      const content = looksHtml ? raw : (raw.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'));
+      html += '<div class="rte-rendered" style="padding:10px 12px;background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:0 8px 8px 0;">'+content+'</div>';
     });
     html += '</div></div>';
   }
 
-  // Error history cards — full detail per record
+  // Audit Errors card — NEW v7.12 (Release-task only, blinking big)
+  if(clientAuditErrs.length){
+    html += '<div class="err-blink-box" style="background:#fff;border-radius:14px;overflow:hidden;">';
+    html += '<div style="background:linear-gradient(135deg,#7f1d1d,#dc2626);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">';
+    html += '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:22px;">🔍</span><span class="err-big-header" style="font-size:20px;">AUDIT ERRORS — Task: Release</span></div>';
+    html += '<span class="err-blink-red" style="background:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:900;">'+clientAuditErrs.length+' record'+(clientAuditErrs.length>1?'s':'')+'</span>';
+    html += '</div>';
+    html += '<div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">';
+    const sortedA = [...clientAuditErrs].sort((a,b)=>new Date(b._created||b.endTime||0)-new Date(a._created||a.endTime||0));
+    sortedA.forEach(a=>{
+      const dt   = String(a._created||a.endTime||a.startTime||'').slice(0,10) || '—';
+      const et   = a.errorType || '—';
+      const sc   = a.score!=null ? (a.score+'%') : '—';
+      const auditor = a.auditor || '—';
+      const mode = a.mode || '—';
+      const txn  = a.txn  || '—';
+      const cmts = a.comments || '';
+      const resp = a.userResponse || '';
+      html += '<div style="background:#fff4f4;border:2px solid #dc2626;border-left:6px solid #dc2626;border-radius:10px;padding:12px 14px;">';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">';
+      html += '<span class="err-big-type">'+et+'</span>';
+      html += '<span style="background:#fef3c7;color:#92400e;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:800;">Score: '+sc+'</span>';
+      html += '<span style="background:rgba(107,114,128,.15);color:#1f2937;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;">'+mode+'</span>';
+      html += '<span style="background:rgba(124,58,237,.15);color:#6d28d9;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;font-family:var(--mono);">Txn '+txn+'</span>';
+      html += '<span style="margin-left:auto;font-size:11px;color:#6b7280;font-family:var(--mono);">'+dt+'</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:#6b7280;margin-bottom:4px;"><strong>Auditor:</strong> '+auditor+'</div>';
+      if(cmts){
+        html += '<div class="err-big-comment" style="margin-top:8px;"><div style="font-size:11px;font-weight:900;color:#991b1b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">🚨 Auditor Comments</div>'+cmts.replace(/</g,'&lt;').replace(/\n/g,'<br>')+'</div>';
+      }
+      if(resp){
+        html += '<div style="margin-top:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:8px 11px;"><div style="font-size:10px;font-weight:800;color:#2563eb;margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;">👤 User Response</div><div style="font-size:12px;color:#1e293b;line-height:1.55;white-space:pre-wrap;">'+resp+'</div></div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Error history cards — full detail per record (existing)
   if(clientErrors.length){
-    // Section header
     html += '<div style="background:#fff;border:2px solid rgba(220,38,38,.25);border-radius:14px;overflow:hidden;">';
     html += '<div style="background:linear-gradient(135deg,rgba(220,38,38,.07),rgba(220,38,38,.03));padding:12px 16px;border-bottom:1.5px solid rgba(220,38,38,.15);display:flex;align-items:center;justify-content:space-between;">';
-    html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span style="font-size:13px;font-weight:800;color:#b91c1c;">'+clientErrors.length+' Error Record'+(clientErrors.length>1?'s':'')+' on File</span></div>';
-    // Summary badges
+    html += '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:16px;">🚨</span><span class="err-blink-red" style="font-size:16px;font-weight:900;">'+clientErrors.length+' ERROR RECORD'+(clientErrors.length>1?'S':'')+' ON FILE</span></div>';
     const byType2 = clientErrors.reduce((a,e)=>{a[e.errorType]=(a[e.errorType]||0)+1;return a;},{});
     let sumBadges = Object.entries(byType2).map(([t,c])=>'<span style="background:rgba(220,38,38,.12);color:#dc2626;border-radius:20px;padding:2px 10px;font-size:10px;font-weight:800;border:1px solid rgba(220,38,38,.2);">'+t+': '+c+'</span>').join('');
     html += '<div style="display:flex;gap:5px;flex-wrap:wrap;">'+sumBadges+'</div></div>';
@@ -25608,20 +25759,17 @@ function _buildLvsErrPopup(clientNo){
       const ackBy      = e.acknowledgedBy || '';
       const ackAt      = e.acknowledgedAt || '';
 
-      html += '<div style="background:#fff8f8;border:1px solid rgba(220,38,38,.18);border-radius:12px;border-left:4px solid #dc2626;overflow:hidden;">';
-
-      // ── Card header row ──
-      html += '<div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(220,38,38,.1);">';
+      html += '<div style="background:#fff8f8;border:2px solid #dc2626;border-left:6px solid #dc2626;border-radius:12px;overflow:hidden;">';
+      html += '<div style="padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;border-bottom:1px solid rgba(220,38,38,.15);">';
       html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
-      html += '<span style="background:#dc2626;color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:800;">'+errType+'</span>';
-      html += '<span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+mode+'</span>';
-      if(task&&task!=='—') html += '<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+task+'</span>';
-      if(pct) html += '<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;">'+pct+'%</span>';
+      html += '<span class="err-big-type">'+errType+'</span>';
+      html += '<span style="background:rgba(107,114,128,.1);color:#374151;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;">'+mode+'</span>';
+      if(task&&task!=='—') html += '<span style="background:rgba(124,58,237,.1);color:#7c3aed;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;">'+task+'</span>';
+      if(pct) html += '<span style="background:rgba(245,158,11,.1);color:#b45309;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;">'+pct+'%</span>';
       html += '</div>';
-      html += '<span style="font-size:10px;color:#9ca3af;font-family:var(--mono);">'+dateStr+'</span>';
+      html += '<span style="font-size:11px;color:#9ca3af;font-family:var(--mono);">'+dateStr+'</span>';
       html += '</div>';
 
-      // ── Meta grid: TXN + Created By + Source ──
       html += '<div style="padding:8px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;border-bottom:1px solid rgba(220,38,38,.07);">';
       html += '<div><div style="font-size:9px;font-weight:800;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Transaction No</div>';
       html += '<div style="font-size:12px;font-weight:800;color:#1e293b;font-family:var(--mono);background:rgba(220,38,38,.06);padding:3px 8px;border-radius:5px;display:inline-block;">'+txn+'</div></div>';
@@ -25633,29 +25781,25 @@ function _buildLvsErrPopup(clientNo){
       }
       html += '</div>';
 
-      // ── Comment blocks ──
       let hasComments = clientCmt || userCmt || tlCmt;
       if(hasComments){
-        html += '<div style="padding:8px 14px 10px;display:flex;flex-direction:column;gap:7px;">';
+        html += '<div style="padding:10px 14px 12px;display:flex;flex-direction:column;gap:8px;">';
         if(clientCmt){
-          html += '<div style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">🔴 Client Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+clientCmt+'</div></div>';
+          html += '<div class="err-big-comment"><div style="font-size:11px;font-weight:900;color:#991b1b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;">🔴 Client Comments</div>'+clientCmt.replace(/</g,'&lt;').replace(/\n/g,'<br>')+'</div>';
         }
         if(userCmt){
-          html += '<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👤 User Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+userCmt+'</div></div>';
+          html += '<div style="background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15);border-radius:8px;padding:10px 12px;">';
+          html += '<div style="font-size:10px;font-weight:800;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👤 User Comments</div>';
+          html += '<div style="font-size:13px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+userCmt+'</div></div>';
         }
         if(tlCmt){
-          html += '<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:8px 11px;">';
-          html += '<div style="font-size:9px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👔 Team Lead Comments</div>';
-          html += '<div style="font-size:12px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+tlCmt+'</div></div>';
+          html += '<div style="background:rgba(124,58,237,.04);border:1px solid rgba(124,58,237,.15);border-radius:8px;padding:10px 12px;">';
+          html += '<div style="font-size:10px;font-weight:800;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">👔 Team Lead Comments</div>';
+          html += '<div style="font-size:13px;color:#1e293b;line-height:1.6;white-space:pre-wrap;">'+tlCmt+'</div></div>';
         }
         html += '</div>';
       }
 
-      // ── Acknowledged badge ──
       if(ackBy){
         html += '<div style="padding:0 14px 10px;">';
         html += '<div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">';
@@ -25812,5 +25956,6 @@ function _buildLvsErrPopup(clientNo){
 </script>
 <!-- Cloudflare Web Analytics beacon DISABLED — /cdn-cgi/rum returns 404 on this deployment.
      Enable Web Analytics in Cloudflare Dashboard first, then re-add the beacon script. -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
