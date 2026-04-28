@@ -25992,9 +25992,12 @@ function _buildLvsErrPopup(clientNo){
   }
 
   // ── STEP 1+2+3: Fetch live page, extract stamp, compare ──
+  // FIX: fetch the bare pathname — Cloudflare Pages serves index.html for the
+  // root path. Adding ?_probe=<ts> caused a 404 because the edge treated it
+  // as an unknown resource.
   async function checkLiveStamp(){
     try{
-      var url = window.location.pathname + '?_probe=' + Date.now();
+      var url = window.location.pathname; // no query string — avoids 404
       var resp = await fetch(url, {
         method: 'GET',
         cache: 'no-store',
@@ -26016,9 +26019,7 @@ function _buildLvsErrPopup(clientNo){
   }
 
   window.addEventListener('load', async function(){
-    await nukeAllCaches();
-
-    // STEP 4: Fast localStorage check first
+    // STEP 4: Fast localStorage check (synchronous — no freeze)
     var lastStamp = '';
     try{ lastStamp = localStorage.getItem(LS_KEY) || ''; }catch(e){}
     if(CURRENT_STAMP) try{ localStorage.setItem(LS_KEY, CURRENT_STAMP); }catch(e){}
@@ -26027,21 +26028,30 @@ function _buildLvsErrPopup(clientNo){
     var isProbeReload = window.location.search.indexOf('nocache=') !== -1;
     if(isProbeReload){
       console.log('[Cache] Fresh reload confirmed — stamp:', CURRENT_STAMP);
-      // Clean the URL
       if(window.history && window.history.replaceState){
         window.history.replaceState({}, '', window.location.pathname);
       }
-    } else {
-      // STEP 1-3: Fetch live page and compare stamps
-      await checkLiveStamp();
     }
 
-    // Register SW fresh (for offline support only)
+    // Register SW fresh first — don't block app startup on cache operations
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('/sw.js')
         .then(function(){ console.log('[PWA] SW registered (fresh)'); })
         .catch(function(e){ console.warn('[PWA] SW registration failed:', e); });
     }
+
+    // FIX — FREEZE: defer heavy cache-nuke + stamp-probe to AFTER the app is
+    // fully interactive. Running nukeAllCaches() + a full HTML fetch (26 000 lines)
+    // synchronously on every load was blocking the main thread for 300–800 ms,
+    // causing the UI freeze team leads experienced right after login / hard refresh.
+    // 5 s delay lets the app paint and become interactive first.
+    setTimeout(async function(){
+      await nukeAllCaches();
+      if(!isProbeReload){
+        // STEP 1-3: Fetch live page and compare stamps
+        await checkLiveStamp();
+      }
+    }, 5000);
   });
 })();
 </script>
