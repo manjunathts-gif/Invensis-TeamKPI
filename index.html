@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECON_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BN_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3950,7 +3950,16 @@ function _initSupaRT(){
     }catch(je){}
     if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase project URL'); return; }
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
-      realtime: { params: { eventsPerSecond: 10 } },
+      realtime: {
+        params: { eventsPerSecond: 10 },
+        // ── Disable the library's own internal reconnect loop.
+        // On corporate/VDI networks that block wss://, the default Supabase
+        // reconnect floods the console with "WebSocket connection failed" every
+        // few seconds forever. We use our own controlled backoff in setupRealtime()
+        // instead — after 3 failures we switch to bgPoll and stop retrying.
+        reconnectAfterMs: ()=> 86400000, // 24h = effectively disabled
+        timeout: 8000, // match our RT_FALLBACK_MS so we detect failure fast
+      },
       auth: { persistSession: false, autoRefreshToken: false }
     });
     console.log('[RT] Supabase Realtime client ready');
@@ -5861,6 +5870,9 @@ function setupRealtime(){
     .on('system', {}, (status)=>{
       if(status && status.status === 'error'){
         if(status.message && status.message.includes('DELETE')){ /* non-critical */ }
+        else if(status.message && (status.message.includes('WebSocket') || status.message.includes('transport'))){
+          // Network blocks wss:// — handled gracefully by our CHANNEL_ERROR path below
+        }
         else { console.warn('[RT] System error:', status); }
       }
     });
