@@ -1,5 +1,6 @@
+
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECOxN_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECONPP_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -35,7 +36,7 @@ if(location.protocol === 'file:'){
   });
 }
 </script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-src https://accounts.google.com https://apis.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com wss://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-src https://accounts.google.com https://apis.google.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -3937,23 +3938,32 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 // ── Supabase Realtime client (official JS SDK — WebSocket support) ──
 // Separate from the custom REST client (_supa) which handles reads/writes.
 // This client is ONLY used for Realtime channel subscriptions.
+//
+// ── Proxy-aware Realtime ─────────────────────────────────────────────
+// Some client networks (remote desktops, corporate firewalls) block direct
+// WSS connections to *.supabase.co. Since REST already tunnels through
+// https://invensis.myteamkpi.com, we try that proxy for Realtime too and
+// fall back to the direct supabase.co URL if the proxy doesn't forward WS.
+const RT_PROXY_URL  = 'https://invensis.myteamkpi.com';   // must proxy /realtime/v1/* with WS upgrade
+let   _rtUseProxy   = true;  // flip to false on fallback
 let _supaRT = null;
 function _initSupaRT(){
   try{
     if(typeof window.supabase === 'undefined'){ console.warn('[RT] supabase-js not loaded'); return; }
     const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    // Extract project ref from JWT payload — works regardless of proxy URL
-    let _rtUrl = '';
+    // Resolve the direct Supabase URL from JWT payload for fallback
+    let _directUrl = '';
     try{
       const _payload = JSON.parse(atob(_rawKey.split('.')[1]));
-      if(_payload.ref) _rtUrl = 'https://'+_payload.ref+'.supabase.co';
+      if(_payload.ref) _directUrl = 'https://'+_payload.ref+'.supabase.co';
     }catch(je){}
-    if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase project URL'); return; }
+    const _rtUrl = _rtUseProxy ? RT_PROXY_URL : _directUrl;
+    if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase URL'); return; }
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
       realtime: { params: { eventsPerSecond: 10 } },
       auth: { persistSession: false, autoRefreshToken: false }
     });
-    console.log('[RT] Supabase Realtime client ready');
+    console.log('[RT] Realtime client ready via',_rtUseProxy?'PROXY':'DIRECT',_rtUrl);
   }catch(e){ console.warn('[RT] Failed to init realtime client:', e.message); _supaRT = null; }
 }
 _initSupaRT();
@@ -5880,6 +5890,28 @@ function setupRealtime(){
       window._rtReconnectCount++;
 
       if(window._rtReconnectCount > RT_MAX_RECONNECTS){
+        // Before giving up, try the DIRECT supabase.co URL once if we've
+        // been using the proxy — covers "proxy doesn't forward WS" case.
+        if(_rtUseProxy){
+          console.log('[RT] Proxy route failed — retrying via direct supabase.co URL');
+          _rtUseProxy = false;
+          window._rtReconnectCount = 0;
+          window._realtimeShownToast = false;
+          const _chOldP = _realtimeChannel;
+          _realtimeChannel = null;
+          setTimeout(()=>{
+            try{ if(_chOldP && _supaRT) _supaRT.removeChannel(_chOldP); }catch(e){}
+            try{
+              if(_supaRT && _supaRT.realtime && typeof _supaRT.realtime.disconnect === 'function'){
+                _supaRT.realtime.disconnect();
+              }
+            }catch(e){}
+            _supaRT = null;
+            _initSupaRT();     // re-create client on direct URL
+            setupRealtime();   // try once more
+          }, 0);
+          return;
+        }
         // Set the guard FIRST so any CLOSED callback re-entry returns immediately
         _rtDisabled = true;
         const _chToKill = _realtimeChannel;
@@ -10263,6 +10295,7 @@ function doLogout(){
   if(typeof _rtConnected!=='undefined') _rtConnected=false;
   // Reset realtime retry state so next login gets a fresh WebSocket attempt
   if(typeof _rtDisabled!=='undefined') _rtDisabled=false;
+  if(typeof _rtUseProxy!=='undefined') _rtUseProxy=true;
   window._rtReconnectCount = 0;
   window._realtimeShownToast = false;
 
@@ -26099,5 +26132,5 @@ function _buildLvsErrPopup(clientNo){
      then paste the beacon script back here. Keeping it active with no feature enabled
      only generates a noisy 404 on every page load with zero benefit. -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
