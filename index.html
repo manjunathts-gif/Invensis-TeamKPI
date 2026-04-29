@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BN_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BExxCON_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3952,13 +3952,9 @@ function _initSupaRT(){
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
       realtime: {
         params: { eventsPerSecond: 10 },
-        // ── Disable the library's own internal reconnect loop.
-        // On corporate/VDI networks that block wss://, the default Supabase
-        // reconnect floods the console with "WebSocket connection failed" every
-        // few seconds forever. We use our own controlled backoff in setupRealtime()
-        // instead — after 3 failures we switch to bgPoll and stop retrying.
-        reconnectAfterMs: ()=> 86400000, // 24h = effectively disabled
-        timeout: 8000, // match our RT_FALLBACK_MS so we detect failure fast
+        // Let the library handle reconnect normally for working networks.
+        // We only disable it AFTER our own 3-attempt check confirms wss:// is blocked.
+        timeout: 8000, // detect failure fast — match our RT_FALLBACK_MS
       },
       auth: { persistSession: false, autoRefreshToken: false }
     });
@@ -5904,22 +5900,24 @@ function setupRealtime(){
       _rtConnected=false;
       _setRTIndicator('polling');
       if(!_bgPollInterval) startBgPoll();
-      // Exponential backoff — but cap at 3 retries on known-blocked networks
+
       if(!window._rtReconnectCount) window._rtReconnectCount = 0;
       window._rtReconnectCount++;
-      // After 3 failures, mark WS as blocked and stop retrying — saves console spam
-      if(window._rtReconnectCount >= 3){
-        console.warn('[RT] ❌ WebSocket failed', window._rtReconnectCount, 'times — network likely blocks wss://. Staying on bgPoll.');
+
+      // After 5 failures in a row → assume network blocks wss://
+      // Use a SESSION flag (not permanent) — resets when tab regains focus
+      // so normal networks recover after a brief disconnect
+      if(window._rtReconnectCount >= 5){
+        console.warn('[RT] ❌ WebSocket failed', window._rtReconnectCount, 'times — switching to bgPoll. Will retry on next tab focus.');
         _wsBlocked = true;
         _setRTIndicator('polling');
-        // Bump bgPoll frequency to 15s for blocked networks so data stays fresh
         stopBgPoll();
-        if(_bgPollInterval) clearInterval(_bgPollInterval);
-        _bgPollInterval = null;
-        startBgPoll(15000); // faster poll for WS-blocked networks
+        startBgPoll(15000); // faster poll for blocked networks
         return;
       }
-      const _delay = Math.min(15000 * Math.pow(2, window._rtReconnectCount - 1), 60000);
+
+      // Exponential backoff: 5s, 10s, 20s, 40s, 60s max
+      const _delay = Math.min(5000 * Math.pow(2, window._rtReconnectCount - 1), 60000);
       console.log('[RT] Reconnecting in', _delay/1000, 's (attempt', window._rtReconnectCount, ')');
       setTimeout(()=>{
         if(!_rtConnected && _supaRT && !_wsBlocked){
@@ -25577,11 +25575,18 @@ window.addEventListener('beforeunload', function(e){
   // Tab becomes visible → light refresh only, never full globalRefresh
   document.addEventListener('visibilitychange', function(){
     if(!document.hidden && typeof CU !== 'undefined' && CU && typeof _supa !== 'undefined' && _supa){
-      // Always do a lightweight silent refresh of the current page — fast and non-blocking
-      // Never call globalRefresh() here as it triggers a full data reload (5+ second block)
       setTimeout(()=>{
         try{
-          if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen()){
+          // If WS was marked blocked but tab just regained focus → try again
+          // Handles: brief network blip, VPN reconnect, laptop wake from sleep
+          if(typeof _wsBlocked !== 'undefined' && _wsBlocked && !_rtConnected && _supaRT){
+            console.log('[RT] Tab focused — resetting wsBlocked, retrying WebSocket...');
+            _wsBlocked = false;
+            window._rtReconnectCount = 0;
+            window._realtimeShownToast = false;
+            if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
+            setupRealtime();
+          } else if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen()){
             _silentRefreshPage(_currentPage);
           }
         }catch(e){}
