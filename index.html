@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-xBECON_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECOxN_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -5852,6 +5852,11 @@ function setupRealtime(){
   });
 
   _realtimeChannel.subscribe((status, err)=>{
+    // ── Re-entry guard ──────────────────────────────────────────────
+    // removeChannel() / realtime.disconnect() synchronously emit CLOSED,
+    // which re-enters this callback → RangeError: Maximum call stack size.
+    // Once disabled, ignore every further status callback.
+    if(_rtDisabled) return;
 
     if(status==='SUBSCRIBED'){
       _rtConnected=true;
@@ -5871,33 +5876,37 @@ function setupRealtime(){
       if(!_bgPollInterval) startBgPoll();
 
       // Cap retries — after RT_MAX_RECONNECTS, permanently fall back to polling.
-      // This prevents endless console spam from failed WebSocket attempts when
-      // the Supabase Realtime endpoint is unreachable (network/firewall/tier).
       if(!window._rtReconnectCount) window._rtReconnectCount = 0;
       window._rtReconnectCount++;
 
       if(window._rtReconnectCount > RT_MAX_RECONNECTS){
+        // Set the guard FIRST so any CLOSED callback re-entry returns immediately
         _rtDisabled = true;
-        // Tear down the channel so supabase-js stops its internal reconnect loop
-        try{
-          if(_realtimeChannel && _supaRT) _supaRT.removeChannel(_realtimeChannel);
-          if(_supaRT && _supaRT.realtime && typeof _supaRT.realtime.disconnect === 'function'){
-            _supaRT.realtime.disconnect();
-          }
-        }catch(e){}
+        const _chToKill = _realtimeChannel;
         _realtimeChannel = null;
-        _setRTIndicator('polling');
-        if(!_bgPollInterval) startBgPoll();
-        console.log('[RT] Realtime unavailable — running in polling mode (DB stays in sync).');
+        // Defer teardown to the next tick — avoids stack overflow from synchronous
+        // CLOSED events emitted by removeChannel() / realtime.disconnect()
+        setTimeout(()=>{
+          try{ if(_chToKill && _supaRT) _supaRT.removeChannel(_chToKill); }catch(e){}
+          try{
+            if(_supaRT && _supaRT.realtime && typeof _supaRT.realtime.disconnect === 'function'){
+              _supaRT.realtime.disconnect();
+            }
+          }catch(e){}
+          _setRTIndicator('polling');
+          if(!_bgPollInterval) startBgPoll();
+          console.log('[RT] Realtime unavailable — running in polling mode (DB stays in sync).');
+        }, 0);
         return;
       }
 
-      // Exponential backoff: 15s, 30s, 60s
+      // Exponential backoff: 15s, 30s, 60s — reconnect from outside this callback
       const _delay = Math.min(15000 * Math.pow(2, window._rtReconnectCount - 1), 120000);
       setTimeout(()=>{
         if(!_rtConnected && _supaRT && !_rtDisabled){
-          if(_realtimeChannel && _supaRT){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} }
-          _realtimeChannel=null;
+          const _chOld = _realtimeChannel;
+          _realtimeChannel = null;
+          try{ if(_chOld && _supaRT) _supaRT.removeChannel(_chOld); }catch(e){}
           window._realtimeShownToast=false;
           setupRealtime();
         }
