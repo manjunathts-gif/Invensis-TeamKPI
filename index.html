@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BExxCON_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECON_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3950,12 +3950,7 @@ function _initSupaRT(){
     }catch(je){}
     if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase project URL'); return; }
     _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
-      realtime: {
-        params: { eventsPerSecond: 10 },
-        // Let the library handle reconnect normally for working networks.
-        // We only disable it AFTER our own 3-attempt check confirms wss:// is blocked.
-        timeout: 8000, // detect failure fast — match our RT_FALLBACK_MS
-      },
+      realtime: { params: { eventsPerSecond: 10 } },
       auth: { persistSession: false, autoRefreshToken: false }
     });
     console.log('[RT] Supabase Realtime client ready');
@@ -5473,12 +5468,10 @@ async function globalRefresh(){
   }
 }
 
-function startBgPoll(intervalMs){
+function startBgPoll(){
   stopBgPoll();
   stopKeepAlive();
   if(!_supa||!CU) return;
-  // WS-blocked networks (corporate/VDI) use 15s interval instead of 30s
-  const _interval = intervalMs || (_wsBlocked ? 15000 : 30000);
   _bgPollInterval=setInterval(async()=>{
     if(!CU||!_supa) return;
     // Skip poll if browser tab is hidden — saves DB calls when user minimizes
@@ -5615,7 +5608,7 @@ function startBgPoll(intervalMs){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, _interval); // 15s on WS-blocked networks (corporate/VDI), 30s otherwise
+  }, 30000); // Poll every 30s — ensures dashboard cards stay current
 
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -5636,29 +5629,7 @@ function stopBgPoll(){
 // ── Realtime state ──
 let _rtConnected = false;
 let _rtFallbackTimer = null;
-// Corporate/VDI networks (US remote desktop) often block wss:// WebSockets.
-// Reduced fallback from 20s → 8s so users switch to bgPoll faster.
-const RT_FALLBACK_MS = 8000;
-
-// ── WS connectivity pre-check — tests if wss:// is allowed before subscribing ──
-// Prevents browser console spam from repeated failed WS attempts on blocked networks.
-let _wsBlocked = false; // set true if pre-check fails
-function _checkWsConnectivity(cb){
-  // Quick native WS test — doesn't involve Supabase at all
-  try{
-    const _testWs = new WebSocket('wss://echo.websocket.org');
-    let _done = false;
-    const _timeout = setTimeout(()=>{
-      if(!_done){ _done=true; _testWs.close(); _wsBlocked=true; cb(false); }
-    }, 3000);
-    _testWs.onopen = ()=>{
-      if(!_done){ _done=true; clearTimeout(_timeout); _testWs.close(); _wsBlocked=false; cb(true); }
-    };
-    _testWs.onerror = ()=>{
-      if(!_done){ _done=true; clearTimeout(_timeout); _wsBlocked=true; cb(false); }
-    };
-  } catch(e){ _wsBlocked=true; cb(false); }
-}
+const RT_FALLBACK_MS = 20000; // if no WS connection in 20s → fall back to bgPoll
 
 function _setRTIndicator(state){
   // state: 'connecting' | 'live' | 'polling' | 'offline'
@@ -5671,11 +5642,7 @@ function _setRTIndicator(state){
   } else if(state==='polling'){
     ind.style.background='rgba(245,158,11,.15)'; ind.style.color='#f59e0b';
     ind.style.border='1px solid rgba(245,158,11,.3)';
-    const _pollMsg = _wsBlocked ? '🔄 POLL' : '🔄 SYNC';
-    const _pollTip = _wsBlocked
-      ? 'Poll mode — WebSocket blocked by network (VPN/firewall). Data refreshes every 15s automatically.'
-      : 'Sync mode — data refreshes every 30s';
-    ind.textContent=_pollMsg; ind.title=_pollTip;
+    ind.textContent='🔄 SYNC'; ind.title='Polling mode — Realtime unavailable';
   } else if(state==='connecting'){
     ind.style.background='rgba(99,102,241,.15)'; ind.style.color='#818cf8';
     ind.style.border='1px solid rgba(99,102,241,.3)';
@@ -5814,37 +5781,32 @@ function _applyRealtimeRow(table, row, eventType){
 }
 
 function setupRealtime(){
-  if(!_supaRT){ _setRTIndicator('polling'); startBgPoll(); return; }
+  if(!_supaRT){ _setRTIndicator('polling'); return; }
 
   // ── Guard: tear down any existing channel BEFORE creating a new one.
+  // Without this, calling setupRealtime() twice (e.g. duplicate-login force)
+  // causes "cannot add postgres_changes callbacks after subscribe()" because
+  // the old channel is already subscribed and we try to .on() it again.
   if(_realtimeChannel){
     try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){}
     _realtimeChannel = null;
   }
 
-  // ── If WS was already confirmed blocked (corporate/VDI network) — go straight to poll ──
-  if(_wsBlocked){
-    console.log('[RT] ⚠️ WebSocket blocked on this network — using bgPoll');
-    _setRTIndicator('polling');
-    startBgPoll();
-    return;
-  }
-
   _setRTIndicator('connecting');
 
   // Start bgPoll immediately — data syncs while WebSocket warms up
+  // Stops automatically the moment WebSocket connects successfully
   startBgPoll();
 
-  // Fallback timer
+  // Fallback timer — clear any previous timer first to avoid duplicate fires on reconnect
   if(_rtFallbackTimer){ clearTimeout(_rtFallbackTimer); _rtFallbackTimer=null; }
   _rtFallbackTimer = setTimeout(()=>{
     if(!_rtConnected){
       _setRTIndicator('polling');
-      console.log('[RT] Fallback to bgPoll — WS did not connect within', RT_FALLBACK_MS, 'ms');
     }
   }, RT_FALLBACK_MS);
 
-  // Subscribe only to tables relevant for this user's role
+  // Subscribe only to tables relevant for this user's role — fewer subscriptions = faster connect
   const isMgrRT  = CU && (CU.role==='Manager' || CU.task==='Manager');
   const isSupRT  = CU && CU.role==='Supervisor';
   const isTLRT   = CU && CU.role==='Team Lead';
@@ -5855,6 +5817,7 @@ function setupRealtime(){
     'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
   }[CU.task]||null) : null;
 
+  // Manager/Supervisor: subscribe to all | TL: own task + audit + client_errors | User: own task + audit + client_errors (to receive internal audit popups live)
   const tables = isMgrRT || isSupRT
     ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','client_errors','login_users']
     : isTLRT
@@ -5865,14 +5828,15 @@ function setupRealtime(){
     .channel('kpi-live-'+((CU&&CU.username)||'anon'))
     .on('system', {}, (status)=>{
       if(status && status.status === 'error'){
-        if(status.message && status.message.includes('DELETE')){ /* non-critical */ }
-        else if(status.message && (status.message.includes('WebSocket') || status.message.includes('transport'))){
-          // Network blocks wss:// — handled gracefully by our CHANNEL_ERROR path below
+        if(status.message && status.message.includes('DELETE')){
+          // non-critical
+        } else {
+          console.warn('[RT] System error:', status);
         }
-        else { console.warn('[RT] System error:', status); }
       }
     });
 
+  // Subscribe to relevant tables — INSERT, UPDATE, DELETE
   tables.forEach(tbl=>{
     _realtimeChannel
       .on('postgres_changes',{ event:'INSERT', schema:'public', table:tbl },
@@ -5884,12 +5848,12 @@ function setupRealtime(){
   });
 
   _realtimeChannel.subscribe((status, err)=>{
+
     if(status==='SUBSCRIBED'){
       _rtConnected=true;
-      _wsBlocked=false;
-      window._rtReconnectCount=0;
+      window._rtReconnectCount=0; // reset backoff on success
       clearTimeout(_rtFallbackTimer);
-      stopBgPoll();
+      stopBgPoll(); // WebSocket is live — stop polling to save IO
       _setRTIndicator('live');
       if(!window._realtimeShownToast){
         window._realtimeShownToast=true;
@@ -5899,29 +5863,15 @@ function setupRealtime(){
     } else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       _rtConnected=false;
       _setRTIndicator('polling');
+      // bgPoll already running — just ensure it's active
       if(!_bgPollInterval) startBgPoll();
-
+      // Try to reconnect — exponential backoff: 15s, 30s, 60s, 120s
       if(!window._rtReconnectCount) window._rtReconnectCount = 0;
       window._rtReconnectCount++;
-
-      // After 5 failures in a row → assume network blocks wss://
-      // Use a SESSION flag (not permanent) — resets when tab regains focus
-      // so normal networks recover after a brief disconnect
-      if(window._rtReconnectCount >= 5){
-        console.warn('[RT] ❌ WebSocket failed', window._rtReconnectCount, 'times — switching to bgPoll. Will retry on next tab focus.');
-        _wsBlocked = true;
-        _setRTIndicator('polling');
-        stopBgPoll();
-        startBgPoll(15000); // faster poll for blocked networks
-        return;
-      }
-
-      // Exponential backoff: 5s, 10s, 20s, 40s, 60s max
-      const _delay = Math.min(5000 * Math.pow(2, window._rtReconnectCount - 1), 60000);
-      console.log('[RT] Reconnecting in', _delay/1000, 's (attempt', window._rtReconnectCount, ')');
+      const _delay = Math.min(15000 * Math.pow(2, window._rtReconnectCount - 1), 120000);
       setTimeout(()=>{
-        if(!_rtConnected && _supaRT && !_wsBlocked){
-          if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} }
+        if(!_rtConnected && _supaRT){
+          if(_realtimeChannel && _supaRT){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} }
           _realtimeChannel=null;
           window._realtimeShownToast=false;
           setupRealtime();
@@ -25575,18 +25525,11 @@ window.addEventListener('beforeunload', function(e){
   // Tab becomes visible → light refresh only, never full globalRefresh
   document.addEventListener('visibilitychange', function(){
     if(!document.hidden && typeof CU !== 'undefined' && CU && typeof _supa !== 'undefined' && _supa){
+      // Always do a lightweight silent refresh of the current page — fast and non-blocking
+      // Never call globalRefresh() here as it triggers a full data reload (5+ second block)
       setTimeout(()=>{
         try{
-          // If WS was marked blocked but tab just regained focus → try again
-          // Handles: brief network blip, VPN reconnect, laptop wake from sleep
-          if(typeof _wsBlocked !== 'undefined' && _wsBlocked && !_rtConnected && _supaRT){
-            console.log('[RT] Tab focused — resetting wsBlocked, retrying WebSocket...');
-            _wsBlocked = false;
-            window._rtReconnectCount = 0;
-            window._realtimeShownToast = false;
-            if(_realtimeChannel){ try{ _supaRT.removeChannel(_realtimeChannel); }catch(e){} _realtimeChannel=null; }
-            setupRealtime();
-          } else if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen()){
+          if(typeof _currentPage !== 'undefined' && _currentPage && !isPanelOpen()){
             _silentRefreshPage(_currentPage);
           }
         }catch(e){}
