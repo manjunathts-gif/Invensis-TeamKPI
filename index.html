@@ -1,6 +1,5 @@
-
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V7_12_error-modal-center-audit-BECONPP_2026-04-23" data-build-id="audit-iae-v7.12-centered-modal">
+<html lang="en" data-build-stamp="V8_3_closing-hvs-reports-export-2026-04-30" data-build-id="closing-hvs-v8.3-reports-export">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -566,6 +565,7 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 .pc.tab-oceandocs{background:linear-gradient(140deg,#e6faf8 0%,#d4f4f0 100%);}
 .pc.tab-partlot{background:linear-gradient(140deg,#fff8eb 0%,#fef0d0 100%);}
 .pc.tab-release{background:linear-gradient(140deg,#fff0f3 0%,#ffe0e6 100%);}
+.pc.tab-closing{background:linear-gradient(140deg,#fff0f3 0%,#ffe0e6 100%);}
 .pc.tab-dashboard{background:linear-gradient(160deg,#f3eeff 0%,#e8dfff 50%,#f4f6fa 100%);}
 .pc.tab-reports{background:linear-gradient(140deg,#f3eeff 0%,#e8dfff 100%);}
 .pc.tab-status{background:linear-gradient(140deg,#f4f6fa 0%,#eceef5 100%);}
@@ -3971,7 +3971,7 @@ _initSupaRT();
 // ── Generic helpers ──────────────────────────────────────────
 // Tables that do NOT have a created_at column
 // Tables without created_at column — order by id or name instead
-const NO_CREATED_AT=['clients','users','login_users','cls','lvs','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','client_errors','idle_log']; // productivity_log removed — disabled
+const NO_CREATED_AT=['clients','users','login_users','cls','lvs','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','client_errors','idle_log','closing']; // productivity_log removed — disabled
 
 // ★ Per-table sort column mapping (matches SQL schema filter fields)
 // Each task table is ordered by its own submission/completion timestamp DESC
@@ -3987,6 +3987,7 @@ const TABLE_SORT_COL={
   release:      'submitted',
   ocean_tt:     'complete_time',
   b2_entries:   'completed',
+  closing:      'submitted',
   audit:        'submitted',
   client_errors:'created_at',
   instructions: 'created_at',
@@ -4637,7 +4638,7 @@ async function loadAllFromSupabase(){
   const taskTableMap={
     'LVS':'lvs','Classifier':'cls','Compliance':'comp',
     'PARS Docs Clerk':'pars_docs','Ocean Docs Clerk':'ocean_docs',
-    'Part Lot':'part_lot','Release':'release',
+    'Part Lot':'part_lot','Release':'release','Closing':'closing',
     'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
   };
 
@@ -4674,10 +4675,10 @@ async function loadAllFromSupabase(){
       if(bar) bar.style.width='65%';
 
       // Batch 3: remaining task tables
-      const [compT,parsT,oceanT,partT,ottT,b2T,auditT] = await Promise.all([
+      const [compT,parsT,oceanT,partT,ottT,b2T,auditT,closingT] = await Promise.all([
         dbLoadRecent('comp',2), dbLoadRecent('pars_docs',2), dbLoadRecent('ocean_docs',2),
         dbLoadRecent('part_lot',2), dbLoadRecent('ocean_tt',2), dbLoadRecent('b2_entries',2),
-        dbLoadRecent('audit',2)
+        dbLoadRecent('audit',2), dbLoadRecent('closing',30)
       ]);
       DB.lvs       = lvsT.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
       DB.cls       = clsT.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4690,6 +4691,7 @@ async function loadAllFromSupabase(){
       DB.b2entries = b2T.map(mapB2);
       DB.errors    = errT.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
       DB.audit     = auditT.map(mapAudit);
+      DB.closing   = (closingT||[]).map(mapClosing);
       _rebuildAuditMap();
 
       if(bar) bar.style.width='100%';
@@ -4711,10 +4713,11 @@ async function loadAllFromSupabase(){
             dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
             dbLoadRecent('pars_docs',30), dbLoadRelease()
           ]);
-          const [oceanF,partF,ottF,b2F,errF,auditF] = await Promise.all([
+          const [oceanF,partF,ottF,b2F,errF,auditF,closingF] = await Promise.all([
             dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
             dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',90), dbLoadRecent('audit',90)
+            dbLoadRecent('client_errors',90), dbLoadRecent('audit',90),
+            dbLoadRecent('closing',30)
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -4727,6 +4730,7 @@ async function loadAllFromSupabase(){
           DB.b2entries = b2F.map(mapB2);
           DB.errors    = errF.map(mapError);    DB.errors.forEach((r,i)=>r._idx=i);
           DB.audit     = auditF.map(mapAudit);  _rebuildAuditMap();
+          DB.closing   = (closingF||[]).map(mapClosing);
           _saveTaskCache();
           if(CU) refreshPage();
           showToast('✅ Full data loaded — '+DB.release2.length+' Release · '+DB.errors.length+' Errors · '+DB.audit.length+' Audits');
@@ -4738,8 +4742,8 @@ async function loadAllFromSupabase(){
     } else if(isRlTL){
       // Release Team Lead: release + audit (last 60 days) + errors + clients + instructions + users
       setDetail('Loading Release + Audit data...');
-      const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers]=await Promise.all([
-        dbLoadRelease(), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users')
+      const [release,audit,errors,clients,instructions,users,parsDocs,loginUsers,closing]=await Promise.all([
+        dbLoadRelease(), dbLoadRecent('audit'), dbLoadRecent('client_errors'), dbLoad('clients'), dbLoad('instructions'), dbLoad('users'), dbLoadRecent('pars_docs'), dbLoad('login_users'), dbLoadRecent('closing',30)
       ]);
       DB.release2=release.map(mapRelease); DB.release2.forEach((r,i)=>r._idx=i);
       DB.audit=audit.map(mapAudit);
@@ -4749,18 +4753,19 @@ async function loadAllFromSupabase(){
       if(users) DB.users=users.map(mapUser);
       DB.parsDocs=(parsDocs||[]).map(mapPARSDocs);
       if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
+      DB.closing=(closing||[]).map(mapClosing);
       setDetail('✅ '+DB.release2.length+' Release · '+DB.audit.length+' Audits (last 60 days)');
 
     } else if(CU && CU.role==='Supervisor'){
       // Supervisor: load all task tables + errors + clients + instructions + users (same as Manager but no admin tables)
       setDetail('Loading all data (Supervisor)...');
       const [users,loginUsers,clients,lvs,cls,comp,parsDocs,oceanDocs,
-             partLot,release,oceanTT,b2,errors,audit,instructions]=await Promise.all([
+             partLot,release,oceanTT,b2,errors,audit,instructions,closing]=await Promise.all([
         dbLoad('users'),dbLoad('login_users'),dbLoad('clients'),
         dbLoadRecent('lvs'),dbLoadRecent('cls'),dbLoadRecent('comp'),dbLoadRecent('pars_docs'),
         dbLoadRecent('ocean_docs'),dbLoadRecent('part_lot'),dbLoadRelease(),
         dbLoadRecent('ocean_tt'),dbLoadRecent('b2_entries'),dbLoadRecent('client_errors'),
-        dbLoadRecent('audit'),dbLoad('instructions')
+        dbLoadRecent('audit'),dbLoad('instructions'),dbLoadRecent('closing',30)
       ]);
       DB.users=users.map(mapUser);
       if(loginUsers) DB.loginUsers=loginUsers.map(mapLoginUser);
@@ -4777,6 +4782,7 @@ async function loadAllFromSupabase(){
       DB.errors=errors.map(mapError); DB.errors.forEach((r,i)=>r._idx=i);
       DB.instructions=(instructions||[]).map(mapInstruction);
       DB.audit=audit.map(mapAudit);
+      DB.closing=(closing||[]).map(mapClosing);
       setDetail('✅ Supervisor data loaded — '+DB.lvs.length+' LVS · '+DB.release2.length+' Release');
 
     } else if(isTL){
@@ -4939,6 +4945,7 @@ function _applyTaskData(tbl,rows){
   else if(tbl==='release') { const m=rows.map(mapRelease);   DB.release2=_withPending(DB.release2,m); DB.release2.forEach((r,i)=>r._idx=i); }
   else if(tbl==='ocean_tt')   { const m=rows.map(mapOceanTT);   DB.oceanTT=_withPending(DB.oceanTT,m); }
   else if(tbl==='b2_entries') { const m=rows.map(mapB2);        DB.b2entries=_withPending(DB.b2entries,m); }
+  else if(tbl==='closing')    { const m=rows.map(mapClosing);   DB.closing=_withPending(DB.closing,m); }
 }
 
 // ── Refresh current page after DB write ─────────────────────
@@ -5337,6 +5344,7 @@ const REALTIME_MAP=[
   {table:'release',     arr:()=>DB.release2,    map:mapRelease,   idx:true},
   {table:'ocean_tt',    arr:()=>DB.oceanTT,     map:mapOceanTT,   idx:false},
   {table:'b2_entries',  arr:()=>DB.b2entries,   map:mapB2,        idx:false},
+  {table:'closing',     arr:()=>DB.closing,      map:mapClosing,   idx:false},
   {table:'client_errors',arr:()=>DB.errors,         map:mapError,       idx:true},
   {table:'instructions', arr:()=>DB.instructions||[], map:mapInstruction, idx:false},
   {table:'audit',       arr:()=>DB.audit,           map:mapAudit,       idx:false},
@@ -5354,6 +5362,7 @@ const TABLE_TO_PAGES={
   'release':['release2','dashboard','status','reports','audit','perfmon'],
   'ocean_tt':['oceantt','dashboard','status','reports','perfmon'],
   'b2_entries':['b2entries','dashboard','status','reports','perfmon'],
+  'closing':   ['closing','status'],
   'client_errors':['errorreport','dashboard','perfmon'],
   'instructions':['instructions'],
   'audit':['audit','dashboard','release2','perfmon'],
@@ -5368,7 +5377,7 @@ let _currentPage=null;
 const TASK_TABLE_MAP={
   'LVS':'lvs','Classifier':'cls','Compliance':'comp',
   'PARS Docs Clerk':'pars_docs','Ocean Docs Clerk':'ocean_docs',
-  'Part Lot':'part_lot','Release':'release',
+  'Part Lot':'part_lot','Release':'release','Closing':'closing',
   'B2 Entries':'b2_entries','Ocean T&T':'ocean_tt'
 };
 
@@ -5388,6 +5397,7 @@ const PAGE_TABLE_MAP = {
   'oceandocs':   ['ocean_docs'],
   'partlot':     ['part_lot'],
   'release2':    ['release'],
+  'closing':     ['closing'],
   'oceantt':     ['ocean_tt'],
   'b2entries':   ['b2_entries'],
   'errorreport': ['client_errors'],
@@ -5434,7 +5444,7 @@ async function globalRefresh(){
       for(const t of tables){
         // Load recent 30 days for task tables (much faster than full load)
         const taskTables = ['lvs','cls','comp','pars_docs','ocean_docs',
-          'part_lot','release','ocean_tt','b2_entries','audit','client_errors'];
+          'part_lot','release','ocean_tt','b2_entries','audit','client_errors','closing'];
         const rows = (t === 'release')
           ? await dbLoadRelease()
           : taskTables.includes(t)
@@ -5454,6 +5464,7 @@ async function globalRefresh(){
         else if(t==='release')    DB.release2  = _grf(rows.map(mapRelease));
         else if(t==='ocean_tt')   DB.oceanTT   = _grf(rows.map(mapOceanTT));
         else if(t==='b2_entries') DB.b2entries = _grf(rows.map(mapB2));
+        else if(t==='closing')    DB.closing   = _grf(rows.map(mapClosing));
         else if(t==='audit')      DB.audit     = _grf(rows.map(mapAudit));
         else if(t==='client_errors'){
           DB.errors = _grf(rows.map(mapError));
@@ -5494,13 +5505,15 @@ function startBgPoll(){
       // SPEED FIX: each role only polls what it needs
       const tables = isMgr
         ? (window._bgPollCycle%5===0
-            ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users']
+            ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','audit','login_users','closing']
             : [activeTbl,'lvs','cls','login_users'].filter(Boolean))
         : CU.role==='Supervisor'
         ? (window._bgPollCycle%3===0
-            ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries']
+            ? ['lvs','cls','comp','pars_docs','ocean_docs','part_lot','release','ocean_tt','b2_entries','closing']
             : [activeTbl].filter(Boolean))
-        : [TASK_TABLE_MAP[CU.task]].filter(Boolean); // regular user: their task table (dashboard cards auto-update from same DB arrays)
+        : [TASK_TABLE_MAP[CU.task]].filter(Boolean).concat(
+            (CU.role==='Team Lead'&&CU.task==='Release') ? ['closing'] : []
+          ); // regular user: their task table (dashboard cards auto-update from same DB arrays)
 
       let changed=false;
       for(const tbl of tables){
@@ -5535,6 +5548,7 @@ function startBgPoll(){
           if(tbl==='ocean_tt') return DB.oceanTT;
           if(tbl==='b2_entries') return DB.b2entries;
           if(tbl==='audit') return DB.audit;
+          if(tbl==='closing') return DB.closing;
           return null;
         }
 
@@ -5574,7 +5588,7 @@ function startBgPoll(){
             const mapperFn = {
               'lvs':mapLVS,'cls':mapCLS,'comp':mapCOMP,'pars_docs':mapPARSDocs,
               'ocean_docs':mapOceanDocs,'part_lot':mapPartLot,'release':mapRelease,
-              'ocean_tt':mapOceanTT,'b2_entries':mapB2,'audit':mapAudit
+              'ocean_tt':mapOceanTT,'b2_entries':mapB2,'audit':mapAudit,'closing':mapClosing
             }[tbl];
             if(mapperFn && current){
               const existIds = new Set(current.map(r=>String(r._dbid||r.id||'')).filter(Boolean));
@@ -6043,6 +6057,7 @@ const DB = {
   oceanDocs:[],
   partLot:[],
   release2:[],
+  closing:[],
   oceanTT:[],
   b2entries:[],
   errors:[], // Client Error Feedback records
@@ -10395,6 +10410,7 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'closing',l:'🔒 Closing HVS',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
@@ -10431,6 +10447,7 @@ function buildNav(){
       {id:'oceandocs',l:'🌊 Ocean Docs',g:'tasks'},
       {id:'partlot',l:'📦 Part Lot',g:'tasks'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'closing',l:'🔒 Closing HVS',g:'tasks'},
       {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'},
       {id:'b2entries',l:'📝 B2 Entries',g:'tasks'},
@@ -10452,6 +10469,7 @@ function buildNav(){
     items=[
       {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'release2',l:'🚀 Release',g:'tasks'},
+      {id:'closing',l:'🔒 Closing HVS',g:'tasks'},
       {id:'audit',l:'🔍 Audit',g:'tasks'},
       {id:'status',l:'📡 Status',g:'reports'},
       {id:'reports',l:'📈 Reports',g:'reports'},
@@ -10499,6 +10517,7 @@ function buildNav(){
       {id:'oceandocs',    l:'🌊 Ocean Docs',     g:'tasks'},
       {id:'partlot',      l:'📦 Part Lot',       g:'tasks'},
       {id:'release2',     l:'🚀 Release',         g:'tasks'},
+      {id:'closing',      l:'🔒 Closing HVS',     g:'tasks'},
       {id:'oceantt',      l:'🔍 Ocean T&T',      g:'tasks'},
       {id:'b2entries',    l:'📝 B2 Entries',     g:'tasks'},
       {id:'errorreport',  l:'⚠️ Error Report',   g:'reports'},
@@ -10513,13 +10532,14 @@ function buildNav(){
       'Ocean Docs Clerk':[{id:'oceandocs',l:'🌊 Ocean Docs Clerk',g:'tasks'}],
       'Part Lot':       [{id:'partlot',l:'📦 Part Lot',g:'tasks'}],
       'Release':        [{id:'release2',l:'🚀 Release',g:'tasks'}],
+      'Closing':        [{id:'closing',l:'🔒 Closing HVS',g:'tasks'}],
       'B2 Entries':     [{id:'b2entries',l:'📝 B2 Entries',g:'tasks'}],
       'Ocean T&T':      [{id:'oceantt',l:'🔍 Ocean T&T',g:'tasks'}],
     };
     // Safety: normalise CU.task for lookup in case it arrived un-normalised
     const _NAV_NORM={'manager':'Manager','lvs':'LVS','classifier':'Classifier','compliance':'Compliance',
       'pars docs clerk':'PARS Docs Clerk','ocean docs clerk':'Ocean Docs Clerk',
-      'part lot':'Part Lot','release':'Release','b2 entries':'B2 Entries','ocean t&t':'Ocean T&T'};
+      'part lot':'Part Lot','release':'Release','closing':'Closing','b2 entries':'B2 Entries','ocean t&t':'Ocean T&T'};
     const _navTask = taskNavMap[CU.task] ? CU.task : (_NAV_NORM[(CU.task||'').toLowerCase().trim()] || CU.task);
     items=[
       ...(taskNavMap[_navTask]||[{id:'coming',l:'🚧 My Task',g:'tasks'}]),
@@ -10700,7 +10720,7 @@ function showPage(id){
   c.className='pc';
   const tabMap={lvs:'tab-lvs',classifier:'tab-classifier',compliance:'tab-compliance',
     parsdocs:'tab-parsdocs',oceandocs:'tab-oceandocs',partlot:'tab-partlot',
-    release2:'tab-release',dashboard:'tab-dashboard',reports:'tab-reports',
+    release2:'tab-release',closing:'tab-closing',dashboard:'tab-dashboard',reports:'tab-reports',
     status:'tab-status',users:'tab-users',clients:'tab-clients',
     oceantt:'tab-oceantt',b2entries:'tab-b2',audit:'tab-audit',tatanalyzer:'tab-dashboard',
     tatreasons:'tab-users',idlelog:'tab-users'};
@@ -10709,7 +10729,7 @@ function showPage(id){
   // Hope UI topbar page title
   const pageTitles={lvs:'LVS — Release',classifier:'Classifier',compliance:'Compliance',
     parsdocs:'PARS Docs Clerk',oceandocs:'Ocean Docs Clerk',partlot:'Part Lot',
-    release2:'Release',dashboard:'Dashboard',reports:'Reports',
+    release2:'Release',closing:'Closing HVS',dashboard:'Dashboard',reports:'Reports',
     status:'Team Status',users:'Users',clients:'Clients',
     oceantt:'Ocean T&T',b2entries:'B2 Entries',audit:'Audit',
     mystatus:'My Status',errorreport:'Error Report',perfmon:'Performance Monitor',loginusers:'Login Users',gdrive:'Google Drive',
@@ -10756,6 +10776,7 @@ function showPage(id){
       else if(id==='oceandocs'){ renderOceanDocs(c); _perfDone(); }
       else if(id==='partlot') renderPartLot(c);
       else if(id==='release2'){ renderRelease2(c); _perfDone(); }
+      else if(id==='closing'){ renderClosing(c); _perfDone(); }
       else if(id==='oceantt'){ renderOceanTT(c); _perfDone(); }
       else if(id==='b2entries'){ renderB2Entries(c); _perfDone(); }
       else if(id==='productivity') renderProductivity(c);
@@ -11777,6 +11798,7 @@ function renderStatus(c,activeTask){
     {key:'oceandocs',label:'🌊 Ocean Docs',cls:'t-emerald',db:DB.oceanDocs,userTask:'Ocean Docs Clerk',assignFld:'user'},
     {key:'partlot',label:'📦 Part Lot',cls:'t-amber',db:DB.partLot,userTask:'Part Lot',assignFld:'user'},
     {key:'release2',label:'🚀 Release',cls:'t-rose',db:DB.release2,userTask:'Release',assignFld:'user'},
+    {key:'closing',label:'🔒 Closing HVS',cls:'t-rose',db:DB.closing,userTask:'Closing',assignFld:'user'},
     {key:'oceantt',label:'🔍 Ocean T&T',cls:'',db:DB.oceanTT,userTask:'Ocean T&T',assignFld:'user'},
     {key:'b2entries',label:'📝 B2 Entries',cls:'t-amber',db:DB.b2entries,userTask:'B2 Entries',assignFld:'user'},
     {key:'auditstat',label:'🔍 Audit',cls:'t-emerald',db:DB.release2,userTask:'Release',assignFld:'user',_isAudit:true},
@@ -14122,6 +14144,34 @@ function renderReports(c){
       <td class="mono" style="text-align:center;color:var(--indigo)">${avgDur}</td></tr>`;
   }).join('');
 
+  // ── Closing HVS report data (non-Client only) ──
+  const closingAll = DB.closing || [];
+  const closingUsers = [...new Set(closingAll.map(r=>r.user).filter(Boolean))].sort();
+  const closingRows = !isClient() ? closingUsers.map(u=>{
+    const recs = closingAll.filter(r=>r.user===u);
+    const total = recs.length;
+    const completed = recs.filter(r=>r.status==='Completed').length;
+    const hold = recs.filter(r=>r.status==='Hold').length;
+    const submitted = recs.filter(r=>r.status==='Submitted to Customs').length;
+    const carm = recs.filter(r=>r.status==='Send to CARM').length;
+    const durs = recs.filter(r=>r.duration&&r.duration!=='—'&&r.duration!=='00:00:00').map(r=>{
+      const p=(r.duration||'00:00:00').split(':');
+      return parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0);
+    });
+    const avgDur = durs.length?(()=>{
+      const avg=Math.round(durs.reduce((a,b)=>a+b,0)/durs.length);
+      const h=Math.floor(avg/3600),m=Math.floor((avg%3600)/60),s=avg%60;
+      return pad(h)+':'+pad(m)+':'+pad(s);
+    })():'—';
+    return`<tr><td style="font-weight:700">${u}</td>
+      <td class="mono" style="text-align:center;color:var(--primary)">${total}</td>
+      <td class="mono" style="text-align:center;color:var(--emerald)">${completed}</td>
+      <td class="mono" style="text-align:center;color:var(--amber)">${hold}</td>
+      <td class="mono" style="text-align:center;color:var(--sky)">${submitted}</td>
+      <td class="mono" style="text-align:center;color:var(--teal)">${carm}</td>
+      <td class="mono" style="text-align:center;color:var(--indigo)">${avgDur}</td></tr>`;
+  }).join('') : '';
+
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📈 Reports</div><div class="ps">Production summary and analytics</div></div>
@@ -14147,6 +14197,7 @@ function renderReports(c){
       <button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose)" onclick="exportRelease2()">⬇️ Release</button>
       <button class="btn-exp" style="background:#e0f7fa;border-color:#0891b2;color:#0891b2" onclick="exportOTT()">⬇️ Ocean T&T</button>
       <button class="btn-exp" style="background:var(--amber-bg);border-color:rgba(217,119,6,.3);color:var(--amber)" onclick="exportB2()">⬇️ B2 Entries</button>
+      ${!isClient()?`<button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose)" onclick="exportClosing()">⬇️ Closing HVS</button>`:''}
     </div>
   </div>
 
@@ -14184,7 +14235,35 @@ function renderReports(c){
     </tr></thead>
     <tbody>${compRows||`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No Compliance data</td></tr>`}</tbody>
     </table>
-  </div>`;
+  </div>
+
+  ${!isClient()?`
+  <div class="sh" style="margin-top:24px">🔒 Closing HVS — User Performance</div>
+  <div class="tw" style="margin-bottom:20px">
+    <div class="th2">
+      <div class="tt" style="color:var(--rose)">Closing HVS Production Report</div>
+      <div class="tc" style="background:var(--rose-bg);color:var(--rose)">${closingUsers.length} users · ${closingAll.length} records</div>
+    </div>
+    <div style="overflow-x:auto"><table class="dt"><thead><tr>
+      <th>User</th>
+      <th style="text-align:center">Total</th>
+      <th style="text-align:center">Completed</th>
+      <th style="text-align:center">Hold</th>
+      <th style="text-align:center">Submitted to Customs</th>
+      <th style="text-align:center">Send to CARM</th>
+      <th style="text-align:center">Avg Duration</th>
+    </tr></thead>
+    <tbody id="closingRepBody">${closingRows||`<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text3)">No Closing HVS data</td></tr>`}</tbody>
+    </table></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:16px;font-size:12px;flex-wrap:wrap">
+      <span style="color:var(--text3)">Status Breakdown:</span>
+      <span style="font-weight:700;color:var(--emerald)">✅ Completed: ${closingAll.filter(r=>r.status==='Completed').length}</span>
+      <span style="font-weight:700;color:var(--amber)">⏸️ Hold: ${closingAll.filter(r=>r.status==='Hold').length}</span>
+      <span style="font-weight:700;color:var(--sky)">📤 Submitted to Customs: ${closingAll.filter(r=>r.status==='Submitted to Customs').length}</span>
+      <span style="font-weight:700;color:var(--teal)">📨 Send to CARM: ${closingAll.filter(r=>r.status==='Send to CARM').length}</span>
+    </div>
+  </div>`:''}
+  `;
 }
 
 function applyReportFilter(){
@@ -14300,6 +14379,7 @@ function exportAllTasksXLSX(){
       {name:'Release',     data:_xf(DB.release2),     tcKey:null,         rlKey:true},
       {name:'Ocean TT',    data:_xf(DB.oceanTT),      tcKey:'ocean_tt',   rlKey:null},
       {name:'B2 Entries',  data:_xf(DB.b2entries),    tcKey:'b2_entries', rlKey:null},
+      ...(isClient()?[]:[{name:'Closing HVS',data:_xf(DB.closing||[]),tcKey:'closing',rlKey:null}]),
       {name:'Audit',       data:_xf(DB.audit),        tcKey:null,         rlKey:null},
     ];
     const summaryRows=[
@@ -14386,7 +14466,15 @@ function exportAllTasksXLSX(){
       (DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'B2 Entries');
 
-    // ── 11. Audit ──
+    // ── 11. Closing HVS (non-Client only) ──
+    if(!isClient()){
+      XLSX.utils.book_append_sheet(wb, makeSheet(
+        ['Client No','Txn No','Client Name','Team','Mode','Status','Start Time','Submitted Time','Duration','Comments','User','Date'],
+        (DB.closing||[]).map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
+      ), 'Closing HVS');
+    }
+
+    // ── 12. Audit ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','User','Status','TAT','Trans Created','Submitted','Auditor','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Duration','Created Date'],
       (DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
@@ -14395,7 +14483,7 @@ function exportAllTasksXLSX(){
     // ── Trigger download ──
     XLSX.writeFile(wb, 'KPI_All_Tasks_'+today+'.xlsx');
     const total=taskDefs.reduce((s,t)=>s+(t.data||[]).length,0);
-    showToast('Downloaded! '+total+' records across 11 sheets');
+    showToast('Downloaded! '+total+' records across '+(isClient()?'11':'12')+' sheets');
 
   } catch(err){
     console.error('Excel export failed:',err);
@@ -19924,7 +20012,331 @@ function clearRLFilter(){
 }
 
 // ══════════════════════════════════════════
-//  TAT ISSUE TAB — TAT Not Reached Records
+//  CLOSING HVS TAB
+//  Supabase table: closing
+//  Mirrors Release layout — minimal headers
+// ══════════════════════════════════════════
+
+function mapClosing(r){
+  // Look up client name/team from DB.clients
+  const cli = (DB.clients||[]).find(c=>String(c.clientNo||c.client_no||'').toUpperCase()===String(r.client_no||'').toUpperCase()) || {};
+  const clientName = r.client_name || cli.name || cli.client_name || '—';
+  const team       = r.team       || cli.team || '—';
+  // Duration: submitted - start
+  let dur = r.duration || '—';
+  const st  = r.start_time  ? new Date(r.start_time)  : null;
+  const sub = r.submitted   ? new Date(r.submitted)   : null;
+  if(st&&sub&&!isNaN(st)&&!isNaN(sub)&&sub>st){
+    const diff=sub-st;
+    const h=Math.floor(diff/3600000);
+    const m=Math.floor((diff%3600000)/60000);
+    const s=Math.floor((diff%60000)/1000);
+    dur=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }
+  return{
+    id:r.id, _dbid:r.id,
+    txn:r.txn||r.transaction_number||'—',
+    clientNo:r.client_no||'—',
+    clientName,team,
+    mode:r.mode||'—',
+    status:r.status||'—',
+    start:r.start_time?new Date(r.start_time).toLocaleString('en-IN',{timeZone:'America/Toronto',hour12:false}).replace(',',''):'—',
+    submitted:r.submitted?new Date(r.submitted).toLocaleString('en-IN',{timeZone:'America/Toronto',hour12:false}).replace(',',''):'—',
+    comments:r.comments||'',
+    duration:dur,
+    _startRaw:r.start_time,
+    _submittedRaw:r.submitted,
+    _created:r.start_time||r.id,
+    user:r.user_name||CU.name||'—',
+    _idx:0
+  };
+}
+
+function renderClosing(c){
+  if(!c) return;
+  if(c.querySelector('#clTbody') && !window._forceRefresh){
+    const _d = DB.closing;
+    pgSetData('cl2', _d); renderClosingRows(pgSlice('cl2')); pgRender('cl2','pg_cl2','pgGoCL2');
+    return;
+  }
+  const all = DB.closing || [];
+  c.innerHTML=`
+  <div class="ph">
+    <div><div class="pt">🔒 Closing HVS <span class="pbadge">Live</span></div>
+    <div class="ps">Track Closing HVS entries</div></div>
+  </div>
+  <div class="sg">
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔒</div><div class="sl">Total Records</div><div class="sv" id="clTotalCard">${all.length}</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="clTodayCard">${all.filter(r=>{const d=r._startRaw?new Date(r._startRaw):null;return d&&d.toLocaleDateString('en-CA',{timeZone:'America/Toronto'})===todayDateStringET();}).length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clDoneCard">${all.filter(r=>r.status==='Completed').length}</div></div>
+  </div>
+  <div class="fb">
+    <span class="flbl">🔍 Filter</span>
+    <input class="fi2" id="cl_fd1" type="date"/>
+    <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
+    <input class="fi2" id="cl_fd2" type="date"/>
+    <select class="fs2" id="cl_fmode">
+      <option value="">All Modes</option>
+      <option>Truck</option><option>Air</option><option>Ocean</option><option>Rail</option>
+    </select>
+    <select class="fs2" id="cl_fstatus">
+      <option value="">All Status</option>
+      <option>Submitted to Customs</option><option>Send to CARM</option><option>Completed</option><option>Hold</option>
+    </select>
+    <input class="fi2" id="cl_search" placeholder="🔍 Search Txn / Client" style="min-width:160px" oninput="_debounce('cl2',applyCLFilter)"/>
+    <button class="btn-f" onclick="applyCLFilter()">Apply</button>
+    <button class="btn-cl" onclick="clearCLFilter()">Clear</button>
+    ${!isViewOnly()?'<button class="btn-add" style="background:var(--rose)" onclick="openClosingPanel()">＋ Add Entry</button>':''}
+  </div>
+  <div class="tw">
+    <div class="th2"><div class="tt">Closing HVS Records</div><div class="tc" id="clCount">${all.length} records</div></div>
+    <div style="overflow-x:auto"><table class="dt">
+      <thead><tr>
+        <th>#</th>
+        <th>Client No</th>
+        <th>Txn No</th>
+        <th>Client Name</th>
+        <th>Team</th>
+        <th>Mode</th>
+        <th>Status</th>
+        <th>Start</th>
+        <th>Submitted</th>
+        <th>Duration</th>
+        <th>Comments</th>
+        ${canEditData()?'<th>✏️</th>':''}
+      </tr></thead>
+      <tbody id="clTbody"></tbody>
+    </table></div>
+  </div>
+  <div id="pg_cl2"></div>`;
+  const tbody=document.getElementById('clTbody');
+  if(tbody) tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text3);font-size:12px">⏳ Loading...</td></tr>';
+  requestAnimationFrame(()=>setTimeout(()=>{
+    pgSetData('cl2', DB.closing); renderClosingRows(pgSlice('cl2')); pgRender('cl2','pg_cl2','pgGoCL2');
+  },0));
+}
+
+function renderClosingRows(data){
+  const tbody=document.getElementById('clTbody');
+  if(!tbody) return;
+  const _CL_ST=['Submitted to Customs','Send to CARM','Completed','Hold'];
+  const _clOC={}; _CL_ST.forEach(s=>{_clOC[s]=_CL_ST.map(o=>`<option${o===s?' selected':''}>${o}</option>`).join('');});
+  const clStOpts=(cur)=>_clOC[cur]||_CL_ST.map(o=>`<option>${o}</option>`).join('');
+  if(!data||!data.length){
+    tbody.innerHTML='<tr><td colspan="12"><div class="empty"><div class="empty-ico">🔒</div><div class="empty-t">No Closing records</div></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML=data.map((r,i)=>`<tr>
+    <td class="mono" style="color:var(--text3)">${i+1}</td>
+    <td class="mono" style="font-weight:700;color:var(--rose)">${r.clientNo}</td>
+    <td class="mono" style="font-weight:700;color:var(--primary)">${r.txn}</td>
+    <td style="font-weight:500">${r.clientName}</td>
+    <td><span class="badge b-te">${r.team}</span></td>
+    <td><span class="badge b-am">${r.mode}</span></td>
+    <td>
+      <div style="display:flex;align-items:center;gap:5px">
+        <select class="status-sel" id="clst_${r._dbid||i}" data-dbid="${r._dbid||''}">${clStOpts(r.status)}</select>
+        ${canEditData()?`<button class="btn-upd" style="background:var(--rose)" onclick="updateCLStatus('${r._dbid||i}')">Update</button>`:''}
+      </div>
+    </td>
+    <td class="mono" style="font-size:11px;color:var(--text3)">${r.start}</td>
+    <td class="mono" style="font-size:11px;color:var(--text3)">${r.submitted}</td>
+    <td class="mono" style="color:var(--sky)">${r.duration}</td>
+    <td style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.comments||'—'}</td>
+    ${canEditData()?`<td><button class="btn-upd" style="background:var(--primary);font-size:11px;padding:4px 9px" onclick="openClosingEdit(${i})" title="Edit">✏️</button></td>`:''}
+  </tr>`).join('');
+  const cnt=document.getElementById('clCount');
+  if(cnt) cnt.textContent=(data.length)+' records';
+}
+
+function pgGoCL2(p){ pgGo('cl2',p,renderClosingRows,'pg_cl2','pgGoCL2'); }
+
+function applyCLFilter(){
+  const d1=document.getElementById('cl_fd1')?.value;
+  const d2=document.getElementById('cl_fd2')?.value;
+  const mo=document.getElementById('cl_fmode')?.value;
+  const st=document.getElementById('cl_fstatus')?.value;
+  const q=(document.getElementById('cl_search')?.value||'').toLowerCase();
+  let data=DB.closing||[];
+  if(d1) data=data.filter(r=>r._startRaw&&r._startRaw>=d1);
+  if(d2) data=data.filter(r=>r._startRaw&&r._startRaw<=d2+'T23:59:59');
+  if(mo) data=data.filter(r=>r.mode===mo);
+  if(st) data=data.filter(r=>r.status===st);
+  if(q) data=data.filter(r=>(r.txn+r.clientNo+r.clientName).toLowerCase().includes(q));
+  pgSetData('cl2',data); renderClosingRows(pgSlice('cl2')); pgRender('cl2','pg_cl2','pgGoCL2');
+}
+function clearCLFilter(){
+  ['cl_fd1','cl_fd2','cl_fmode','cl_fstatus','cl_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  pgSetData('cl2',DB.closing); renderClosingRows(pgSlice('cl2')); pgRender('cl2','pg_cl2','pgGoCL2');
+}
+
+function updateCLStatus(dbid){
+  if(!canEditData()){showToast('⚠️ Cannot edit records',true);return;}
+  const idx=DB.closing.findIndex(r=>String(r._dbid||'')===String(dbid));
+  if(idx<0){showToast('⚠️ Record not found',true);return;}
+  const sel=document.getElementById('clst_'+dbid);
+  if(!sel) return;
+  const newStatus=sel.value;
+  DB.closing[idx].status=newStatus;
+  // Stamp submitted timestamp when status set
+  const nowISO=new Date().toISOString();
+  if(!DB.closing[idx]._submittedRaw) DB.closing[idx]._submittedRaw=nowISO;
+  if(_supa&&DB.closing[idx]._dbid){
+    dbUpdate('closing',DB.closing[idx]._dbid,{status:newStatus,submitted:nowISO})
+      .then(()=>showToast('✅ Closing status saved: '+newStatus))
+      .catch(()=>showToast('✅ Status updated locally'));
+  } else { showToast('✅ Closing status updated: '+newStatus); }
+}
+
+// ── Closing HVS entry panel ─────────────────────────────
+function openClosingPanel(){
+  // Reuse slide-in panel mechanism
+  let panel=document.getElementById('closingPanel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='closingPanel';
+    panel.className='spanel';
+    panel.innerHTML=`
+    <div class="sp-head">
+      <div><div class="sp-title">➕ Add Closing HVS Entry</div><div class="sp-sub">Fill all required fields</div></div>
+      <button class="sp-close" onclick="document.getElementById('closingPanel').classList.remove('open')">✕</button>
+    </div>
+    <div class="sp-body">
+      <div class="fg">
+        <label class="fpl">Client No <span class="req">*</span></label>
+        <input class="fpi" id="cl_clientno" placeholder="Client number" oninput="lookupClosingClient()"/>
+        <label class="fpl">Transaction Number <span class="req">*</span></label>
+        <input class="fpi" id="cl_txn" placeholder="Transaction number"/>
+        <label class="fpl">Client Name</label>
+        <input class="fpi" id="cl_clientname" placeholder="Auto-filled from Client No" readonly/>
+        <label class="fpl">Team</label>
+        <input class="fpi" id="cl_team" placeholder="Auto-filled from Client No" readonly/>
+        <label class="fpl">Mode <span class="req">*</span></label>
+        <select class="fpi" id="cl_mode">
+          <option value="">Select Mode</option>
+          <option>Truck</option><option>Air</option><option>Ocean</option><option>Rail</option>
+        </select>
+        <label class="fpl">Status <span class="req">*</span></label>
+        <select class="fpi" id="cl_status">
+          <option value="">Select Status</option>
+          <option>Submitted to Customs</option><option>Send to CARM</option><option>Completed</option><option>Hold</option>
+        </select>
+        <label class="fpl">Start Time</label>
+        <input class="fpi" id="cl_start" readonly placeholder="Auto-set on entry"/>
+        <label class="fpl">Submitted Time</label>
+        <input class="fpi" id="cl_submitted" readonly placeholder="Auto-set on status update"/>
+        <label class="fpl">Duration</label>
+        <input class="fpi" id="cl_duration" readonly placeholder="00:00:00"/>
+        <label class="fpl">Comments</label>
+        <textarea class="fpi" id="cl_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
+      </div>
+      <button class="btn-save" style="background:var(--rose)" onclick="submitClosing()">💾 Save Closing Entry</button>
+    </div>`;
+    document.body.appendChild(panel);
+  }
+  // Set start time now
+  const now=nowStr();
+  document.getElementById('cl_start').value=now;
+  document.getElementById('cl_txn').value='';
+  document.getElementById('cl_clientno').value='';
+  document.getElementById('cl_clientname').value='';
+  document.getElementById('cl_team').value='';
+  document.getElementById('cl_mode').value='';
+  document.getElementById('cl_status').value='';
+  document.getElementById('cl_submitted').value='';
+  document.getElementById('cl_duration').value='00:00:00';
+  document.getElementById('cl_comments').value='';
+  panel.classList.add('open');
+  // Tick duration every second
+  clearInterval(window._clDurTimer);
+  const startDate=new Date();
+  window._clDurTimer=setInterval(()=>{
+    const diff=new Date()-startDate;
+    const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
+    const el=document.getElementById('cl_duration');
+    if(el) el.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    else clearInterval(window._clDurTimer);
+  },1000);
+}
+
+function lookupClosingClient(){
+  const no=(document.getElementById('cl_clientno')?.value||'').trim().toUpperCase();
+  if(!no||no.length<2){
+    const cn=document.getElementById('cl_clientname');const tm=document.getElementById('cl_team');
+    if(cn) cn.value='';if(tm) tm.value='';return;
+  }
+  const cli=(DB.clients||[]).find(c=>String(c.clientNo||c.client_no||'').toUpperCase()===no);
+  if(cli){
+    const cn=document.getElementById('cl_clientname');const tm=document.getElementById('cl_team');
+    if(cn) cn.value=cli.name||cli.client_name||'';
+    if(tm) tm.value=cli.team||'';
+  }
+}
+
+function openClosingEdit(idx){
+  const r=DB.closing[idx];if(!r) return;
+  const panel=document.getElementById('closingPanel');
+  if(!panel){openClosingPanel();return;}
+  document.getElementById('cl_clientno').value=r.clientNo||'';
+  document.getElementById('cl_txn').value=r.txn||'';
+  document.getElementById('cl_clientname').value=r.clientName||'';
+  document.getElementById('cl_team').value=r.team||'';
+  document.getElementById('cl_mode').value=r.mode||'';
+  document.getElementById('cl_status').value=r.status||'';
+  document.getElementById('cl_start').value=r.start||'';
+  document.getElementById('cl_submitted').value=r.submitted||'';
+  document.getElementById('cl_duration').value=r.duration||'00:00:00';
+  document.getElementById('cl_comments').value=r.comments||'';
+  panel.dataset.editIdx=idx;
+  panel.classList.add('open');
+}
+
+function submitClosing(){
+  const clientNo=(document.getElementById('cl_clientno')?.value||'').trim();
+  const txn=(document.getElementById('cl_txn')?.value||'').trim();
+  const mode=document.getElementById('cl_mode')?.value;
+  const status=document.getElementById('cl_status')?.value;
+  if(!clientNo){showToast('⚠️ Client No is required',true);return;}
+  if(!txn){showToast('⚠️ Transaction Number is required',true);return;}
+  if(!mode){showToast('⚠️ Please select a Mode',true);return;}
+  if(!status){showToast('⚠️ Please select a Status',true);return;}
+
+  clearInterval(window._clDurTimer);
+  const submittedNow=nowISOET();
+  const startVal=document.getElementById('cl_start')?.value||'';
+  const duration=document.getElementById('cl_duration')?.value||'00:00:00';
+
+  const row={
+    client_no:clientNo,
+    txn,
+    client_name:document.getElementById('cl_clientname')?.value||null,
+    team:document.getElementById('cl_team')?.value||null,
+    mode,
+    status,
+    start_time:tsForDB(startVal)||null,
+    submitted:submittedNow,
+    duration,
+    comments:document.getElementById('cl_comments')?.value||null,
+    user_name:CU.name||null
+  };
+  const localRow=mapClosing({...row,id:'pending_'+Date.now()});
+  localRow._submittedRaw=submittedNow;
+  localRow.submitted=new Date(submittedNow).toLocaleString('en-IN',{timeZone:'America/Toronto',hour12:false}).replace(',','');
+  DB.closing.unshift(localRow);
+  document.getElementById('closingPanel')?.classList.remove('open');
+  showToast('✅ Closing entry saved');
+  if(document.getElementById('clTbody')){
+    pgSetData('cl2',DB.closing);renderClosingRows(pgSlice('cl2'));pgRender('cl2','pg_cl2','pgGoCL2');
+  }
+  if(_supa){
+    _supa.from('closing').insert([row]).then(({error})=>{
+      if(error){showToast('⚠️ DB save failed: '+error.message,true);console.error('closing insert',error);}
+    });
+  }
+}
+
+
 //  Across ALL Modes from Release table
 //  Admin-only edit. All roles can view.
 // ══════════════════════════════════════════
@@ -23975,6 +24387,46 @@ async function exportRelease2(){
     ]
   });
   showToast(`✅ Exported ${_data.length} release records`);
+}
+
+// ══════════════════════════════════════════
+//  CLOSING HVS — Standalone CSV Export
+//  Hidden from Client role
+// ══════════════════════════════════════════
+async function exportClosing(){
+  if(isClient()){ showToast('⚠️ Export not available for Client role', true); return; }
+  const {d1, d2, label} = _getReportDateRange();
+  let _data;
+  if(!d1 && !d2){
+    _data = await _fetchAllForExport('closing', mapClosing);
+  } else {
+    _data = _filterByDateRange(DB.closing || [], d1, d2);
+  }
+  const headers = [
+    'Client No','Txn No','Client Name','Team','Mode',
+    'Status','Start Time','Submitted Time','Duration','Comments','User','Date'
+  ];
+  const rows = (_data||[]).map(r=>[
+    r.clientNo||'', r.txn||'', r.clientName||'', r.team||'', r.mode||'',
+    r.status||'', r.start||'', r.submitted||'', r.duration||'',
+    r.comments||'', r.user||'', (r._startRaw||'').slice(0,10)
+  ]);
+  const completed = (_data||[]).filter(r=>r.status==='Completed').length;
+  const hold      = (_data||[]).filter(r=>r.status==='Hold').length;
+  const toCustoms = (_data||[]).filter(r=>r.status==='Submitted to Customs').length;
+  const toCarm    = (_data||[]).filter(r=>r.status==='Send to CARM').length;
+  exportCSV(rows, headers, `Closing_HVS_Report_${label||todayStrET()}.csv`, {
+    taskName: 'Closing HVS',
+    dateLabel: label || 'All Records',
+    total: (_data||[]).length,
+    extras: [
+      ['Completed',           completed],
+      ['Hold',                hold],
+      ['Submitted to Customs',toCustoms],
+      ['Send to CARM',        toCarm],
+    ]
+  });
+  showToast(`✅ Exported ${(_data||[]).length} Closing HVS records`);
 }
 
 // Global error handler — shows visible error if anything crashes
