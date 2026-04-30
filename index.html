@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_3_closing-hvs-reports-export-2026-04-30" data-build-id="closing-hvs-v8.3-reports-export">
+<html lang="en" data-build-stamp="V8_4_closing-fixes-client-lookup-user-col-status-2026-04-30" data-build-id="closing-hvs-v8.4-fixes">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -11804,7 +11804,11 @@ function renderStatus(c,activeTask){
     {key:'auditstat',label:'🔍 Audit',cls:'t-emerald',db:DB.release2,userTask:'Release',assignFld:'user',_isAudit:true},
   ];
   const visibleTasks = CU.task==='Manager'||isSuperLead() ? tasks :
-    tasks.filter(t=>t.userTask===CU.task||(CU.task==='Ocean T&T'&&t.key==='oceantt')||(CU.task==='B2 Entries'&&t.key==='b2entries'));
+    tasks.filter(t=>t.userTask===CU.task
+      ||(CU.task==='Ocean T&T'&&t.key==='oceantt')
+      ||(CU.task==='B2 Entries'&&t.key==='b2entries')
+      ||(CU.task==='Release'&&t.key==='closing') // Release TL sees Closing HVS tab
+    );
   // Preserve active tab across refreshes — store globally
   if(activeTask) window._statusActiveKey = activeTask;
   const active = activeTask || window._statusActiveKey || (visibleTasks[0]?.key||'lvs');
@@ -20018,16 +20022,21 @@ function clearRLFilter(){
 // ══════════════════════════════════════════
 
 function mapClosing(r){
-  // Look up client name/team from DB.clients
-  const cli = (DB.clients||[]).find(c=>String(c.clientNo||c.client_no||'').toUpperCase()===String(r.client_no||'').toUpperCase()) || {};
-  const clientName = r.client_name || cli.name || cli.client_name || '—';
+  // Client name/team: prefer DB value, fallback to DB.clients lookup by numeric id (same as fillClient)
+  const _cid = parseInt(r.client_no||0);
+  const cli = (DB.clients||[]).find(c=>c.id===_cid||String(c.id)===String(r.client_no||'')) || {};
+  const clientName = r.client_name || cli.name || '—';
   const team       = r.team       || cli.team || '—';
+  // Parse submitted ISO → ET Date for heatmap (matches _submitRaw field name in getRecET)
+  const _subISO = r.submitted ? new Date(r.submitted) : null;
+  const _submitRaw = (_subISO && !isNaN(_subISO)) ? isoToETLocalDate(_subISO) : null;
+  // Parse start ISO → ET Date
+  const _startISO = r.start_time ? new Date(r.start_time) : null;
+  const _startET  = (_startISO && !isNaN(_startISO)) ? isoToETLocalDate(_startISO) : null;
   // Duration: submitted - start
   let dur = r.duration || '—';
-  const st  = r.start_time  ? new Date(r.start_time)  : null;
-  const sub = r.submitted   ? new Date(r.submitted)   : null;
-  if(st&&sub&&!isNaN(st)&&!isNaN(sub)&&sub>st){
-    const diff=sub-st;
+  if(_startISO && _subISO && !isNaN(_startISO) && !isNaN(_subISO) && _subISO > _startISO){
+    const diff=_subISO-_startISO;
     const h=Math.floor(diff/3600000);
     const m=Math.floor((diff%3600000)/60000);
     const s=Math.floor((diff%60000)/1000);
@@ -20037,17 +20046,18 @@ function mapClosing(r){
     id:r.id, _dbid:r.id,
     txn:r.txn||r.transaction_number||'—',
     clientNo:r.client_no||'—',
-    clientName,team,
+    clientName, team,
     mode:r.mode||'—',
     status:r.status||'—',
-    start:r.start_time?new Date(r.start_time).toLocaleString('en-IN',{timeZone:'America/Toronto',hour12:false}).replace(',',''):'—',
-    submitted:r.submitted?new Date(r.submitted).toLocaleString('en-IN',{timeZone:'America/Toronto',hour12:false}).replace(',',''):'—',
+    start:_startET?_startET.toLocaleString('en-IN',{hour12:false}).replace(',',''):'—',
+    submitted:_submitRaw?_submitRaw.toLocaleString('en-IN',{hour12:false}).replace(',',''):'—',
     comments:r.comments||'',
     duration:dur,
-    _startRaw:r.start_time,
-    _submittedRaw:r.submitted,
-    _created:r.start_time||r.id,
-    user:r.user_name||CU.name||'—',
+    _startRaw:r.start_time,       // ISO string for date-range filtering
+    _submittedRaw:r.submitted,    // ISO string
+    _submitRaw,                   // ET Date object — used by getRecET in Status heatmap
+    _created:r.start_time||r.id,  // for _filterByDateRange
+    user:r.user_name||CU?.name||'—',
     _idx:0
   };
 }
@@ -20100,6 +20110,7 @@ function renderClosing(c){
         <th>Team</th>
         <th>Mode</th>
         <th>Status</th>
+        <th>User</th>
         <th>Start</th>
         <th>Submitted</th>
         <th>Duration</th>
@@ -20111,7 +20122,7 @@ function renderClosing(c){
   </div>
   <div id="pg_cl2"></div>`;
   const tbody=document.getElementById('clTbody');
-  if(tbody) tbody.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text3);font-size:12px">⏳ Loading...</td></tr>';
+  if(tbody) tbody.innerHTML='<tr><td colspan="13" style="text-align:center;padding:24px;color:var(--text3);font-size:12px">⏳ Loading...</td></tr>';
   requestAnimationFrame(()=>setTimeout(()=>{
     pgSetData('cl2', DB.closing); renderClosingRows(pgSlice('cl2')); pgRender('cl2','pg_cl2','pgGoCL2');
   },0));
@@ -20124,7 +20135,7 @@ function renderClosingRows(data){
   const _clOC={}; _CL_ST.forEach(s=>{_clOC[s]=_CL_ST.map(o=>`<option${o===s?' selected':''}>${o}</option>`).join('');});
   const clStOpts=(cur)=>_clOC[cur]||_CL_ST.map(o=>`<option>${o}</option>`).join('');
   if(!data||!data.length){
-    tbody.innerHTML='<tr><td colspan="12"><div class="empty"><div class="empty-ico">🔒</div><div class="empty-t">No Closing records</div></div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="13"><div class="empty"><div class="empty-ico">🔒</div><div class="empty-t">No Closing records</div></div></td></tr>';
     return;
   }
   tbody.innerHTML=data.map((r,i)=>`<tr>
@@ -20140,6 +20151,7 @@ function renderClosingRows(data){
         ${canEditData()?`<button class="btn-upd" style="background:var(--rose)" onclick="updateCLStatus('${r._dbid||i}')">Update</button>`:''}
       </div>
     </td>
+    <td style="font-weight:600">${r.user||'—'}</td>
     <td class="mono" style="font-size:11px;color:var(--text3)">${r.start}</td>
     <td class="mono" style="font-size:11px;color:var(--text3)">${r.submitted}</td>
     <td class="mono" style="color:var(--sky)">${r.duration}</td>
@@ -20198,20 +20210,21 @@ function openClosingPanel(){
     panel.id='closingPanel';
     panel.className='spanel';
     panel.innerHTML=`
-    <div class="sp-head">
+    <div class="sp-head" style="background:linear-gradient(135deg,#e11d48 0%,#be123c 100%)">
       <div><div class="sp-title">➕ Add Closing HVS Entry</div><div class="sp-sub">Fill all required fields</div></div>
-      <button class="sp-close" onclick="document.getElementById('closingPanel').classList.remove('open')">✕</button>
+      <button class="sp-close" onclick="document.getElementById('closingPanel').classList.remove('open');clearInterval(window._clDurTimer)">✕</button>
     </div>
     <div class="sp-body">
       <div class="fg">
         <label class="fpl">Client No <span class="req">*</span></label>
-        <input class="fpi" id="cl_clientno" placeholder="Client number" oninput="lookupClosingClient()"/>
+        <input class="fpi" id="cl_clientno" type="number" placeholder="Enter client number" oninput="lookupClosingClient(this)" autocomplete="off"/>
+        <div id="cl_client_err" style="display:none;color:var(--rose);font-size:12px;padding:4px 0"></div>
         <label class="fpl">Transaction Number <span class="req">*</span></label>
         <input class="fpi" id="cl_txn" placeholder="Transaction number"/>
         <label class="fpl">Client Name</label>
-        <input class="fpi" id="cl_clientname" placeholder="Auto-filled from Client No" readonly/>
+        <input class="fpi auto" id="cl_clientname" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Team</label>
-        <input class="fpi" id="cl_team" placeholder="Auto-filled from Client No" readonly/>
+        <input class="fpi auto" id="cl_team" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Mode <span class="req">*</span></label>
         <select class="fpi" id="cl_mode">
           <option value="">Select Mode</option>
@@ -20222,22 +20235,21 @@ function openClosingPanel(){
           <option value="">Select Status</option>
           <option>Submitted to Customs</option><option>Send to CARM</option><option>Completed</option><option>Hold</option>
         </select>
-        <label class="fpl">Start Time</label>
-        <input class="fpi" id="cl_start" readonly placeholder="Auto-set on entry"/>
-        <label class="fpl">Submitted Time</label>
-        <input class="fpi" id="cl_submitted" readonly placeholder="Auto-set on status update"/>
-        <label class="fpl">Duration</label>
-        <input class="fpi" id="cl_duration" readonly placeholder="00:00:00"/>
         <label class="fpl">Comments</label>
         <textarea class="fpi" id="cl_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
       </div>
+      <!-- Hidden timestamp/duration fields — tracked internally, not shown -->
+      <input type="hidden" id="cl_start"/>
+      <input type="hidden" id="cl_submitted"/>
+      <input type="hidden" id="cl_duration" value="00:00:00"/>
       <button class="btn-save" style="background:var(--rose)" onclick="submitClosing()">💾 Save Closing Entry</button>
     </div>`;
     document.body.appendChild(panel);
   }
-  // Set start time now
-  const now=nowStr();
-  document.getElementById('cl_start').value=now;
+  // Store start time silently
+  window._clStartDate = new Date();
+  document.getElementById('cl_start').value = nowStr();
+  // Reset all fields
   document.getElementById('cl_txn').value='';
   document.getElementById('cl_clientno').value='';
   document.getElementById('cl_clientname').value='';
@@ -20247,46 +20259,38 @@ function openClosingPanel(){
   document.getElementById('cl_submitted').value='';
   document.getElementById('cl_duration').value='00:00:00';
   document.getElementById('cl_comments').value='';
+  const errEl=document.getElementById('cl_client_err');
+  if(errEl) errEl.style.display='none';
+  delete panel.dataset.editIdx;
   panel.classList.add('open');
-  // Tick duration every second
+  // Tick duration silently every second
   clearInterval(window._clDurTimer);
-  const startDate=new Date();
   window._clDurTimer=setInterval(()=>{
-    const diff=new Date()-startDate;
+    const diff=new Date()-window._clStartDate;
     const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
     const el=document.getElementById('cl_duration');
     if(el) el.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
     else clearInterval(window._clDurTimer);
   },1000);
+  // Focus client no field
+  setTimeout(()=>document.getElementById('cl_clientno')?.focus(),100);
 }
 
-function lookupClosingClient(){
-  const no=(document.getElementById('cl_clientno')?.value||'').trim().toUpperCase();
-  if(!no||no.length<2){
-    const cn=document.getElementById('cl_clientname');const tm=document.getElementById('cl_team');
-    if(cn) cn.value='';if(tm) tm.value='';return;
-  }
-  const cli=(DB.clients||[]).find(c=>String(c.clientNo||c.client_no||'').toUpperCase()===no);
-  if(cli){
-    const cn=document.getElementById('cl_clientname');const tm=document.getElementById('cl_team');
-    if(cn) cn.value=cli.name||cli.client_name||'';
-    if(tm) tm.value=cli.team||'';
-  }
+function lookupClosingClient(el){
+  fillClient(el.value,'cl_clientname','cl_team','cl_client_err');
 }
 
 function openClosingEdit(idx){
   const r=DB.closing[idx];if(!r) return;
-  const panel=document.getElementById('closingPanel');
-  if(!panel){openClosingPanel();return;}
+  let panel=document.getElementById('closingPanel');
+  if(!panel){ openClosingPanel(); return; }
+  clearInterval(window._clDurTimer);
   document.getElementById('cl_clientno').value=r.clientNo||'';
   document.getElementById('cl_txn').value=r.txn||'';
   document.getElementById('cl_clientname').value=r.clientName||'';
   document.getElementById('cl_team').value=r.team||'';
   document.getElementById('cl_mode').value=r.mode||'';
   document.getElementById('cl_status').value=r.status||'';
-  document.getElementById('cl_start').value=r.start||'';
-  document.getElementById('cl_submitted').value=r.submitted||'';
-  document.getElementById('cl_duration').value=r.duration||'00:00:00';
   document.getElementById('cl_comments').value=r.comments||'';
   panel.dataset.editIdx=idx;
   panel.classList.add('open');
