@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_7_async-export-sw-fix-2026-05-01" data-build-id="v8.7-async-sw-fix">
+<html lang="en" data-build-stamp="V8_7_async-export-sw-fiasax-2026-05-01" data-build-id="v8.7-async-sw-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -3778,7 +3778,7 @@ function _makeSupaClient(){
       is(c,v){_filters.push(c+'=is.'+encodeURIComponent(String(v)));return builder;},  // FIX: was missing — caused _iaeSafetyPoll to crash
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
-      limit(n){_to=(_from||0)+n-1;return builder;},
+      limit(n){ if(_from===null) _from=0; _to = _from + n - 1; return builder; },
       single(){
         _to=(_from||0);  // limit 1
         const origThen = builder.then.bind(builder);
@@ -4013,21 +4013,43 @@ async function dbLoadRelease(){
   }
   // Server-side cutoff — 90 days, ISO format Postgres can compare directly
   const cutoff = new Date(_now - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
-  let allRows = [];
-  let from = 0;
+
+  // ── HEAD count (90-day scoped) — authoritative target for the loader ──
+  let expected90d = null;
+  try{
+    const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
+    const _hr = await fetch(SUPA_URL+'/rest/v1/release?select=id&submitted=gte.'+encodeURIComponent(cutoff),
+      {method:'HEAD',headers:{apikey:_rk,'Authorization':'Bearer '+_rk,'Prefer':'count=exact'}});
+    const _cr = _hr.headers.get('Content-Range');
+    if(_cr){ const _n = parseInt(_cr.split('/')[1]); if(!isNaN(_n)) expected90d = _n; }
+  }catch(_e){}
+
+  // Keyset pagination by id DESC — robust vs. live inserts and short pages
   const BATCH = 1000;
-  while(true){
+  const seen  = new Set();
+  let   allRows = [];
+  let   lastId  = Number.MAX_SAFE_INTEGER;
+  let   safety  = 0;
+  const HARD_CAP = 200; // 200 × 1000 = 200,000 rows (90-day window ceiling)
+  while(safety++ < HARD_CAP){
     const {data, error} = await _supa.from('release').select('*')
       .gte('submitted', cutoff)
+      .lt('id', lastId)
       .order('id', {ascending: false})
-      .range(from, from + BATCH - 1);
+      .limit(BATCH);
     if(error){ console.error('dbLoadRelease error:', error.message); break; }
-    if(data && data.length > 0) allRows = allRows.concat(data);
-    if(!data || data.length < BATCH) break;
-    from += BATCH;
-    if(from >= 100000) break; // raised from 10000 — supports up to 100k rows
+    if(!data || data.length === 0) break;
+    for(const row of data){
+      const rid = row && row.id;
+      if(rid!=null && !seen.has(rid)){ seen.add(rid); allRows.push(row); }
+    }
+    lastId = data[data.length-1].id;
+    // Break only when we have all expected rows OR server said there are no more
+    if(expected90d !== null && allRows.length >= expected90d) break;
+    if(expected90d === null && data.length < BATCH) break;
   }
-  // Async: fetch true total count (lightweight HEAD — no row data) and cache it
+
+  // Async: fetch TOTAL (unscoped) true count and cache in window._rlTrueCount
   (async()=>{
     try{
       const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
@@ -14670,7 +14692,7 @@ async function _fetchAllForExport(table, mapFn){
 
     if(error){
       console.warn('[export] page error on', table, error.message);
-      // Soft retry once
+      // Soft retry once — do NOT advance lastId
       await new Promise(r=>setTimeout(r,400));
       continue;
     }
@@ -14688,11 +14710,11 @@ async function _fetchAllForExport(table, mapFn){
       showToast('⏳ Exporting '+table+': '+all.length.toLocaleString()+(pct!==null?' / '+expectedTotal.toLocaleString()+' ('+pct+'%)':''));
     }
 
-    // Natural end: fewer than PAGE AND we've reached/exceeded expected count
-    if(data.length < PAGE){
-      if(expectedTotal === null || all.length >= expectedTotal) break;
-      // Otherwise keep going — server returned a short page but there are more rows
-    }
+    // ── Natural end: break ONLY when we've fetched ≥ expectedTotal.
+    // Never break solely on short page — PostgREST can return a partial
+    // page mid-dataset under load, which caused the 10k export cap.
+    if(expectedTotal !== null && all.length >= expectedTotal) break;
+    if(expectedTotal === null && data.length < PAGE) break; // fallback when HEAD failed
   }
 
   if(expectedTotal !== null && all.length < expectedTotal){
@@ -24486,20 +24508,69 @@ async function _fetchReleaseDateRange(d1, d2){
   const seen = new Set();
   let lastId = 0;
   let safety = 0;
-  const HARD_CAP = 500;
+  const HARD_CAP = 2000; // supports up to 2,000,000 rows
+
+  // ── Step 1: authoritative total count from server (HEAD + count=exact) ──
+  // With date filter applied server-side so the number reflects the export scope.
+  let expectedTotal = null;
+  try{
+    const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
+    let _headUrl = SUPA_URL + '/rest/v1/release?select=id';
+    if(d1) _headUrl += '&submitted=gte.' + encodeURIComponent(d1);
+    if(d2) _headUrl += '&submitted=lte.' + encodeURIComponent(d2+'T23:59:59');
+    const _headRes = await fetch(_headUrl, {
+      method:'HEAD',
+      headers:{apikey:_rk,'Authorization':'Bearer '+_rk,'Prefer':'count=exact'}
+    });
+    const _cr = _headRes.headers.get('Content-Range');
+    if(_cr){ const _n = parseInt(_cr.split('/')[1]); if(!isNaN(_n)) expectedTotal = _n; }
+    if(expectedTotal !== null){
+      console.log('[release export] expected total:', expectedTotal);
+      showToast('⏳ Release export: 0 / '+expectedTotal.toLocaleString()+' records...');
+    }
+  }catch(_e){ console.warn('[release export] HEAD count failed:', _e.message); }
+
+  // ── Step 2: keyset pagination — fetch 1000 rows at a time, id-ordered ──
   while(safety++ < HARD_CAP){
     let q = client.from('release').select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
     if(d1) q = q.gte('submitted', d1);
     if(d2) q = q.lte('submitted', d2+'T23:59:59');
     const {data, error} = await q;
-    if(error){ console.warn('[release export] page error:', error.message); break; }
+
+    if(error){
+      console.warn('[release export] page error:', error.message);
+      // Soft retry once with 500ms delay — do NOT break, do NOT advance lastId
+      await new Promise(r=>setTimeout(r, 500));
+      if(safety < HARD_CAP - 1) continue;
+      break;
+    }
     if(!data || data.length === 0) break;
+
     for(const row of data){
       if(row.id!=null && !seen.has(row.id)){ seen.add(row.id); all.push(row); }
     }
     lastId = data[data.length-1].id;
-    if(safety % 5 === 0) showToast('⏳ Release export: '+all.length.toLocaleString()+' records fetched...');
-    if(data.length < PAGE) break;
+
+    if(safety % 3 === 0){
+      const pct = expectedTotal ? Math.round(all.length/expectedTotal*100) : null;
+      showToast('⏳ Release export: '+all.length.toLocaleString()+
+        (expectedTotal ? ' / '+expectedTotal.toLocaleString()+' ('+pct+'%)' : '')+'...');
+    }
+
+    // ── Natural end: only break when server returned fewer than PAGE
+    // AND we've reached (or there was no) expected total. This prevents
+    // stopping early if the server sends a short page mid-dataset.
+    if(data.length < PAGE){
+      if(expectedTotal === null || all.length >= expectedTotal) break;
+      // Server returned short page but more rows expected → keep going
+    }
+    if(expectedTotal !== null && all.length >= expectedTotal) break;
+  }
+
+  if(expectedTotal !== null && all.length < expectedTotal){
+    console.warn('[release export] fetched', all.length, 'of', expectedTotal,
+      '— '+(expectedTotal-all.length)+' missing');
+    showToast('⚠️ Release: '+all.length.toLocaleString()+' of '+expectedTotal.toLocaleString()+' fetched', true);
   }
   return all.map(mapRelease);
 }
@@ -26704,5 +26775,6 @@ function _buildLvsErrPopup(clientNo){
      then paste the beacon script back here. Keeping it active with no feature enabled
      only generates a noisy 404 on every page load with zero benefit. -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
 </html>
