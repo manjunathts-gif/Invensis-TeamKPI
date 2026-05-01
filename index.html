@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_5_errcsv-clhvs-kpifilter-supafix-2026-05-01" data-build-id="v8.5-three-fixes">
+<html lang="en" data-build-stamp="V8_7_async-export-sw-fix-2026-05-01" data-build-id="v8.7-async-sw-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4025,10 +4025,9 @@ async function dbLoadRelease(){
     if(data && data.length > 0) allRows = allRows.concat(data);
     if(!data || data.length < BATCH) break;
     from += BATCH;
-    if(from >= 10000) break;
+    if(from >= 100000) break; // raised from 10000 — supports up to 100k rows
   }
   // Async: fetch true total count (lightweight HEAD — no row data) and cache it
-  // Use direct HEAD fetch for release count — same pattern as _fetchAllTrueCounts
   (async()=>{
     try{
       const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
@@ -14339,7 +14338,7 @@ function clearReportFilter(){
 // ══════════════════════════════════════════════════════════
 // EXPORT ALL TASKS — Multi-sheet Excel (SheetJS)
 // ══════════════════════════════════════════════════════════
-function exportAllTasksXLSX(){
+async function exportAllTasksXLSX(){
   // Dynamically load SheetJS if missing (CDN blocked or slow)
   if(typeof XLSX==='undefined'){
     showToast('⏳ Loading Excel library... please wait.',true);
@@ -14378,11 +14377,19 @@ function exportAllTasksXLSX(){
     const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
     const _noFilter = !_xd1 && !_xd2;
     const _tc = window._trueCounts || {};
-    // When no date filter: use true DB counts (HEAD-fetched) for tasks where local
-    // cache is partial (Release loads only 90 days; others load up to SUPABASE_PAGE_SIZE).
-    // Falls back to in-memory length if true count not yet loaded.
-    function _trueTotal(tcKey, rlKey, arr){
-      if(!_noFilter) return (arr||[]).length;
+
+    // For Release: fetch server-side when date filter is set (DB.release2 is capped)
+    // Other tasks: _xf() filters in-memory (they load 30-day rolling windows)
+    showToast('⏳ Preparing export — fetching release data...');
+    let _rlData;
+    if(_noFilter){
+      _rlData = DB.release2; // will use _rlTrueCount for summary
+    } else {
+      _rlData = await _fetchReleaseDateRange(_xd1, _xd2);
+    }
+
+    function _trueTotal(tcKey, rlKey, arr, rlArr){
+      if(!_noFilter) return (rlArr||arr||[]).length; // filtered → always use actual length
       if(rlKey && typeof window._rlTrueCount === 'number' && window._rlTrueCount > (arr||[]).length)
         return window._rlTrueCount;
       if(tcKey && typeof _tc[tcKey] === 'number' && _tc[tcKey] > (arr||[]).length)
@@ -14390,17 +14397,17 @@ function exportAllTasksXLSX(){
       return (arr||[]).length;
     }
     const taskDefs=[
-      {name:'LVS',         data:_xf(DB.lvs),         tcKey:'lvs',        rlKey:null},
-      {name:'Classifier',  data:_xf(DB.cls),          tcKey:'cls',        rlKey:null},
-      {name:'Compliance',  data:_xf(DB.comp),         tcKey:'comp',       rlKey:null},
-      {name:'PARS Docs',   data:_xf(DB.parsDocs),     tcKey:'pars_docs',  rlKey:null},
-      {name:'Ocean Docs',  data:_xf(DB.oceanDocs),    tcKey:'ocean_docs', rlKey:null},
-      {name:'Part Lot',    data:_xf(DB.partLot),      tcKey:'part_lot',   rlKey:null},
-      {name:'Release',     data:_xf(DB.release2),     tcKey:null,         rlKey:true},
-      {name:'Ocean TT',    data:_xf(DB.oceanTT),      tcKey:'ocean_tt',   rlKey:null},
-      {name:'B2 Entries',  data:_xf(DB.b2entries),    tcKey:'b2_entries', rlKey:null},
-      ...(isClient()?[]:[{name:'Closing HVS',data:_xf(DB.closing||[]),tcKey:'closing',rlKey:null}]),
-      {name:'Audit',       data:_xf(DB.audit),        tcKey:null,         rlKey:null},
+      {name:'LVS',         data:_xf(DB.lvs),         tcKey:'lvs',        rlKey:null, rlData:null},
+      {name:'Classifier',  data:_xf(DB.cls),          tcKey:'cls',        rlKey:null, rlData:null},
+      {name:'Compliance',  data:_xf(DB.comp),         tcKey:'comp',       rlKey:null, rlData:null},
+      {name:'PARS Docs',   data:_xf(DB.parsDocs),     tcKey:'pars_docs',  rlKey:null, rlData:null},
+      {name:'Ocean Docs',  data:_xf(DB.oceanDocs),    tcKey:'ocean_docs', rlKey:null, rlData:null},
+      {name:'Part Lot',    data:_xf(DB.partLot),      tcKey:'part_lot',   rlKey:null, rlData:null},
+      {name:'Release',     data:_xf(DB.release2),     tcKey:null,         rlKey:true, rlData:_rlData},
+      {name:'Ocean TT',    data:_xf(DB.oceanTT),      tcKey:'ocean_tt',   rlKey:null, rlData:null},
+      {name:'B2 Entries',  data:_xf(DB.b2entries),    tcKey:'b2_entries', rlKey:null, rlData:null},
+      ...(isClient()?[]:[{name:'Closing HVS',data:_xf(DB.closing||[]),tcKey:'closing',rlKey:null,rlData:null}]),
+      {name:'Audit',       data:_xf(DB.audit),        tcKey:null,         rlKey:null, rlData:null},
     ];
     const summaryRows=[
       ['KPI Production Report - All Tasks'],
@@ -14411,14 +14418,15 @@ function exportAllTasksXLSX(){
       [],
       ['Task Name','Total Records','TAT Reached','TAT Not Reached','TAT Compliance %'],
       ...taskDefs.map(t=>{
-        const total = _trueTotal(t.tcKey, t.rlKey, t.data);
-        const reached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-        const notReached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
+        const _eff = t.rlData || t.data || [];
+        const total = _trueTotal(t.tcKey, t.rlKey, t.data, _eff);
+        const reached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
+        const notReached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
         const tatTotal=reached+notReached;
         return[t.name, total, reached, notReached, tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
       }),
       [],
-      ['TOTAL', taskDefs.reduce((s,t)=>s+_trueTotal(t.tcKey,t.rlKey,t.data),0)],
+      ['TOTAL', taskDefs.reduce((s,t)=>s+_trueTotal(t.tcKey,t.rlKey,t.data,t.rlData||t.data),0)],
     ];
     const wsSummary=XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols']=[{wch:22},{wch:16},{wch:14},{wch:18},{wch:18}];
@@ -14427,44 +14435,44 @@ function exportAllTasksXLSX(){
     // ── 2. LVS ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'],
-      (DB.lvs||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.lvs||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
     ), 'LVS');
 
     // ── 3. Classifier ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'],
-      (DB.cls||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.cls||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Classifier');
 
     // ── 4. Compliance ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','TAT','Status','Comments','Created Date'],
-      (DB.comp||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.comp||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Compliance');
 
     // ── 5. PARS Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'],
-      (DB.parsDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.parsDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'PARS Docs');
 
     // ── 6. Ocean Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'],
-      (DB.oceanDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.oceanDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Ocean Docs');
 
     // ── 7. Part Lot ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'],
-      (DB.partLot||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.partLot||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Part Lot');
 
-    // ── 8. Release ──
+    // ── 8. Release — uses _rlData (server-side fetched when date filter active) ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines','Doc Rcvd','Status','User','Start Time','Submitted Time','Duration','TAT','User Comments','TAT Analytics','Created Date','Audit By','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'],
-      (DB.release2||[]).map(r=>{
-        const ar=(DB.audit||[]).find(a=>a.txn===r.txn);
+      (_rlData||[]).map(r=>{
+        const ar=(window._auditByTxn||new Map()).get(String(r.txn));
         const combined=r.comments||'';
         const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
         const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
@@ -14477,33 +14485,34 @@ function exportAllTasksXLSX(){
     // ── 9. Ocean TT ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'],
-      (DB.oceanTT||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
+      _xf(DB.oceanTT||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
     ), 'Ocean TT');
 
     // ── 10. B2 Entries ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','Comments','Created Date'],
-      (DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
+      _xf(DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'B2 Entries');
 
     // ── 11. Closing HVS (non-Client only) ──
     if(!isClient()){
       XLSX.utils.book_append_sheet(wb, makeSheet(
         ['Client No','Txn No','Client Name','Team','Mode','Status','Start Time','Submitted Time','Duration','Comments','User','Date'],
-        (DB.closing||[]).map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
+        _xf(DB.closing||[]).map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
       ), 'Closing HVS');
     }
 
     // ── 12. Audit ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','User','Status','TAT','Trans Created','Submitted','Auditor','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Duration','Created Date'],
-      (DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
+      _xf(DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
     ), 'Audit');
 
     // ── Trigger download ──
     XLSX.writeFile(wb, 'KPI_All_Tasks_'+today+'.xlsx');
-    const total=taskDefs.reduce((s,t)=>s+(t.data||[]).length,0);
-    showToast('Downloaded! '+total+' records across '+(isClient()?'11':'12')+' sheets');
+    const _exportedRL = (_rlData||[]).length;
+    const _exportedOthers = taskDefs.filter(t=>t.name!=='Release').reduce((s,t)=>s+(t.data||[]).length,0);
+    showToast('Downloaded! '+(_exportedRL+_exportedOthers).toLocaleString()+' records across '+(isClient()?'11':'12')+' sheets');
 
   } catch(err){
     console.error('Excel export failed:',err);
@@ -24405,21 +24414,25 @@ function openAuditFromRelease(rlIdx){
 
 async function exportRelease2(){
   const {d1,d2,label} = _getReportDateRange();
-  // If no date filter set — fetch ALL from DB to get complete export
+  showToast('⏳ Fetching release records for export...');
+
   let _data;
   if(!d1 && !d2){
-    const allRaw = await _fetchAllForExport('release', mapRelease);
-    _data = allRaw;
+    // No filter — fetch ALL records from Supabase (keyset pagination, no row cap)
+    _data = await _fetchAllForExport('release', mapRelease);
   } else {
-    _data = _filterByDateRange(DB.release2, d1, d2);
+    // Date filter set — fetch from Supabase server-side to get correct count
+    // Server-side filter is accurate; DB.release2 is capped at 90 days and 100k rows
+    _data = await _fetchReleaseDateRange(d1, d2);
   }
+
   const headers=['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines',
     'Doc Rcvd Date','Profile Code','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
     'Audit By','Error Type','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
   const _isClientExport = isClient();
   const rows=_data.map(r=>{
-    const ar=window._auditByTxn.get(String(r.txn));
+    const ar=window._auditByTxn?.get(String(r.txn));
     const combined=r.comments||'';
     const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
     const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
@@ -24457,6 +24470,38 @@ async function exportRelease2(){
     ]
   });
   showToast(`✅ Exported ${_data.length} release records`);
+}
+
+// ── Server-side date-filtered release fetch ──────────────────────────────────
+// Fetches release records from Supabase with server-side gte/lte on the
+// submitted column. This is the ONLY reliable way to get accurate counts when
+// a date filter is active — DB.release2 is a 90-day rolling window that may
+// be capped and cannot be trusted for historical date-range queries.
+async function _fetchReleaseDateRange(d1, d2){
+  if(!_supa) return _filterByDateRange(DB.release2, d1, d2);
+  showToast('⏳ Fetching release data from server...');
+  const client = _supaAdmin || _supa;
+  const PAGE = 1000;
+  const all = [];
+  const seen = new Set();
+  let lastId = 0;
+  let safety = 0;
+  const HARD_CAP = 500;
+  while(safety++ < HARD_CAP){
+    let q = client.from('release').select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
+    if(d1) q = q.gte('submitted', d1);
+    if(d2) q = q.lte('submitted', d2+'T23:59:59');
+    const {data, error} = await q;
+    if(error){ console.warn('[release export] page error:', error.message); break; }
+    if(!data || data.length === 0) break;
+    for(const row of data){
+      if(row.id!=null && !seen.has(row.id)){ seen.add(row.id); all.push(row); }
+    }
+    lastId = data[data.length-1].id;
+    if(safety % 5 === 0) showToast('⏳ Release export: '+all.length.toLocaleString()+' records fetched...');
+    if(data.length < PAGE) break;
+  }
+  return all.map(mapRelease);
 }
 
 // ══════════════════════════════════════════
@@ -26626,11 +26671,16 @@ function _buildLvsErrPopup(clientNo){
       }
     }
 
-    // Register SW fresh first — don't block app startup on cache operations
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.register('/sw.js')
-        .then(function(){ console.log('[PWA] SW registered (fresh)'); })
-        .catch(function(e){ console.warn('[PWA] SW registration failed:', e); });
+    // Register SW only when served over HTTP — skip for file:// and paths without sw.js
+    if('serviceWorker' in navigator && location.protocol !== 'file:'){
+      navigator.serviceWorker.register('/sw.js', {scope:'/'})
+        .then(function(){ console.log('[PWA] SW registered'); })
+        .catch(function(e){
+          // Silently ignore 404 (no sw.js deployed) — not a breaking error
+          if(e && e.message && (e.message.includes('404')||e.message.includes('Failed to register')||e.message.includes('activating')))
+            return;
+          console.warn('[PWA] SW registration failed:', e);
+        });
     }
 
     // FIX — FREEZE: defer heavy cache-nuke + stamp-probe to AFTER the app is
