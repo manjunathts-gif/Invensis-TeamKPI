@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_4_closing-fixes-client-lookup-user-col-status-2026-04-30" data-build-id="closing-hvs-v8.4-fixes">
+<html lang="en" data-build-stamp="V8_5_errcsv-clhvs-kpifilter-supafix-2026-05-01" data-build-id="v8.5-three-fixes">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -45,7 +45,7 @@ if(location.protocol === 'file:'){
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="console.warn('[KPI] supabase-js CDN load failed — realtime disabled');window._supaJSLoadFailed=true;"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
@@ -3949,7 +3949,12 @@ let   _rtUseProxy   = true;  // flip to false on fallback
 let _supaRT = null;
 function _initSupaRT(){
   try{
-    if(typeof window.supabase === 'undefined'){ console.warn('[RT] supabase-js not loaded'); return; }
+    // Guard: supabase-js failed to load (404 or extension block)
+    if(window._supaJSLoadFailed){ console.warn('[RT] supabase-js not loaded (CDN failed)'); return; }
+    if(typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function'){
+      console.warn('[RT] supabase-js not available — realtime disabled');
+      return;
+    }
     const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
     // Resolve the direct Supabase URL from JWT payload for fallback
     let _directUrl = '';
@@ -13617,12 +13622,22 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data — fast string-slice date comparison, no parseAppDate
+  // Filter data — normalise _created to YYYY-MM-DD for reliable string comparison
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      const ymd = String(r._created||r[tab.ef]||'').slice(0,10);
-      if(!ymd) return true;
+      // Try _created first (ISO string), fallback to ef field, fallback to date field
+      let raw = String(r._created||r[tab.ef]||r.date||'');
+      // Normalise: if it's a locale string like "4/30/2026, 16:03:22" parse it properly
+      let ymd = '';
+      if(raw.match(/^\d{4}-\d{2}-\d{2}/)){
+        ymd = raw.slice(0,10);
+      } else if(raw && raw !== '—'){
+        // Try parsing as date
+        const d = new Date(raw);
+        if(!isNaN(d)) ymd = d.toISOString().slice(0,10);
+      }
+      if(!ymd) return true; // unknown date — include
       if(_kpiD1 && ymd < _kpiD1) return false;
       if(_kpiD2 && ymd > _kpiD2) return false;
       return true;
@@ -13635,8 +13650,9 @@ function kpiShowTab(id){
   if(!c2) return;
 
   // ── Stat KPIs ──
-  // For release tab with no date/mode/team filter: use true DB count (DB.release2 is 90-day only)
-  const _useRlTrue = tab.id==='release' && !_kpiD1 && !_kpiD2 && !_kpiMode && !_kpiTeam
+  // Only use _rlTrueCount when NO filter is active (it represents all-time unfiltered total)
+  const _hasFilter = _kpiD1 || _kpiD2 || _kpiMode || _kpiTeam;
+  const _useRlTrue = !_hasFilter && tab.id==='release'
     && window._rlTrueCount && window._rlTrueCount > data.length;
   const total = _useRlTrue ? window._rlTrueCount : data.length;
   const tf=tab.tf; const sf=tab.sf;
@@ -16292,6 +16308,7 @@ function renderErrorReport(c){
     <input class="fi2" id="err_fsearch" placeholder="🔍 Search Txn/Client" style="min-width:140px" oninput="_debounce('err',applyErrFilter)"/>
     <button class="btn-f" onclick="applyErrFilter()">Apply</button>
     <button class="btn-cl" onclick="clearErrFilter()">Clear</button>
+    <button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose);margin-left:4px" onclick="exportErrorReportCSV()">⬇️ Export CSV</button>
   </div>
 
   <div class="tw">
@@ -16471,6 +16488,62 @@ function applyErrFilter(){
 function clearErrFilter(){
   ['err_d1','err_d2','err_fu','err_ftype','err_fack','err_fsearch'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   applyErrFilter();
+}
+
+function exportErrorReportCSV(){
+  // Export currently-filtered data (respects all active filters)
+  const canUpload=canUploadErrors();
+  const isTLRole=CU&&CU.role==='Team Lead';
+  const _myNames=new Set([CU?.name,CU?.empName,CU?.username].filter(Boolean).map(n=>n.trim().toLowerCase()));
+  // Start from the same visible scope as renderErrorReport
+  let data=(canUpload||isTLRole)?DB.errors:DB.errors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase()));
+  // Apply active filters
+  const d1=document.getElementById('err_d1')?.value;
+  const d2=document.getElementById('err_d2')?.value;
+  const fu=document.getElementById('err_fu')?.value;
+  const ftype=document.getElementById('err_ftype')?.value;
+  const fack=document.getElementById('err_fack')?.value;
+  const fsearch=(document.getElementById('err_fsearch')?.value||'').toLowerCase();
+  if(d1) data=data.filter(e=>new Date(e.date||e._created)>=new Date(d1));
+  if(d2) data=data.filter(e=>new Date(e.date||e._created)<=new Date(d2+'T23:59:59'));
+  if(fu) data=data.filter(e=>e.userName===fu);
+  if(ftype) data=data.filter(e=>e.errorType===ftype);
+  if(fack){
+    const now=Date.now();
+    if(fack==='done')    data=data.filter(e=>!!e.acknowledgedAt);
+    else if(fack==='new')     data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000<=24);
+    else if(fack==='pending') data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000>24&&(now-new Date(e._created||e.date||0))/3600000<=48);
+    else if(fack==='overdue') data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000>48);
+  }
+  if(fsearch) data=data.filter(e=>(e.txn+'').includes(fsearch)||(e.clientName+'').toLowerCase().includes(fsearch)||(e.client+'').includes(fsearch));
+
+  const headers=['Date','Txn No','Client No','Client Name','Team','Task','User','Error Type','%','Mode','Source of Error','Client Comments','User Comments','TL Comments','Created By','Status','Acknowledged At'];
+  const rows=data.map(e=>{
+    const ageH=(Date.now()-new Date(e._created||e.date||0))/3600000;
+    const status=e.acknowledgedAt?'Reviewed':ageH>48?'Overdue':ageH>24?'Pending':'New';
+    return[
+      e.date||String(e._created||'').slice(0,10)||'',
+      e.txn||'',e.client||'',e.clientName||'',e.team||'',e.task||'',
+      e.userName||'',e.errorType||'',e.percentage!=null?e.percentage+'%':'',
+      e.mode||'',e.sourceOfError||'',e.clientComments||'',
+      (e.userComments||'').replace(/^\[Status:[^\]]+\]\s*/,''),
+      e.tlComments||'',e.createdBy||'',status,e.acknowledgedAt||''
+    ];
+  });
+  const d1Str=d1||'',d2Str=d2||'';
+  const label=d1Str&&d2Str?`${d1Str}_to_${d2Str}`:d1Str||d2Str||todayStrET();
+  exportCSV(rows,headers,`Error_Report_${label}.csv`,{
+    taskName:'Error Report',
+    dateLabel:label,
+    total:data.length,
+    extras:[
+      ['New',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h<=24;}).length],
+      ['Pending',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h>24&&h<=48;}).length],
+      ['Overdue',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h>48;}).length],
+      ['Reviewed',data.filter(e=>!!e.acknowledgedAt).length],
+    ]
+  });
+  showToast(`✅ Exported ${data.length} error records`);
 }
 
 function openErrorPanel(){
@@ -20203,7 +20276,6 @@ function updateCLStatus(dbid){
 
 // ── Closing HVS entry panel ─────────────────────────────
 function openClosingPanel(){
-  // Reuse slide-in panel mechanism
   let panel=document.getElementById('closingPanel');
   if(!panel){
     panel=document.createElement('div');
@@ -20217,90 +20289,84 @@ function openClosingPanel(){
     <div class="sp-body">
       <div class="fg">
         <label class="fpl">Client No <span class="req">*</span></label>
-        <input class="fpi" id="cl_clientno" type="number" placeholder="Enter client number" oninput="lookupClosingClient(this)" autocomplete="off"/>
-        <div id="cl_client_err" style="display:none;color:var(--rose);font-size:12px;padding:4px 0"></div>
+        <input class="fpi" id="clhvs_clientno" type="number" placeholder="Enter client number" oninput="lookupClosingClient(this)" autocomplete="off"/>
+        <div id="clhvs_client_err" style="display:none;color:var(--rose);font-size:12px;padding:4px 0"></div>
         <label class="fpl">Transaction Number <span class="req">*</span></label>
-        <input class="fpi" id="cl_txn" placeholder="Transaction number"/>
+        <input class="fpi" id="clhvs_txn" placeholder="Transaction number"/>
         <label class="fpl">Client Name</label>
-        <input class="fpi auto" id="cl_clientname" readonly placeholder="Auto-filled from Client No"/>
+        <input class="fpi auto" id="clhvs_clientname" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Team</label>
-        <input class="fpi auto" id="cl_team" readonly placeholder="Auto-filled from Client No"/>
+        <input class="fpi auto" id="clhvs_team" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Mode <span class="req">*</span></label>
-        <select class="fpi" id="cl_mode">
+        <select class="fpi" id="clhvs_mode">
           <option value="">Select Mode</option>
           <option>Truck</option><option>Air</option><option>Ocean</option><option>Rail</option>
         </select>
         <label class="fpl">Status <span class="req">*</span></label>
-        <select class="fpi" id="cl_status">
+        <select class="fpi" id="clhvs_status">
           <option value="">Select Status</option>
           <option>Submitted to Customs</option><option>Send to CARM</option><option>Completed</option><option>Hold</option>
         </select>
         <label class="fpl">Comments</label>
-        <textarea class="fpi" id="cl_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
+        <textarea class="fpi" id="clhvs_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
       </div>
-      <!-- Hidden timestamp/duration fields — tracked internally, not shown -->
-      <input type="hidden" id="cl_start"/>
-      <input type="hidden" id="cl_submitted"/>
-      <input type="hidden" id="cl_duration" value="00:00:00"/>
-      <button class="btn-save" style="background:var(--rose)" onclick="submitClosing()">💾 Save Closing Entry</button>
+      <input type="hidden" id="clhvs_start"/>
+      <input type="hidden" id="clhvs_submitted"/>
+      <input type="hidden" id="clhvs_duration" value="00:00:00"/>
+      <button class="btn-save" style="background:var(--rose);margin-top:12px" onclick="submitClosing()">💾 Save Closing Entry</button>
     </div>`;
     document.body.appendChild(panel);
   }
-  // Store start time silently
   window._clStartDate = new Date();
-  document.getElementById('cl_start').value = nowStr();
-  // Reset all fields
-  document.getElementById('cl_txn').value='';
-  document.getElementById('cl_clientno').value='';
-  document.getElementById('cl_clientname').value='';
-  document.getElementById('cl_team').value='';
-  document.getElementById('cl_mode').value='';
-  document.getElementById('cl_status').value='';
-  document.getElementById('cl_submitted').value='';
-  document.getElementById('cl_duration').value='00:00:00';
-  document.getElementById('cl_comments').value='';
-  const errEl=document.getElementById('cl_client_err');
-  if(errEl) errEl.style.display='none';
+  document.getElementById('clhvs_start').value = nowStr();
+  ['clhvs_txn','clhvs_clientno','clhvs_clientname','clhvs_team','clhvs_comments'].forEach(id=>{
+    const e=document.getElementById(id); if(e) e.value='';
+  });
+  document.getElementById('clhvs_mode').value='';
+  document.getElementById('clhvs_status').value='';
+  document.getElementById('clhvs_submitted').value='';
+  document.getElementById('clhvs_duration').value='00:00:00';
+  const errEl=document.getElementById('clhvs_client_err');
+  if(errEl){errEl.style.display='none';errEl.textContent='';}
   delete panel.dataset.editIdx;
   panel.classList.add('open');
-  // Tick duration silently every second
   clearInterval(window._clDurTimer);
   window._clDurTimer=setInterval(()=>{
     const diff=new Date()-window._clStartDate;
     const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
-    const el=document.getElementById('cl_duration');
+    const el=document.getElementById('clhvs_duration');
     if(el) el.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
     else clearInterval(window._clDurTimer);
   },1000);
-  // Focus client no field
-  setTimeout(()=>document.getElementById('cl_clientno')?.focus(),100);
+  setTimeout(()=>document.getElementById('clhvs_clientno')?.focus(),100);
 }
 
 function lookupClosingClient(el){
-  fillClient(el.value,'cl_clientname','cl_team','cl_client_err');
+  // Uses same fillClient as Release — lookup by c.id (numeric) from DB.clients
+  fillClient(el.value,'clhvs_clientname','clhvs_team','clhvs_client_err');
 }
 
 function openClosingEdit(idx){
-  const r=DB.closing[idx];if(!r) return;
+  const r=DB.closing[idx]; if(!r) return;
   let panel=document.getElementById('closingPanel');
   if(!panel){ openClosingPanel(); return; }
   clearInterval(window._clDurTimer);
-  document.getElementById('cl_clientno').value=r.clientNo||'';
-  document.getElementById('cl_txn').value=r.txn||'';
-  document.getElementById('cl_clientname').value=r.clientName||'';
-  document.getElementById('cl_team').value=r.team||'';
-  document.getElementById('cl_mode').value=r.mode||'';
-  document.getElementById('cl_status').value=r.status||'';
-  document.getElementById('cl_comments').value=r.comments||'';
+  document.getElementById('clhvs_clientno').value=r.clientNo||'';
+  document.getElementById('clhvs_txn').value=r.txn||'';
+  document.getElementById('clhvs_clientname').value=r.clientName||'';
+  document.getElementById('clhvs_team').value=r.team||'';
+  document.getElementById('clhvs_mode').value=r.mode||'';
+  document.getElementById('clhvs_status').value=r.status||'';
+  document.getElementById('clhvs_comments').value=r.comments||'';
   panel.dataset.editIdx=idx;
   panel.classList.add('open');
 }
 
 function submitClosing(){
-  const clientNo=(document.getElementById('cl_clientno')?.value||'').trim();
-  const txn=(document.getElementById('cl_txn')?.value||'').trim();
-  const mode=document.getElementById('cl_mode')?.value;
-  const status=document.getElementById('cl_status')?.value;
+  const clientNo=(document.getElementById('clhvs_clientno')?.value||'').trim();
+  const txn=(document.getElementById('clhvs_txn')?.value||'').trim();
+  const mode=document.getElementById('clhvs_mode')?.value;
+  const status=document.getElementById('clhvs_status')?.value;
   if(!clientNo){showToast('⚠️ Client No is required',true);return;}
   if(!txn){showToast('⚠️ Transaction Number is required',true);return;}
   if(!mode){showToast('⚠️ Please select a Mode',true);return;}
@@ -20308,20 +20374,20 @@ function submitClosing(){
 
   clearInterval(window._clDurTimer);
   const submittedNow=nowISOET();
-  const startVal=document.getElementById('cl_start')?.value||'';
-  const duration=document.getElementById('cl_duration')?.value||'00:00:00';
+  const startVal=document.getElementById('clhvs_start')?.value||'';
+  const duration=document.getElementById('clhvs_duration')?.value||'00:00:00';
 
   const row={
     client_no:clientNo,
     txn,
-    client_name:document.getElementById('cl_clientname')?.value||null,
-    team:document.getElementById('cl_team')?.value||null,
+    client_name:document.getElementById('clhvs_clientname')?.value||null,
+    team:document.getElementById('clhvs_team')?.value||null,
     mode,
     status,
     start_time:tsForDB(startVal)||null,
     submitted:submittedNow,
     duration,
-    comments:document.getElementById('cl_comments')?.value||null,
+    comments:document.getElementById('clhvs_comments')?.value||null,
     user_name:CU.name||null
   };
   const localRow=mapClosing({...row,id:'pending_'+Date.now()});
