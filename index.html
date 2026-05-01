@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_7_async-export-sw-fiasax-2026-05-01" data-build-id="v8.7-async-sw-fix">
+<html lang="en" data-build-stamp="V8_4_closing-fixes-client-lookup-user-col-status-2026-04-30" data-build-id="closing-hvs-v8.4-fixes">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -45,7 +45,7 @@ if(location.protocol === 'file:'){
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="console.warn('[KPI] supabase-js CDN load failed — realtime disabled');window._supaJSLoadFailed=true;"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
@@ -3778,7 +3778,7 @@ function _makeSupaClient(){
       is(c,v){_filters.push(c+'=is.'+encodeURIComponent(String(v)));return builder;},  // FIX: was missing — caused _iaeSafetyPoll to crash
       order(c,o){_ord=c;_ordAsc=!!(o&&o.ascending);return builder;},
       range(a,b){_from=a;_to=b;return builder;},
-      limit(n){ if(_from===null) _from=0; _to = _from + n - 1; return builder; },
+      limit(n){_to=(_from||0)+n-1;return builder;},
       single(){
         _to=(_from||0);  // limit 1
         const origThen = builder.then.bind(builder);
@@ -3949,12 +3949,7 @@ let   _rtUseProxy   = true;  // flip to false on fallback
 let _supaRT = null;
 function _initSupaRT(){
   try{
-    // Guard: supabase-js failed to load (404 or extension block)
-    if(window._supaJSLoadFailed){ console.warn('[RT] supabase-js not loaded (CDN failed)'); return; }
-    if(typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function'){
-      console.warn('[RT] supabase-js not available — realtime disabled');
-      return;
-    }
+    if(typeof window.supabase === 'undefined'){ console.warn('[RT] supabase-js not loaded'); return; }
     const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
     // Resolve the direct Supabase URL from JWT payload for fallback
     let _directUrl = '';
@@ -4013,43 +4008,22 @@ async function dbLoadRelease(){
   }
   // Server-side cutoff — 90 days, ISO format Postgres can compare directly
   const cutoff = new Date(_now - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
-
-  // ── HEAD count (90-day scoped) — authoritative target for the loader ──
-  let expected90d = null;
-  try{
-    const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    const _hr = await fetch(SUPA_URL+'/rest/v1/release?select=id&submitted=gte.'+encodeURIComponent(cutoff),
-      {method:'HEAD',headers:{apikey:_rk,'Authorization':'Bearer '+_rk,'Prefer':'count=exact'}});
-    const _cr = _hr.headers.get('Content-Range');
-    if(_cr){ const _n = parseInt(_cr.split('/')[1]); if(!isNaN(_n)) expected90d = _n; }
-  }catch(_e){}
-
-  // Keyset pagination by id DESC — robust vs. live inserts and short pages
+  let allRows = [];
+  let from = 0;
   const BATCH = 1000;
-  const seen  = new Set();
-  let   allRows = [];
-  let   lastId  = Number.MAX_SAFE_INTEGER;
-  let   safety  = 0;
-  const HARD_CAP = 200; // 200 × 1000 = 200,000 rows (90-day window ceiling)
-  while(safety++ < HARD_CAP){
+  while(true){
     const {data, error} = await _supa.from('release').select('*')
       .gte('submitted', cutoff)
-      .lt('id', lastId)
       .order('id', {ascending: false})
-      .limit(BATCH);
+      .range(from, from + BATCH - 1);
     if(error){ console.error('dbLoadRelease error:', error.message); break; }
-    if(!data || data.length === 0) break;
-    for(const row of data){
-      const rid = row && row.id;
-      if(rid!=null && !seen.has(rid)){ seen.add(rid); allRows.push(row); }
-    }
-    lastId = data[data.length-1].id;
-    // Break only when we have all expected rows OR server said there are no more
-    if(expected90d !== null && allRows.length >= expected90d) break;
-    if(expected90d === null && data.length < BATCH) break;
+    if(data && data.length > 0) allRows = allRows.concat(data);
+    if(!data || data.length < BATCH) break;
+    from += BATCH;
+    if(from >= 10000) break;
   }
-
-  // Async: fetch TOTAL (unscoped) true count and cache in window._rlTrueCount
+  // Async: fetch true total count (lightweight HEAD — no row data) and cache it
+  // Use direct HEAD fetch for release count — same pattern as _fetchAllTrueCounts
   (async()=>{
     try{
       const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
@@ -13643,22 +13617,12 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data — normalise _created to YYYY-MM-DD for reliable string comparison
+  // Filter data — fast string-slice date comparison, no parseAppDate
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      // Try _created first (ISO string), fallback to ef field, fallback to date field
-      let raw = String(r._created||r[tab.ef]||r.date||'');
-      // Normalise: if it's a locale string like "4/30/2026, 16:03:22" parse it properly
-      let ymd = '';
-      if(raw.match(/^\d{4}-\d{2}-\d{2}/)){
-        ymd = raw.slice(0,10);
-      } else if(raw && raw !== '—'){
-        // Try parsing as date
-        const d = new Date(raw);
-        if(!isNaN(d)) ymd = d.toISOString().slice(0,10);
-      }
-      if(!ymd) return true; // unknown date — include
+      const ymd = String(r._created||r[tab.ef]||'').slice(0,10);
+      if(!ymd) return true;
       if(_kpiD1 && ymd < _kpiD1) return false;
       if(_kpiD2 && ymd > _kpiD2) return false;
       return true;
@@ -13671,9 +13635,8 @@ function kpiShowTab(id){
   if(!c2) return;
 
   // ── Stat KPIs ──
-  // Only use _rlTrueCount when NO filter is active (it represents all-time unfiltered total)
-  const _hasFilter = _kpiD1 || _kpiD2 || _kpiMode || _kpiTeam;
-  const _useRlTrue = !_hasFilter && tab.id==='release'
+  // For release tab with no date/mode/team filter: use true DB count (DB.release2 is 90-day only)
+  const _useRlTrue = tab.id==='release' && !_kpiD1 && !_kpiD2 && !_kpiMode && !_kpiTeam
     && window._rlTrueCount && window._rlTrueCount > data.length;
   const total = _useRlTrue ? window._rlTrueCount : data.length;
   const tf=tab.tf; const sf=tab.sf;
@@ -14360,7 +14323,7 @@ function clearReportFilter(){
 // ══════════════════════════════════════════════════════════
 // EXPORT ALL TASKS — Multi-sheet Excel (SheetJS)
 // ══════════════════════════════════════════════════════════
-async function exportAllTasksXLSX(){
+function exportAllTasksXLSX(){
   // Dynamically load SheetJS if missing (CDN blocked or slow)
   if(typeof XLSX==='undefined'){
     showToast('⏳ Loading Excel library... please wait.',true);
@@ -14399,19 +14362,11 @@ async function exportAllTasksXLSX(){
     const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
     const _noFilter = !_xd1 && !_xd2;
     const _tc = window._trueCounts || {};
-
-    // For Release: fetch server-side when date filter is set (DB.release2 is capped)
-    // Other tasks: _xf() filters in-memory (they load 30-day rolling windows)
-    showToast('⏳ Preparing export — fetching release data...');
-    let _rlData;
-    if(_noFilter){
-      _rlData = DB.release2; // will use _rlTrueCount for summary
-    } else {
-      _rlData = await _fetchReleaseDateRange(_xd1, _xd2);
-    }
-
-    function _trueTotal(tcKey, rlKey, arr, rlArr){
-      if(!_noFilter) return (rlArr||arr||[]).length; // filtered → always use actual length
+    // When no date filter: use true DB counts (HEAD-fetched) for tasks where local
+    // cache is partial (Release loads only 90 days; others load up to SUPABASE_PAGE_SIZE).
+    // Falls back to in-memory length if true count not yet loaded.
+    function _trueTotal(tcKey, rlKey, arr){
+      if(!_noFilter) return (arr||[]).length;
       if(rlKey && typeof window._rlTrueCount === 'number' && window._rlTrueCount > (arr||[]).length)
         return window._rlTrueCount;
       if(tcKey && typeof _tc[tcKey] === 'number' && _tc[tcKey] > (arr||[]).length)
@@ -14419,17 +14374,17 @@ async function exportAllTasksXLSX(){
       return (arr||[]).length;
     }
     const taskDefs=[
-      {name:'LVS',         data:_xf(DB.lvs),         tcKey:'lvs',        rlKey:null, rlData:null},
-      {name:'Classifier',  data:_xf(DB.cls),          tcKey:'cls',        rlKey:null, rlData:null},
-      {name:'Compliance',  data:_xf(DB.comp),         tcKey:'comp',       rlKey:null, rlData:null},
-      {name:'PARS Docs',   data:_xf(DB.parsDocs),     tcKey:'pars_docs',  rlKey:null, rlData:null},
-      {name:'Ocean Docs',  data:_xf(DB.oceanDocs),    tcKey:'ocean_docs', rlKey:null, rlData:null},
-      {name:'Part Lot',    data:_xf(DB.partLot),      tcKey:'part_lot',   rlKey:null, rlData:null},
-      {name:'Release',     data:_xf(DB.release2),     tcKey:null,         rlKey:true, rlData:_rlData},
-      {name:'Ocean TT',    data:_xf(DB.oceanTT),      tcKey:'ocean_tt',   rlKey:null, rlData:null},
-      {name:'B2 Entries',  data:_xf(DB.b2entries),    tcKey:'b2_entries', rlKey:null, rlData:null},
-      ...(isClient()?[]:[{name:'Closing HVS',data:_xf(DB.closing||[]),tcKey:'closing',rlKey:null,rlData:null}]),
-      {name:'Audit',       data:_xf(DB.audit),        tcKey:null,         rlKey:null, rlData:null},
+      {name:'LVS',         data:_xf(DB.lvs),         tcKey:'lvs',        rlKey:null},
+      {name:'Classifier',  data:_xf(DB.cls),          tcKey:'cls',        rlKey:null},
+      {name:'Compliance',  data:_xf(DB.comp),         tcKey:'comp',       rlKey:null},
+      {name:'PARS Docs',   data:_xf(DB.parsDocs),     tcKey:'pars_docs',  rlKey:null},
+      {name:'Ocean Docs',  data:_xf(DB.oceanDocs),    tcKey:'ocean_docs', rlKey:null},
+      {name:'Part Lot',    data:_xf(DB.partLot),      tcKey:'part_lot',   rlKey:null},
+      {name:'Release',     data:_xf(DB.release2),     tcKey:null,         rlKey:true},
+      {name:'Ocean TT',    data:_xf(DB.oceanTT),      tcKey:'ocean_tt',   rlKey:null},
+      {name:'B2 Entries',  data:_xf(DB.b2entries),    tcKey:'b2_entries', rlKey:null},
+      ...(isClient()?[]:[{name:'Closing HVS',data:_xf(DB.closing||[]),tcKey:'closing',rlKey:null}]),
+      {name:'Audit',       data:_xf(DB.audit),        tcKey:null,         rlKey:null},
     ];
     const summaryRows=[
       ['KPI Production Report - All Tasks'],
@@ -14440,15 +14395,14 @@ async function exportAllTasksXLSX(){
       [],
       ['Task Name','Total Records','TAT Reached','TAT Not Reached','TAT Compliance %'],
       ...taskDefs.map(t=>{
-        const _eff = t.rlData || t.data || [];
-        const total = _trueTotal(t.tcKey, t.rlKey, t.data, _eff);
-        const reached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-        const notReached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
+        const total = _trueTotal(t.tcKey, t.rlKey, t.data);
+        const reached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
+        const notReached=(t.data||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
         const tatTotal=reached+notReached;
         return[t.name, total, reached, notReached, tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
       }),
       [],
-      ['TOTAL', taskDefs.reduce((s,t)=>s+_trueTotal(t.tcKey,t.rlKey,t.data,t.rlData||t.data),0)],
+      ['TOTAL', taskDefs.reduce((s,t)=>s+_trueTotal(t.tcKey,t.rlKey,t.data),0)],
     ];
     const wsSummary=XLSX.utils.aoa_to_sheet(summaryRows);
     wsSummary['!cols']=[{wch:22},{wch:16},{wch:14},{wch:18},{wch:18}];
@@ -14457,44 +14411,44 @@ async function exportAllTasksXLSX(){
     // ── 2. LVS ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'],
-      _xf(DB.lvs||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.lvs||[]).map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)])
     ), 'LVS');
 
     // ── 3. Classifier ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'],
-      _xf(DB.cls||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.cls||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientName||'',r.team||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Classifier');
 
     // ── 4. Compliance ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','TAT','Status','Comments','Created Date'],
-      _xf(DB.comp||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.comp||[]).map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Compliance');
 
     // ── 5. PARS Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'],
-      _xf(DB.parsDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.parsDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'PARS Docs');
 
     // ── 6. Ocean Docs ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'],
-      _xf(DB.oceanDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.oceanDocs||[]).map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Ocean Docs');
 
     // ── 7. Part Lot ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'],
-      _xf(DB.partLot||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.partLot||[]).map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'Part Lot');
 
-    // ── 8. Release — uses _rlData (server-side fetched when date filter active) ──
+    // ── 8. Release ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines','Doc Rcvd','Status','User','Start Time','Submitted Time','Duration','TAT','User Comments','TAT Analytics','Created Date','Audit By','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'],
-      (_rlData||[]).map(r=>{
-        const ar=(window._auditByTxn||new Map()).get(String(r.txn));
+      (DB.release2||[]).map(r=>{
+        const ar=(DB.audit||[]).find(a=>a.txn===r.txn);
         const combined=r.comments||'';
         const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
         const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
@@ -14507,34 +14461,33 @@ async function exportAllTasksXLSX(){
     // ── 9. Ocean TT ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'],
-      _xf(DB.oceanTT||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
+      (DB.oceanTT||[]).map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)])
     ), 'Ocean TT');
 
     // ── 10. B2 Entries ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','Comments','Created Date'],
-      _xf(DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
+      (DB.b2entries||[]).map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',r.comments||'',(r._created||'').slice(0,10)])
     ), 'B2 Entries');
 
     // ── 11. Closing HVS (non-Client only) ──
     if(!isClient()){
       XLSX.utils.book_append_sheet(wb, makeSheet(
         ['Client No','Txn No','Client Name','Team','Mode','Status','Start Time','Submitted Time','Duration','Comments','User','Date'],
-        _xf(DB.closing||[]).map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
+        (DB.closing||[]).map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
       ), 'Closing HVS');
     }
 
     // ── 12. Audit ──
     XLSX.utils.book_append_sheet(wb, makeSheet(
       ['Txn','Mode','Client','Client Name','Team','User','Status','TAT','Trans Created','Submitted','Auditor','Error Type','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Duration','Created Date'],
-      _xf(DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
+      (DB.audit||[]).map(r=>[r.txn||'',r.mode||'',r.client||'',r.clientname||'',r.team||'',r.user||'',r.rlStatus||'',r.rlTat||'',r.transcreated||'',r.submitted||'',r.auditor||'',r.errorType||'',r.score||'',r.doubleSign||'',r.comments||'',r.startTime||'',r.endTime||'',r.duration||'',(r._created||'').slice(0,10)])
     ), 'Audit');
 
     // ── Trigger download ──
     XLSX.writeFile(wb, 'KPI_All_Tasks_'+today+'.xlsx');
-    const _exportedRL = (_rlData||[]).length;
-    const _exportedOthers = taskDefs.filter(t=>t.name!=='Release').reduce((s,t)=>s+(t.data||[]).length,0);
-    showToast('Downloaded! '+(_exportedRL+_exportedOthers).toLocaleString()+' records across '+(isClient()?'11':'12')+' sheets');
+    const total=taskDefs.reduce((s,t)=>s+(t.data||[]).length,0);
+    showToast('Downloaded! '+total+' records across '+(isClient()?'11':'12')+' sheets');
 
   } catch(err){
     console.error('Excel export failed:',err);
@@ -14692,7 +14645,7 @@ async function _fetchAllForExport(table, mapFn){
 
     if(error){
       console.warn('[export] page error on', table, error.message);
-      // Soft retry once — do NOT advance lastId
+      // Soft retry once
       await new Promise(r=>setTimeout(r,400));
       continue;
     }
@@ -14710,11 +14663,11 @@ async function _fetchAllForExport(table, mapFn){
       showToast('⏳ Exporting '+table+': '+all.length.toLocaleString()+(pct!==null?' / '+expectedTotal.toLocaleString()+' ('+pct+'%)':''));
     }
 
-    // ── Natural end: break ONLY when we've fetched ≥ expectedTotal.
-    // Never break solely on short page — PostgREST can return a partial
-    // page mid-dataset under load, which caused the 10k export cap.
-    if(expectedTotal !== null && all.length >= expectedTotal) break;
-    if(expectedTotal === null && data.length < PAGE) break; // fallback when HEAD failed
+    // Natural end: fewer than PAGE AND we've reached/exceeded expected count
+    if(data.length < PAGE){
+      if(expectedTotal === null || all.length >= expectedTotal) break;
+      // Otherwise keep going — server returned a short page but there are more rows
+    }
   }
 
   if(expectedTotal !== null && all.length < expectedTotal){
@@ -16339,7 +16292,6 @@ function renderErrorReport(c){
     <input class="fi2" id="err_fsearch" placeholder="🔍 Search Txn/Client" style="min-width:140px" oninput="_debounce('err',applyErrFilter)"/>
     <button class="btn-f" onclick="applyErrFilter()">Apply</button>
     <button class="btn-cl" onclick="clearErrFilter()">Clear</button>
-    <button class="btn-exp" style="background:var(--rose-bg);border-color:rgba(225,29,72,.3);color:var(--rose);margin-left:4px" onclick="exportErrorReportCSV()">⬇️ Export CSV</button>
   </div>
 
   <div class="tw">
@@ -16519,62 +16471,6 @@ function applyErrFilter(){
 function clearErrFilter(){
   ['err_d1','err_d2','err_fu','err_ftype','err_fack','err_fsearch'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   applyErrFilter();
-}
-
-function exportErrorReportCSV(){
-  // Export currently-filtered data (respects all active filters)
-  const canUpload=canUploadErrors();
-  const isTLRole=CU&&CU.role==='Team Lead';
-  const _myNames=new Set([CU?.name,CU?.empName,CU?.username].filter(Boolean).map(n=>n.trim().toLowerCase()));
-  // Start from the same visible scope as renderErrorReport
-  let data=(canUpload||isTLRole)?DB.errors:DB.errors.filter(e=>_myNames.has((e.userName||'').trim().toLowerCase()));
-  // Apply active filters
-  const d1=document.getElementById('err_d1')?.value;
-  const d2=document.getElementById('err_d2')?.value;
-  const fu=document.getElementById('err_fu')?.value;
-  const ftype=document.getElementById('err_ftype')?.value;
-  const fack=document.getElementById('err_fack')?.value;
-  const fsearch=(document.getElementById('err_fsearch')?.value||'').toLowerCase();
-  if(d1) data=data.filter(e=>new Date(e.date||e._created)>=new Date(d1));
-  if(d2) data=data.filter(e=>new Date(e.date||e._created)<=new Date(d2+'T23:59:59'));
-  if(fu) data=data.filter(e=>e.userName===fu);
-  if(ftype) data=data.filter(e=>e.errorType===ftype);
-  if(fack){
-    const now=Date.now();
-    if(fack==='done')    data=data.filter(e=>!!e.acknowledgedAt);
-    else if(fack==='new')     data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000<=24);
-    else if(fack==='pending') data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000>24&&(now-new Date(e._created||e.date||0))/3600000<=48);
-    else if(fack==='overdue') data=data.filter(e=>!e.acknowledgedAt&&(now-new Date(e._created||e.date||0))/3600000>48);
-  }
-  if(fsearch) data=data.filter(e=>(e.txn+'').includes(fsearch)||(e.clientName+'').toLowerCase().includes(fsearch)||(e.client+'').includes(fsearch));
-
-  const headers=['Date','Txn No','Client No','Client Name','Team','Task','User','Error Type','%','Mode','Source of Error','Client Comments','User Comments','TL Comments','Created By','Status','Acknowledged At'];
-  const rows=data.map(e=>{
-    const ageH=(Date.now()-new Date(e._created||e.date||0))/3600000;
-    const status=e.acknowledgedAt?'Reviewed':ageH>48?'Overdue':ageH>24?'Pending':'New';
-    return[
-      e.date||String(e._created||'').slice(0,10)||'',
-      e.txn||'',e.client||'',e.clientName||'',e.team||'',e.task||'',
-      e.userName||'',e.errorType||'',e.percentage!=null?e.percentage+'%':'',
-      e.mode||'',e.sourceOfError||'',e.clientComments||'',
-      (e.userComments||'').replace(/^\[Status:[^\]]+\]\s*/,''),
-      e.tlComments||'',e.createdBy||'',status,e.acknowledgedAt||''
-    ];
-  });
-  const d1Str=d1||'',d2Str=d2||'';
-  const label=d1Str&&d2Str?`${d1Str}_to_${d2Str}`:d1Str||d2Str||todayStrET();
-  exportCSV(rows,headers,`Error_Report_${label}.csv`,{
-    taskName:'Error Report',
-    dateLabel:label,
-    total:data.length,
-    extras:[
-      ['New',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h<=24;}).length],
-      ['Pending',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h>24&&h<=48;}).length],
-      ['Overdue',data.filter(e=>{const h=(Date.now()-new Date(e._created||e.date||0))/3600000;return !e.acknowledgedAt&&h>48;}).length],
-      ['Reviewed',data.filter(e=>!!e.acknowledgedAt).length],
-    ]
-  });
-  showToast(`✅ Exported ${data.length} error records`);
 }
 
 function openErrorPanel(){
@@ -20307,6 +20203,7 @@ function updateCLStatus(dbid){
 
 // ── Closing HVS entry panel ─────────────────────────────
 function openClosingPanel(){
+  // Reuse slide-in panel mechanism
   let panel=document.getElementById('closingPanel');
   if(!panel){
     panel=document.createElement('div');
@@ -20320,84 +20217,90 @@ function openClosingPanel(){
     <div class="sp-body">
       <div class="fg">
         <label class="fpl">Client No <span class="req">*</span></label>
-        <input class="fpi" id="clhvs_clientno" type="number" placeholder="Enter client number" oninput="lookupClosingClient(this)" autocomplete="off"/>
-        <div id="clhvs_client_err" style="display:none;color:var(--rose);font-size:12px;padding:4px 0"></div>
+        <input class="fpi" id="cl_clientno" type="number" placeholder="Enter client number" oninput="lookupClosingClient(this)" autocomplete="off"/>
+        <div id="cl_client_err" style="display:none;color:var(--rose);font-size:12px;padding:4px 0"></div>
         <label class="fpl">Transaction Number <span class="req">*</span></label>
-        <input class="fpi" id="clhvs_txn" placeholder="Transaction number"/>
+        <input class="fpi" id="cl_txn" placeholder="Transaction number"/>
         <label class="fpl">Client Name</label>
-        <input class="fpi auto" id="clhvs_clientname" readonly placeholder="Auto-filled from Client No"/>
+        <input class="fpi auto" id="cl_clientname" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Team</label>
-        <input class="fpi auto" id="clhvs_team" readonly placeholder="Auto-filled from Client No"/>
+        <input class="fpi auto" id="cl_team" readonly placeholder="Auto-filled from Client No"/>
         <label class="fpl">Mode <span class="req">*</span></label>
-        <select class="fpi" id="clhvs_mode">
+        <select class="fpi" id="cl_mode">
           <option value="">Select Mode</option>
           <option>Truck</option><option>Air</option><option>Ocean</option><option>Rail</option>
         </select>
         <label class="fpl">Status <span class="req">*</span></label>
-        <select class="fpi" id="clhvs_status">
+        <select class="fpi" id="cl_status">
           <option value="">Select Status</option>
           <option>Submitted to Customs</option><option>Send to CARM</option><option>Completed</option><option>Hold</option>
         </select>
         <label class="fpl">Comments</label>
-        <textarea class="fpi" id="clhvs_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
+        <textarea class="fpi" id="cl_comments" rows="3" placeholder="Optional comments" style="resize:vertical"></textarea>
       </div>
-      <input type="hidden" id="clhvs_start"/>
-      <input type="hidden" id="clhvs_submitted"/>
-      <input type="hidden" id="clhvs_duration" value="00:00:00"/>
-      <button class="btn-save" style="background:var(--rose);margin-top:12px" onclick="submitClosing()">💾 Save Closing Entry</button>
+      <!-- Hidden timestamp/duration fields — tracked internally, not shown -->
+      <input type="hidden" id="cl_start"/>
+      <input type="hidden" id="cl_submitted"/>
+      <input type="hidden" id="cl_duration" value="00:00:00"/>
+      <button class="btn-save" style="background:var(--rose)" onclick="submitClosing()">💾 Save Closing Entry</button>
     </div>`;
     document.body.appendChild(panel);
   }
+  // Store start time silently
   window._clStartDate = new Date();
-  document.getElementById('clhvs_start').value = nowStr();
-  ['clhvs_txn','clhvs_clientno','clhvs_clientname','clhvs_team','clhvs_comments'].forEach(id=>{
-    const e=document.getElementById(id); if(e) e.value='';
-  });
-  document.getElementById('clhvs_mode').value='';
-  document.getElementById('clhvs_status').value='';
-  document.getElementById('clhvs_submitted').value='';
-  document.getElementById('clhvs_duration').value='00:00:00';
-  const errEl=document.getElementById('clhvs_client_err');
-  if(errEl){errEl.style.display='none';errEl.textContent='';}
+  document.getElementById('cl_start').value = nowStr();
+  // Reset all fields
+  document.getElementById('cl_txn').value='';
+  document.getElementById('cl_clientno').value='';
+  document.getElementById('cl_clientname').value='';
+  document.getElementById('cl_team').value='';
+  document.getElementById('cl_mode').value='';
+  document.getElementById('cl_status').value='';
+  document.getElementById('cl_submitted').value='';
+  document.getElementById('cl_duration').value='00:00:00';
+  document.getElementById('cl_comments').value='';
+  const errEl=document.getElementById('cl_client_err');
+  if(errEl) errEl.style.display='none';
   delete panel.dataset.editIdx;
   panel.classList.add('open');
+  // Tick duration silently every second
   clearInterval(window._clDurTimer);
   window._clDurTimer=setInterval(()=>{
     const diff=new Date()-window._clStartDate;
     const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
-    const el=document.getElementById('clhvs_duration');
+    const el=document.getElementById('cl_duration');
     if(el) el.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
     else clearInterval(window._clDurTimer);
   },1000);
-  setTimeout(()=>document.getElementById('clhvs_clientno')?.focus(),100);
+  // Focus client no field
+  setTimeout(()=>document.getElementById('cl_clientno')?.focus(),100);
 }
 
 function lookupClosingClient(el){
-  // Uses same fillClient as Release — lookup by c.id (numeric) from DB.clients
-  fillClient(el.value,'clhvs_clientname','clhvs_team','clhvs_client_err');
+  fillClient(el.value,'cl_clientname','cl_team','cl_client_err');
 }
 
 function openClosingEdit(idx){
-  const r=DB.closing[idx]; if(!r) return;
+  const r=DB.closing[idx];if(!r) return;
   let panel=document.getElementById('closingPanel');
   if(!panel){ openClosingPanel(); return; }
   clearInterval(window._clDurTimer);
-  document.getElementById('clhvs_clientno').value=r.clientNo||'';
-  document.getElementById('clhvs_txn').value=r.txn||'';
-  document.getElementById('clhvs_clientname').value=r.clientName||'';
-  document.getElementById('clhvs_team').value=r.team||'';
-  document.getElementById('clhvs_mode').value=r.mode||'';
-  document.getElementById('clhvs_status').value=r.status||'';
-  document.getElementById('clhvs_comments').value=r.comments||'';
+  document.getElementById('cl_clientno').value=r.clientNo||'';
+  document.getElementById('cl_txn').value=r.txn||'';
+  document.getElementById('cl_clientname').value=r.clientName||'';
+  document.getElementById('cl_team').value=r.team||'';
+  document.getElementById('cl_mode').value=r.mode||'';
+  document.getElementById('cl_status').value=r.status||'';
+  document.getElementById('cl_comments').value=r.comments||'';
   panel.dataset.editIdx=idx;
   panel.classList.add('open');
 }
 
 function submitClosing(){
-  const clientNo=(document.getElementById('clhvs_clientno')?.value||'').trim();
-  const txn=(document.getElementById('clhvs_txn')?.value||'').trim();
-  const mode=document.getElementById('clhvs_mode')?.value;
-  const status=document.getElementById('clhvs_status')?.value;
+  const clientNo=(document.getElementById('cl_clientno')?.value||'').trim();
+  const txn=(document.getElementById('cl_txn')?.value||'').trim();
+  const mode=document.getElementById('cl_mode')?.value;
+  const status=document.getElementById('cl_status')?.value;
   if(!clientNo){showToast('⚠️ Client No is required',true);return;}
   if(!txn){showToast('⚠️ Transaction Number is required',true);return;}
   if(!mode){showToast('⚠️ Please select a Mode',true);return;}
@@ -20405,20 +20308,20 @@ function submitClosing(){
 
   clearInterval(window._clDurTimer);
   const submittedNow=nowISOET();
-  const startVal=document.getElementById('clhvs_start')?.value||'';
-  const duration=document.getElementById('clhvs_duration')?.value||'00:00:00';
+  const startVal=document.getElementById('cl_start')?.value||'';
+  const duration=document.getElementById('cl_duration')?.value||'00:00:00';
 
   const row={
     client_no:clientNo,
     txn,
-    client_name:document.getElementById('clhvs_clientname')?.value||null,
-    team:document.getElementById('clhvs_team')?.value||null,
+    client_name:document.getElementById('cl_clientname')?.value||null,
+    team:document.getElementById('cl_team')?.value||null,
     mode,
     status,
     start_time:tsForDB(startVal)||null,
     submitted:submittedNow,
     duration,
-    comments:document.getElementById('clhvs_comments')?.value||null,
+    comments:document.getElementById('cl_comments')?.value||null,
     user_name:CU.name||null
   };
   const localRow=mapClosing({...row,id:'pending_'+Date.now()});
@@ -24436,25 +24339,21 @@ function openAuditFromRelease(rlIdx){
 
 async function exportRelease2(){
   const {d1,d2,label} = _getReportDateRange();
-  showToast('⏳ Fetching release records for export...');
-
+  // If no date filter set — fetch ALL from DB to get complete export
   let _data;
   if(!d1 && !d2){
-    // No filter — fetch ALL records from Supabase (keyset pagination, no row cap)
-    _data = await _fetchAllForExport('release', mapRelease);
+    const allRaw = await _fetchAllForExport('release', mapRelease);
+    _data = allRaw;
   } else {
-    // Date filter set — fetch from Supabase server-side to get correct count
-    // Server-side filter is accurate; DB.release2 is capped at 90 days and 100k rows
-    _data = await _fetchReleaseDateRange(d1, d2);
+    _data = _filterByDateRange(DB.release2, d1, d2);
   }
-
   const headers=['Txn','Trans Created','ETA','Client','Client Name','Team','Mode','Lines',
     'Doc Rcvd Date','Profile Code','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
     'Audit By','Error Type','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
   const _isClientExport = isClient();
   const rows=_data.map(r=>{
-    const ar=window._auditByTxn?.get(String(r.txn));
+    const ar=window._auditByTxn.get(String(r.txn));
     const combined=r.comments||'';
     const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
     const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
@@ -24492,87 +24391,6 @@ async function exportRelease2(){
     ]
   });
   showToast(`✅ Exported ${_data.length} release records`);
-}
-
-// ── Server-side date-filtered release fetch ──────────────────────────────────
-// Fetches release records from Supabase with server-side gte/lte on the
-// submitted column. This is the ONLY reliable way to get accurate counts when
-// a date filter is active — DB.release2 is a 90-day rolling window that may
-// be capped and cannot be trusted for historical date-range queries.
-async function _fetchReleaseDateRange(d1, d2){
-  if(!_supa) return _filterByDateRange(DB.release2, d1, d2);
-  showToast('⏳ Fetching release data from server...');
-  const client = _supaAdmin || _supa;
-  const PAGE = 1000;
-  const all = [];
-  const seen = new Set();
-  let lastId = 0;
-  let safety = 0;
-  const HARD_CAP = 2000; // supports up to 2,000,000 rows
-
-  // ── Step 1: authoritative total count from server (HEAD + count=exact) ──
-  // With date filter applied server-side so the number reflects the export scope.
-  let expectedTotal = null;
-  try{
-    const _rk = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    let _headUrl = SUPA_URL + '/rest/v1/release?select=id';
-    if(d1) _headUrl += '&submitted=gte.' + encodeURIComponent(d1);
-    if(d2) _headUrl += '&submitted=lte.' + encodeURIComponent(d2+'T23:59:59');
-    const _headRes = await fetch(_headUrl, {
-      method:'HEAD',
-      headers:{apikey:_rk,'Authorization':'Bearer '+_rk,'Prefer':'count=exact'}
-    });
-    const _cr = _headRes.headers.get('Content-Range');
-    if(_cr){ const _n = parseInt(_cr.split('/')[1]); if(!isNaN(_n)) expectedTotal = _n; }
-    if(expectedTotal !== null){
-      console.log('[release export] expected total:', expectedTotal);
-      showToast('⏳ Release export: 0 / '+expectedTotal.toLocaleString()+' records...');
-    }
-  }catch(_e){ console.warn('[release export] HEAD count failed:', _e.message); }
-
-  // ── Step 2: keyset pagination — fetch 1000 rows at a time, id-ordered ──
-  while(safety++ < HARD_CAP){
-    let q = client.from('release').select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
-    if(d1) q = q.gte('submitted', d1);
-    if(d2) q = q.lte('submitted', d2+'T23:59:59');
-    const {data, error} = await q;
-
-    if(error){
-      console.warn('[release export] page error:', error.message);
-      // Soft retry once with 500ms delay — do NOT break, do NOT advance lastId
-      await new Promise(r=>setTimeout(r, 500));
-      if(safety < HARD_CAP - 1) continue;
-      break;
-    }
-    if(!data || data.length === 0) break;
-
-    for(const row of data){
-      if(row.id!=null && !seen.has(row.id)){ seen.add(row.id); all.push(row); }
-    }
-    lastId = data[data.length-1].id;
-
-    if(safety % 3 === 0){
-      const pct = expectedTotal ? Math.round(all.length/expectedTotal*100) : null;
-      showToast('⏳ Release export: '+all.length.toLocaleString()+
-        (expectedTotal ? ' / '+expectedTotal.toLocaleString()+' ('+pct+'%)' : '')+'...');
-    }
-
-    // ── Natural end: only break when server returned fewer than PAGE
-    // AND we've reached (or there was no) expected total. This prevents
-    // stopping early if the server sends a short page mid-dataset.
-    if(data.length < PAGE){
-      if(expectedTotal === null || all.length >= expectedTotal) break;
-      // Server returned short page but more rows expected → keep going
-    }
-    if(expectedTotal !== null && all.length >= expectedTotal) break;
-  }
-
-  if(expectedTotal !== null && all.length < expectedTotal){
-    console.warn('[release export] fetched', all.length, 'of', expectedTotal,
-      '— '+(expectedTotal-all.length)+' missing');
-    showToast('⚠️ Release: '+all.length.toLocaleString()+' of '+expectedTotal.toLocaleString()+' fetched', true);
-  }
-  return all.map(mapRelease);
 }
 
 // ══════════════════════════════════════════
@@ -26742,16 +26560,11 @@ function _buildLvsErrPopup(clientNo){
       }
     }
 
-    // Register SW only when served over HTTP — skip for file:// and paths without sw.js
-    if('serviceWorker' in navigator && location.protocol !== 'file:'){
-      navigator.serviceWorker.register('/sw.js', {scope:'/'})
-        .then(function(){ console.log('[PWA] SW registered'); })
-        .catch(function(e){
-          // Silently ignore 404 (no sw.js deployed) — not a breaking error
-          if(e && e.message && (e.message.includes('404')||e.message.includes('Failed to register')||e.message.includes('activating')))
-            return;
-          console.warn('[PWA] SW registration failed:', e);
-        });
+    // Register SW fresh first — don't block app startup on cache operations
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('/sw.js')
+        .then(function(){ console.log('[PWA] SW registered (fresh)'); })
+        .catch(function(e){ console.warn('[PWA] SW registration failed:', e); });
     }
 
     // FIX — FREEZE: defer heavy cache-nuke + stamp-probe to AFTER the app is
@@ -26775,6 +26588,5 @@ function _buildLvsErrPopup(clientNo){
      then paste the beacon script back here. Keeping it active with no feature enabled
      only generates a noisy 404 on every page load with zero benefit. -->
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
