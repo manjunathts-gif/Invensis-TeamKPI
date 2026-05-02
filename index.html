@@ -14419,7 +14419,7 @@ async function exportAllTasksXLSX(){
         _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs,_xd1, _xd2),
         _fetchTaskByCreatedDate('part_lot',   mapPartLot,  _xd1, _xd2),
         _fetchTaskByCreatedDate('release',    mapRelease,  _xd1, _xd2),
-        _fetchTaskByCreatedDate('ocean_tt',   mapOTT,      _xd1, _xd2),
+        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,  _xd1, _xd2),
         _fetchTaskByCreatedDate('b2_entries', mapB2,       _xd1, _xd2),
         isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing', mapClosing, _xd1, _xd2),
         _fetchTaskByCreatedDate('audit',      mapAudit,    _xd1, _xd2),
