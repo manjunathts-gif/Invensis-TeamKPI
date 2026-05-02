@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_4_correct-dateCol-per-table-2026-05-02" data-build-id="v9.4-datecol-fix">
+<html lang="en" data-build-stamp="V9_5_created-at-primary-all-tasks-2026-05-02" data-build-id="v9.5-createdAt-all-tasks">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4509,7 +4509,7 @@ function _toETDate(s){
   return isoToETLocalDate(iso);
 }
 function mapLVS(r){
-  const _sd=r.submitted_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.submitted_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const submitDisp=toDisplayDT(r.submitted_time);
@@ -4518,7 +4518,7 @@ function mapLVS(r){
   return{id:r.id,txn:r.txn,releaseDate:r.release_date,startTime:startDisp,client:r.client,clientName:cli.name,team:cli.team,type:r.type,status:r.status,irs:r.irs,lines:r.lines,assignedTo:r.assigned_to,submittedTime:submitDisp,duration:dur,aht:r.aht,tat:r.tat,comments:r.comments,_created:_sd,_submitRaw:_sr,_idx:0,_dbid:r.id};
 }
 function mapCLS(r){
-  const _sd=r.submitted_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.submitted_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const submitDisp=toDisplayDT(r.submitted_time);
@@ -4527,7 +4527,7 @@ function mapCLS(r){
   return{id:r.id,txn:r.txn,mode:r.mode,client:r.client,clientName:cli.name,team:cli.team,assignedTo:r.assigned_to,startTime:startDisp,submittedTime:submitDisp,duration:dur,tat:r.tat,status:r.status,comments:r.comments,_created:_sd,_submitRaw:_sr,_idx:0,_dbid:r.id};
 }
 function mapCOMP(r){
-  const _sd=r.completed_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.completed_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const compDisp=toDisplayDT(r.completed_time);
@@ -4535,7 +4535,7 @@ function mapCOMP(r){
   return{id:r.id,subject:r.subject,startTime:startDisp,clientName:r.client_name,clientNo:r.client_no,reqType:r.req_type,mailRcvd:toDisplayDTRaw(r.mail_rcvd),txn:r.txn,lines:r.lines,assignedTo:r.assigned_to,completedTime:compDisp,duration:dur,tat:r.tat,comments:r.comments,status:r.status,_created:_sd,_submitRaw:_sr,_idx:0,_dbid:r.id};
 }
 function mapPARSDocs(r){
-  const _sd=r.created_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.created_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const createdDisp=toDisplayDT(r.created_time);
@@ -4544,7 +4544,7 @@ function mapPARSDocs(r){
   return{id:r.id,mailbox:r.mailbox,subject:r.subject,mailrcvd:toDisplayDTRaw(r.mailrcvd),start:startDisp,txn:r.txn,client:r.client,clientname:cli.name,team:cli.team,mode:r.mode,eta:r.eta,user:r.user_name,created:createdDisp,duration:dur,tat:r.tat,comments:r.comments,_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
 function mapOceanDocs(r){
-  const _sd=r.created_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.created_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const createdDisp=toDisplayDT(r.created_time);
@@ -4553,7 +4553,7 @@ function mapOceanDocs(r){
   return{id:r.id,mailbox:r.mailbox,subject:r.subject,mailrcvd:toDisplayDTRaw(r.mailrcvd),start:startDisp,txn:r.txn,client:r.client,clientname:cli.name,team:cli.team,mode:r.mode,shiptype:r.shiptype,irs:r.irs,doc:r.doc,reqdoc:r.reqdoc,sentlog:r.sentlog,docsdated:r.docsdated,docsforwarded:r.docsforwarded,user:r.user_name,created:createdDisp,duration:dur,tat:r.tat,shift:r.shift,comments:r.comments,_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
 function mapPartLot(r){
-  const _sd=r.completed_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.completed_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const compDisp=toDisplayDT(r.completed_time);
@@ -4561,7 +4561,7 @@ function mapPartLot(r){
   return{id:r.id,subject:r.subject,txn:r.txn,parsno:r.pars_no,mailrcvd:toDisplayDTRaw(r.mailrcvd),start:startDisp,user:r.user_name,completed:compDisp,completedPL:compDisp,duration:dur,tat:r.tat,comments:r.comments,_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
 function mapRelease(r){
-  const _sd=r.submitted||r.created_at||r.start_time;
+  const _sd=r.created_at||r.submitted||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const submitDisp=toDisplayDT(r.submitted);
@@ -4570,7 +4570,7 @@ function mapRelease(r){
   return{id:r.id,txn:r.txn,transcreated:toDisplayDTRaw(r.transcreated),eta:toDisplayDTRaw(r.eta),start:startDisp,client:r.client,clientname:cli.name,team:cli.team,lines:r.lines,mode:r.mode,docrcvd:r.docrcvd,status:r.status,profileCode:r.profile_code||'—',user:r.user_name,submitted:submitDisp,duration:dur,tat:r.tat,comments:r.comments,userComments:r.user_comments||null,tlNotes:r.tl_notes||null,qualityScore:r.quality_score,_created:_sd,_submitRaw:_sr,_idx:0,_dbid:r.id};
 }
 function mapOceanTT(r){
-  const _sd=r.complete_time||r.created_at||r.start_time;
+  const _sd=r.created_at||r.complete_time||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const compDisp=toDisplayDT(r.complete_time);
@@ -4579,14 +4579,14 @@ function mapOceanTT(r){
   return{id:r.id,txn:r.txn,status:r.status,clientname:r.client_name,team:r.team,etancc:r.etancc,ncccomments:r.ncc_comments,etaupdate:r.eta_update,destination:r.destination,user:r.user_name,start:startDisp,complete:compDisp,duration:dur,tat:r.tat,_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
 function mapB2(r){
-  const _sd=r.completed||r.created_at||r.start_time;
+  const _sd=r.created_at||r.completed||r.start_time;
   const _sr=_toETDate(_sd);
   const startDisp=toDisplayDT(r.start_time);
   const compDisp=toDisplayDT(r.completed);
   const dur=resolveDuration(r.duration, startDisp, compDisp);
   return{id:r.id,txn:r.txn,source:r.source,assigneddate:r.assigned_date,adjtype:r.adj_type,tasktype:r.task_type,lines:r.lines,status:r.status,user:r.user_name,comments:r.comments,start:startDisp,completed:compDisp,completedB2:compDisp,duration:dur,tat:r.tat||'',_created:_sd,_submitRaw:_sr,_dbid:r.id};
 }
-function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,qualityScore:r.quality_score,errorDetail:r.error_detail,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||null,userAckAt:r.user_ack_at||null,_created:r.submitted||r.created_at,_dbid:r.id};}
+function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.error_type,score:r.score,doubleSign:r.double_sign,comments:r.comments,startTime:toDisplayDT(r.start_time),endTime:toDisplayDT(r.end_time),duration:r.duration,mode:r.mode,clientname:r.client_name,client:r.client,team:r.team,user:r.user_name,submitted:toDisplayDT(r.submitted),transcreated:r.transcreated,rlStatus:r.rl_status,rlTat:r.rl_tat,qualityScore:r.quality_score,errorDetail:r.error_detail,userResponse:r.user_response||null,userAcknowledged:r.user_acknowledged||null,userAckAt:r.user_ack_at||null,_created:r.created_at||r.submitted,_dbid:r.id};}
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,reportedAt:r.reported_at||null,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at||r.reported_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
@@ -13141,55 +13141,55 @@ function fmtMins(m){
 // hasMode/hasTeam/hasClient/hasShift = which filter dropdowns + panels to show
 const KPI_TABS=[
   {id:'release',label:'🚀 Release',   color:'#e11d48',bg:'#fff1f2',
-   db:()=>DB.release2, tbl:'release',    mapFn:r=>mapRelease(r),   dateCol:'submitted',
+   db:()=>DB.release2, tbl:'release',    mapFn:r=>mapRelease(r),   dateCol:'created_at',
    uf:'user', ef:'submitted', tf:'tat', sf:'status',
    doneVals:['submitted','recap done'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'pars',  label:'📄 PARS Docs', color:'#0d9488',bg:'#f0fdfa',
-   db:()=>DB.parsDocs,  tbl:'pars_docs',  mapFn:r=>mapPARSDocs(r),  dateCol:'created_time',
+   db:()=>DB.parsDocs,  tbl:'pars_docs',  mapFn:r=>mapPARSDocs(r),  dateCol:'created_at',
    uf:'user', ef:'created',   tf:'tat', sf:null,
    doneVals:[], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:true},
   {id:'ocean', label:'🌊 Ocean Docs',color:'#2563eb',bg:'#eff6ff',
-   db:()=>DB.oceanDocs, tbl:'ocean_docs', mapFn:r=>mapOceanDocs(r), dateCol:'created_time',
+   db:()=>DB.oceanDocs, tbl:'ocean_docs', mapFn:r=>mapOceanDocs(r), dateCol:'created_at',
    uf:'user', ef:'created',   tf:'tat', sf:null,
    doneVals:[], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:true, hasMailbox:true},
   {id:'lvs',   label:'📋 LVS',       color:'#4d79ff',bg:'#eef2ff',
-   db:()=>DB.lvs,       tbl:'lvs',        mapFn:r=>mapLVS(r),        dateCol:'submitted_time',
+   db:()=>DB.lvs,       tbl:'lvs',        mapFn:r=>mapLVS(r),        dateCol:'created_at',
    uf:'assignedTo',ef:'submittedTime',tf:'tat',sf:'status',
    doneVals:['tat reached','TAT Reached'], holdVal:'Hold',
    clientF:'clientName', teamF:'team', modeF:null,
    hasMode:false,hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'cls',   label:'🗂️ Classifier',color:'#0ea5e9',bg:'#f0f9ff',
-   db:()=>DB.cls,       tbl:'cls',         mapFn:r=>mapCLS(r),        dateCol:'submitted_time',
+   db:()=>DB.cls,       tbl:'cls',         mapFn:r=>mapCLS(r),        dateCol:'created_at',
    uf:'assignedTo',ef:'submittedTime',tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientName', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'comp',  label:'✅ Compliance', color:'#7c3aed',bg:'#f0ebff',
-   db:()=>DB.comp,      tbl:'comp',        mapFn:r=>mapCOMP(r),       dateCol:'completed_time',
+   db:()=>DB.comp,      tbl:'comp',        mapFn:r=>mapCOMP(r),       dateCol:'created_at',
    uf:'assignedTo',ef:'completedTime',tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
   {id:'partlot',label:'📦 Part Lot', color:'#d97706',bg:'#fffbeb',
-   db:()=>DB.partLot,   tbl:'part_lot',    mapFn:r=>mapPartLot(r),    dateCol:'completed_time',
+   db:()=>DB.partLot,   tbl:'part_lot',    mapFn:r=>mapPartLot(r),    dateCol:'created_at',
    uf:'user',      ef:'completed', tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
   {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#e0f7fa',
-   db:()=>DB.oceanTT,   tbl:'ocean_tt',    mapFn:r=>mapOceanTT(r),    dateCol:'complete_time',
+   db:()=>DB.oceanTT,   tbl:'ocean_tt',    mapFn:r=>mapOceanTT(r),    dateCol:'created_at',
    uf:'user',      ef:'complete',  tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:null,
    hasMode:false,hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'b2',    label:'📝 B2 Entries', color:'#f59e0b',bg:'#fffbeb',
-   db:()=>DB.b2entries, tbl:'b2_entries',  mapFn:r=>mapB2(r),         dateCol:'completed',
+   db:()=>DB.b2entries, tbl:'b2_entries',  mapFn:r=>mapB2(r),         dateCol:'created_at',
    uf:'user',      ef:'completed', tf:null,  sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
@@ -14441,17 +14441,17 @@ async function exportAllTasksXLSX(){
     } else {
       [_lvsData,_clsData,_compData,_parsData,_oceanDocsData,
        _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData] = await Promise.all([
-        _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2,'submitted_time'),
-        _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2,'submitted_time'),
-        _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2,'completed_time'),
-        _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2,'created_time'),
-        _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2,'created_time'),
-        _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2,'completed_time'),
-        _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2,'submitted'),
-        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2,'complete_time'),
-        _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2,'completed'),
-        isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2,'submitted'),
-        _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2,'submitted'),
+        _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2,'created_at'),
+        _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2,'created_at'),
+        isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2,'start_time'),
+        _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2,'created_at'),
       ]);
     }
 
@@ -14563,8 +14563,8 @@ async function exportAllTasksXLSX(){
     // ── 11. Closing HVS (non-Client only) ──
     if(!isClient()){
       XLSX.utils.book_append_sheet(wb, makeSheet(
-        ['Client No','Txn No','Client Name','Team','Mode','Status','Start Time','Submitted Time','Duration','Comments','User','Date'],
-        _closingData.map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._startRaw||'').slice(0,10)])
+        ['Client No','Txn No','Client Name','Team','Mode','Status','Start Time','Submitted Time','Duration','Comments','User','Created Date'],
+        _closingData.map(r=>[r.clientNo||'',r.txn||'',r.clientName||'',r.team||'',r.mode||'',r.status||'',r.start||'',r.submitted||'',r.duration||'',r.comments||'',r.user||'',(r._created||r._startRaw||'').slice(0,10)])
       ), 'Closing HVS');
     }
 
@@ -20197,7 +20197,7 @@ function mapClosing(r){
     _startRaw:r.start_time,       // ISO string for date-range filtering
     _submittedRaw:r.submitted,    // ISO string
     _submitRaw,                   // ET Date object — used by getRecET in Status heatmap
-    _created:r.start_time||r.id,  // for _filterByDateRange
+    _created:r.start_time||'',   // for date filtering — start_time is the created date
     user:r.user_name||CU?.name||'—',
     _idx:0
   };
