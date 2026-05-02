@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_0_csp-manifest-src-datefilter-unified-2026-05-02" data-build-id="v9.0-all-filter-fix">
+<html lang="en" data-build-stamp="V9_1_kpi-present-month-created-filter-fix-2026-05-02" data-build-id="v9.1-createddate-filter-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13273,7 +13273,16 @@ function renderClientDashboard(c){
 }
 
 function renderKPIDashboard(c){
-  _kpiD1='';_kpiD2='';_kpiMode='';_kpiTeam='';
+  // ── FIX: Default to present month on every load ──────────────────────────
+  const _kpiNow = (typeof nowET === 'function') ? nowET() : new Date();
+  const _kpiY  = _kpiNow.getFullYear();
+  const _kpiM  = String(_kpiNow.getMonth()+1).padStart(2,'0');
+  const _kpiLastDay = new Date(_kpiY, _kpiNow.getMonth()+1, 0).getDate();
+  _kpiD1 = _kpiY+'-'+_kpiM+'-01';
+  _kpiD2 = _kpiY+'-'+_kpiM+'-'+String(_kpiLastDay).padStart(2,'0');
+  _kpiMode='';_kpiTeam='';
+  // ─────────────────────────────────────────────────────────────────────────
+
   c.innerHTML=`
   <div class="ph">
     <div>
@@ -13294,15 +13303,16 @@ function renderKPIDashboard(c){
   <!-- Dark KPI view overlay -->
   <div id="kpiDarkOverlay" style="display:none;position:fixed;inset:0;z-index:9000;background:#0b0d14;overflow-y:auto"></div>
 
-  <!-- Global date filter -->
+  <!-- Global date filter — pre-filled with current month -->
   <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 14px;
               background:var(--surface2);border:1px solid var(--border);border-radius:12px;margin-bottom:14px">
     <span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em">📅 DATE</span>
-    <input class="fi2" id="kpi_d1" type="date"/>
+    <input class="fi2" id="kpi_d1" type="date" value="${_kpiD1}"/>
     <span style="font-size:12px;color:var(--text3)">→</span>
-    <input class="fi2" id="kpi_d2" type="date"/>
+    <input class="fi2" id="kpi_d2" type="date" value="${_kpiD2}"/>
     <button class="btn-f" onclick="kpiApplyFilter()">Apply</button>
     <button class="btn-cl" onclick="kpiClearFilter()">Clear</button>
+    <span style="font-size:11px;color:var(--primary);font-weight:700;background:var(--primary-pale);padding:3px 10px;border-radius:20px;border:1px solid rgba(111,66,193,.2)">📆 Showing: Present Month</span>
     <div id="kpiFilterExtra" style="display:flex;gap:8px;flex-wrap:wrap;margin-left:8px"></div>
   </div>
 
@@ -13619,12 +13629,24 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data using _recToYMD() — handles all 3 date formats via _submitRaw ET Date
+  // FIX: Filter ALL tasks strictly by created_at (_created) — never by submitted/completed time.
+  // This ensures KPI dashboard counts match DB records filtered by Created Date.
+  function _recCreatedYMD(r){
+    const raw=String(r._created||'').trim();
+    if(!raw||raw==='\u2014') return '';
+    if(raw.match(/^\d{4}-\d{2}-\d{2}/)) return raw.slice(0,10);
+    const p=raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if(p) return p[3]+'-'+p[2]+'-'+p[1];
+    const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+    const d=new Date(raw); if(!isNaN(d)) return d.toISOString().slice(0,10);
+    return '';
+  }
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      const ymd=_recToYMD(r);
-      if(!ymd) return true;
+      const ymd=_recCreatedYMD(r);
+      if(!ymd) return true; // no created_at — include to avoid data loss
       if(_kpiD1&&ymd<_kpiD1) return false;
       if(_kpiD2&&ymd>_kpiD2) return false;
       return true;
@@ -14362,7 +14384,8 @@ async function exportAllTasksXLSX(){
 
     // ── 1. Summary ──
     const {d1:_xd1, d2:_xd2, label:_xlabel, display:_xdisplay} = _getReportDateRange();
-    const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
+    // FIX: Always filter by created_at for consistent counts matching DB
+    const _xf = arr => _filterByCreatedDate(arr, _xd1, _xd2);
     const _noFilter = !_xd1 && !_xd2;
     const _tc = window._trueCounts || {};
 
@@ -14377,11 +14400,15 @@ async function exportAllTasksXLSX(){
     }
 
     function _trueTotal(tcKey, rlKey, arr, rlArr){
-      if(!_noFilter) return (rlArr||arr||[]).length; // filtered → always use actual length
+      // FIX: When a date filter is active, ALWAYS return the exact filtered row count
+      // so Summary totals match the data rows in each sheet.
+      if(!_noFilter) return (rlArr||arr||[]).length;
+      // No filter — use server-side true counts only for Release (server-fetched).
+      // For all other tasks: use arr.length (in-memory 30-day window) — do NOT show
+      // _tc[tcKey] which is the all-time DB total and would mismatch the exported rows.
       if(rlKey && typeof window._rlTrueCount === 'number' && window._rlTrueCount > (arr||[]).length)
         return window._rlTrueCount;
-      if(tcKey && typeof _tc[tcKey] === 'number' && _tc[tcKey] > (arr||[]).length)
-        return _tc[tcKey];
+      // Non-release: return actual row count (matches what is exported)
       return (arr||[]).length;
     }
     const taskDefs=[
@@ -14671,9 +14698,10 @@ async function _fetchForExport(table, mapFn, d1, d2, dateCol){
   // Map rows first so _toETDate() is called (sets _submitRaw as ET Date object)
   const mapped = mapFn ? all.map(mapFn) : all;
 
-  // Client-side date filter using _submitRaw (ET Date) — correct for all formats
+  // FIX: Filter by created_at (_created) — not submitted/completed time — so exported
+  // record counts match the DB when filtering by Created Date.
   if(!d1&&!d2) return mapped;
-  return _filterMappedByDate(mapped, d1, d2);
+  return _filterByCreatedDate(mapped, d1, d2);
 }
 
 // Keep old name as alias
@@ -14721,6 +14749,31 @@ function _filterMappedByDate(arr, d1, d2){
 
 // Legacy alias used in several places — now delegates to _filterMappedByDate
 function _filterByDateRange(arr, d1, d2){ return _filterMappedByDate(arr, d1, d2); }
+
+// FIX: Export and KPI must filter by created_at (_created), not submitted/completed time.
+// _filterByCreatedDate is used in exportAllTasksXLSX _xf and individual task exports.
+function _filterByCreatedDate(arr, d1, d2){
+  if(!d1&&!d2) return arr||[];
+  return (arr||[]).filter(r=>{
+    const raw=String(r._created||'').trim();
+    if(!raw||raw==='\u2014') return true; // no created_at — include
+    let ymd='';
+    if(raw.match(/^\d{4}-\d{2}-\d{2}/)) ymd=raw.slice(0,10);
+    else {
+      const p=raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+      if(p) ymd=p[3]+'-'+p[2]+'-'+p[1];
+      else {
+        const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if(m) ymd=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+        else { const d=new Date(raw); if(!isNaN(d)) ymd=d.toISOString().slice(0,10); }
+      }
+    }
+    if(!ymd) return true;
+    if(d1&&ymd<d1) return false;
+    if(d2&&ymd>d2) return false;
+    return true;
+  });
+}
 
 function _getReportDateRange(){
   const d1=document.getElementById('rd1')?.value||'';
