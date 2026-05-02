@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_7_async-export-sw-fix-2026-05-01" data-build-id="v8.7-async-sw-fix">
+<html lang="en" data-build-stamp="V8_8_serverside-export-all-tasks-kpi-datefix-2026-05-02" data-build-id="v8.8-export-all-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13621,20 +13621,41 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data — normalise _created to YYYY-MM-DD for reliable string comparison
+  // Filter data — robust multi-format date normalisation
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      // Try _created first (ISO string), fallback to ef field, fallback to date field
-      let raw = String(r._created||r[tab.ef]||r.date||'');
-      // Normalise: if it's a locale string like "4/30/2026, 16:03:22" parse it properly
-      let ymd = '';
-      if(raw.match(/^\d{4}-\d{2}-\d{2}/)){
-        ymd = raw.slice(0,10);
-      } else if(raw && raw !== '—'){
-        // Try parsing as date
-        const d = new Date(raw);
-        if(!isNaN(d)) ymd = d.toISOString().slice(0,10);
+      // _created holds the raw DB string in various formats (ISO, DD-MM-YYYY, D/M/YYYY)
+      // _submitRaw is an ET Date object set by _toETDate() in map functions — most reliable
+      let ymd='';
+      // 1. Use _submitRaw ET Date object if available (set by all map functions)
+      if(r._submitRaw instanceof Date && !isNaN(r._submitRaw)){
+        ymd=r._submitRaw.getFullYear()+'-'+String(r._submitRaw.getMonth()+1).padStart(2,'0')+'-'+String(r._submitRaw.getDate()).padStart(2,'0');
+      }
+      // 2. Fallback to _created raw string with multi-format parse
+      if(!ymd){
+        const raw=String(r._created||r[tab.ef]||r.date||'').trim();
+        if(raw && raw!=='—'){
+          // ISO: 2026-04-01T... or 2026-04-01 ...
+          if(raw.match(/^\d{4}-\d{2}-\d{2}/)){
+            ymd=raw.slice(0,10);
+          }
+          // DD-MM-YYYY: 30-04-2026 16:03:22
+          else if(raw.match(/^\d{2}-\d{2}-\d{4}/)){
+            const p=raw.split(/[\s-T]/);
+            ymd=p[2]+'-'+p[1]+'-'+p[0];
+          }
+          // D/M/YYYY: 1/4/2026 16:58
+          else if(raw.match(/^\d{1,2}\/\d{1,2}\/\d{4}/)){
+            const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if(m) ymd=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+          }
+          // Last resort: native Date parse
+          else {
+            const d=new Date(raw);
+            if(!isNaN(d)) ymd=d.toISOString().slice(0,10);
+          }
+        }
       }
       if(!ymd) return true; // unknown date — include
       if(_kpiD1 && ymd < _kpiD1) return false;
@@ -14639,71 +14660,56 @@ function _exportStripClientName(headers, rows){
 // db-max-rows, response-size ceilings, or transient partial responses), which
 // made the loop exit early and silently drop records — e.g. Release was
 // returning 5,325 of 6,858, missing 1,533 rows.
-async function _fetchAllForExport(table, mapFn){
-  showToast('⏳ Fetching all records for export...');
-  const client = _supaAdmin || _supa; // prefer service key to bypass any RLS
+// ── Unified export fetcher ────────────────────────────────────────────────
+// When d1/d2 are provided: server-side date filter on dateCol (avoids in-memory
+// truncation — DB arrays only hold 30 days). When omitted: full table fetch.
+// This is the ONLY correct way to export historical date ranges.
+async function _fetchForExport(table, mapFn, d1, d2, dateCol){
+  if(!_supa){ showToast('⚠️ Not connected to database',true); return []; }
+  const client = _supaAdmin || _supa;
   const PAGE = 1000;
+  const col = dateCol || TABLE_SORT_COL[table] || 'created_at';
 
-  // 1. HEAD call → authoritative total row count
+  // HEAD call → expected total (for progress %)
   let expectedTotal = null;
   try{
     const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    const res = await fetch(SUPA_URL + '/rest/v1/' + table + '?select=id', {
-      method:'HEAD',
-      headers:{apikey:_rawKey,'Authorization':'Bearer '+_rawKey,'Prefer':'count=exact'}
-    });
+    let headUrl = SUPA_URL+'/rest/v1/'+table+'?select=id';
+    if(d1) headUrl += '&'+col+'=gte.'+d1;
+    if(d2) headUrl += '&'+col+'=lte.'+d2+'T23:59:59';
+    const res = await fetch(headUrl,{method:'HEAD',headers:{apikey:_rawKey,'Authorization':'Bearer '+_rawKey,'Prefer':'count=exact'}});
     const cr = res.headers.get('Content-Range');
-    if(cr){ const n = parseInt(cr.split('/')[1]); if(!isNaN(n)) expectedTotal = n; }
+    if(cr){ const n=parseInt(cr.split('/')[1]); if(!isNaN(n)) expectedTotal=n; }
   }catch(_e){}
 
-  const all = [];
-  const seen = new Set();                // de-dup guard against any retry overlap
-  let lastId = 0;
-  let safety = 0;
-  const HARD_CAP = 500; // max pagination iterations (500 × 1000 = 500k rows)
+  const all=[], seen=new Set();
+  let lastId=0, safety=0;
+  const HARD_CAP=500;
 
-  while(safety++ < HARD_CAP){
-    // Keyset pagination: `id > lastId` + limit. Immune to server-side max-rows
-    // partial-response quirks that broke offset pagination.
-    const {data, error} = await client.from(table)
-      .select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
-
-    if(error){
-      console.warn('[export] page error on', table, error.message);
-      // Soft retry once
-      await new Promise(r=>setTimeout(r,400));
-      continue;
+  while(safety++<HARD_CAP){
+    let q = client.from(table).select('*').gt('id',lastId).order('id',{ascending:true}).limit(PAGE);
+    if(d1) q = q.gte(col, d1);
+    if(d2) q = q.lte(col, d2+'T23:59:59');
+    const {data,error} = await q;
+    if(error){ console.warn('[export]',table,error.message); await new Promise(r=>setTimeout(r,400)); continue; }
+    if(!data||data.length===0) break;
+    for(const row of data){ if(row.id!=null&&!seen.has(row.id)){ seen.add(row.id); all.push(row); } }
+    lastId=data[data.length-1].id;
+    if(safety%5===0){
+      const pct=expectedTotal?Math.round(all.length/expectedTotal*100):null;
+      showToast('⏳ '+table+': '+all.length.toLocaleString()+(pct!==null?' ('+pct+'%)':'')+'...');
     }
-    if(!data || data.length === 0) break;
-
-    for(const row of data){
-      const rid = row && row.id;
-      if(rid!=null && !seen.has(rid)){ seen.add(rid); all.push(row); }
-    }
-    lastId = data[data.length-1].id;
-
-    // Progress toast every 5 pages
-    if(safety % 5 === 0){
-      const pct = expectedTotal ? Math.round(all.length/expectedTotal*100) : null;
-      showToast('⏳ Exporting '+table+': '+all.length.toLocaleString()+(pct!==null?' / '+expectedTotal.toLocaleString()+' ('+pct+'%)':''));
-    }
-
-    // Natural end: fewer than PAGE AND we've reached/exceeded expected count
-    if(data.length < PAGE){
-      if(expectedTotal === null || all.length >= expectedTotal) break;
-      // Otherwise keep going — server returned a short page but there are more rows
-    }
+    if(data.length<PAGE){ if(expectedTotal===null||all.length>=expectedTotal) break; }
   }
-
-  if(expectedTotal !== null && all.length < expectedTotal){
-    console.warn('[export]', table, 'fetched', all.length, 'of', expectedTotal, '— '+(expectedTotal-all.length)+' missing');
-    showToast('⚠️ '+table+': '+all.length+' of '+expectedTotal+' fetched', true);
-  }
-  return mapFn ? all.map(mapFn) : all;
+  if(expectedTotal!==null&&all.length<expectedTotal)
+    console.warn('[export]',table,'fetched',all.length,'of',expectedTotal);
+  return mapFn?all.map(mapFn):all;
 }
 
+// Keep old name as alias for backward compatibility
+async function _fetchAllForExport(table, mapFn){ return _fetchForExport(table, mapFn); }
+
 function _getReportDateRange(){
-  // Read from Reports page date filter (rd1=from, rd2=to)
   const d1 = document.getElementById('rd1')?.value || '';
   const d2 = document.getElementById('rd2')?.value || '';
   return { d1, d2,
@@ -14712,28 +14718,45 @@ function _getReportDateRange(){
   };
 }
 
+// ── Date range filter for in-memory arrays ────────────────────────────────
+// NOTE: Only used when no DB fetch is possible. All exports should prefer
+// _fetchForExport with server-side date filter for accuracy.
+// d1/d2 are YYYY-MM-DD strings (local date — no timezone conversion).
 function _filterByDateRange(arr, d1, d2){
-  if(!d1 && !d2) return arr;
-  return (arr||[]).filter(r => {
-    const raw = r._created || r.submitted || r.submittedTime ||
-                r.completedTime || r.created || r._submitRaw || '';
-    if(!raw) return true; // include if no date
-    const dt = raw instanceof Date ? raw : new Date(raw.replace ? raw.replace(' ','T') : raw);
-    if(isNaN(dt)) return true;
-    if(d1 && dt < new Date(d1)) return false;
-    if(d2 && dt > new Date(d2+'T23:59:59')) return false;
+  if(!d1&&!d2) return arr;
+  // Parse d1/d2 as LOCAL noon to avoid UTC midnight timezone issues
+  // e.g. "2026-04-01" → April 1 00:00 local, not UTC midnight (which is March 31 ET)
+  const _start = d1 ? new Date(d1+'T00:00:00') : null;
+  const _end   = d2 ? new Date(d2+'T23:59:59') : null;
+  return (arr||[]).filter(r=>{
+    const raw = r._created||r.submitted||r.submittedTime||r.completedTime||r.created||'';
+    if(!raw||raw==='—'||raw==='') return true;
+    const s=String(raw).trim();
+    let ms=NaN;
+    // ISO string
+    const d=new Date(s.replace(' ','T'));
+    if(!isNaN(d)) ms=d.getTime();
+    // DD-MM-YYYY
+    if(isNaN(ms)){
+      const m=s.replace(/::/g,':').match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
+      if(m){ const d2=new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00')); if(!isNaN(d2)) ms=d2.getTime(); }
+    }
+    // D/M/YYYY
+    if(isNaN(ms)){
+      const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))? *$/);
+      if(m){ const d2=new Date(m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')+'T'+(m[4]||'00:00:00')); if(!isNaN(d2)) ms=d2.getTime(); }
+    }
+    if(isNaN(ms)) return true;
+    if(_start&&ms<_start.getTime()) return false;
+    if(_end  &&ms>_end.getTime())   return false;
     return true;
   });
 }
 
 async function exportLVS(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('lvs', mapLVS);
-  } else {
-    _data = _filterByDateRange(DB.lvs, d1, d2);
-  }
+  showToast('⏳ Fetching LVS records...');
+  const _data = await _fetchForExport('lvs', mapLVS, d1, d2, 'submitted_time');
   const headers=['Txn','Release Date','Client','Client Name','Team','Type','Lines','Status','Assigned To','Start Time','Submitted Time','Duration','AHT','TAT','IRS','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.releaseDate||'',r.client||'',r.clientName||'',r.team||'',r.type||'',r.lines||'',r.status||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',r.aht||'',cleanTAT(r.tat)||'',r.irs?'Yes':'No',r.comments||'',(r._created||'').slice(0,10)]);
   showToast('⬇️ LVS export: '+rows.length+' records');
@@ -14752,12 +14775,8 @@ async function exportLVS(){
 }
 async function exportCLS(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('cls', mapCLS);
-  } else {
-    _data = _filterByDateRange(DB.cls, d1, d2);
-  }
+  showToast('⏳ Fetching Classifier records...');
+  const _data = await _fetchForExport('cls', mapCLS, d1, d2, 'submitted_time');
   const headers=['Txn','Mode','Assigned To','Start Time','Submitted Time','Duration','TAT','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.mode||'',r.assignedTo||'',r.startTime||'',r.submittedTime||'',r.duration||'',cleanTAT(r.tat)||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Classifier: "+_data.length+" records");
@@ -18683,12 +18702,8 @@ function submitCOMP(){
 
 async function exportCOMP(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('comp', mapCOMP);
-  } else {
-    _data = _filterByDateRange(DB.comp, d1, d2);
-  }
+  showToast('⏳ Fetching Compliance records...');
+  const _data = await _fetchForExport('comp', mapCOMP, d1, d2, 'completed_time');
   const headers=['Subject','Request Type','Client No','Client Name','Txn','Lines','Mail Rcvd','Start Time','Assigned To','Completed Time','Duration','Status','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.reqType||'',r.clientNo||'',r.clientName||'',r.txn||'',r.lines||'',r.mailRcvd||'',r.startTime||'',r.assignedTo||'',r.completedTime||'',r.duration||'',r.status||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Compliance: "+_data.length+" records");
@@ -19224,12 +19239,8 @@ function submitPARSDocs(){
 
 async function exportPARSDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('pars_docs', mapPARSDocs);
-  } else {
-    _data = _filterByDateRange(DB.parsDocs, d1, d2);
-  }
+  showToast('⏳ Fetching PARS Docs records...');
+  const _data = await _fetchForExport('pars_docs', mapPARSDocs, d1, d2, 'created_time');
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','ETA','User','Start Time','Created Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.eta||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ PARS Docs: "+_data.length+" records");
@@ -19512,12 +19523,8 @@ function submitOceanDocs(){
 
 async function exportOceanDocs(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('ocean_docs', mapOceanDocs);
-  } else {
-    _data = _filterByDateRange(DB.oceanDocs, d1, d2);
-  }
+  showToast('⏳ Fetching Ocean Docs records...');
+  const _data = await _fetchForExport('ocean_docs', mapOceanDocs, d1, d2, 'created_time');
   const headers=['Mailbox','Subject','Mail Rcvd','Txn','Client','Client Name','Team','Mode','Ship Type','IRS','Document','Req Doc','Sent Log','Docs Dated','Docs Forwarded','User','Start Time','Created Time','Duration','TAT','Shift','Comments','Created Date'];
   const rows=_data.map(r=>[r.mailbox||'',r.subject||'',r.mailrcvd||'',r.txn||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.shiptype||'',r.irs||'',r.doc||'',r.reqdoc||'',r.sentlog||'',r.docsdated||'',r.docsforwarded||'',r.user||'',r.start||'',r.created||'',r.duration||'',cleanTAT(r.tat)||'',r.shift||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean Docs: "+_data.length+" records");
@@ -19728,12 +19735,8 @@ function submitPartLot(){
 
 async function exportPartLot(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('part_lot', mapPartLot);
-  } else {
-    _data = _filterByDateRange(DB.partLot, d1, d2);
-  }
+  showToast('⏳ Fetching Part Lot records...');
+  const _data = await _fetchForExport('part_lot', mapPartLot, d1, d2, 'completed_time');
   const headers=['Subject','Txn','PARS No','Mail Rcvd','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.subject||'',r.txn||'',r.parsno||'',r.mailrcvd||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Part Lot: "+_data.length+" records");
@@ -24511,12 +24514,8 @@ async function _fetchReleaseDateRange(d1, d2){
 async function exportClosing(){
   if(isClient()){ showToast('⚠️ Export not available for Client role', true); return; }
   const {d1, d2, label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('closing', mapClosing);
-  } else {
-    _data = _filterByDateRange(DB.closing || [], d1, d2);
-  }
+  showToast('⏳ Fetching Closing HVS records...');
+  const _data = await _fetchForExport('closing', mapClosing, d1, d2, 'submitted');
   const headers = [
     'Client No','Txn No','Client Name','Team','Mode',
     'Status','Start Time','Submitted Time','Duration','Comments','User','Date'
@@ -24888,12 +24887,8 @@ function submitOTT(){
 
 async function exportOTT(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('ocean_tt', mapOTT);
-  } else {
-    _data = _filterByDateRange(DB.oceanTT, d1, d2);
-  }
+  showToast('⏳ Fetching Ocean T&T records...');
+  const _data = await _fetchForExport('ocean_tt', mapOTT, d1, d2, 'complete_time');
   const headers=['Txn No','Status','Client Name','Team','ETA on NCC','NCC Comments','ETA on Update','Destination','User','Start Time','Complete Time','Duration','TAT','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.status||'',r.clientname||'',r.team||'',r.etancc||'',r.ncccomments||'',r.etaupdate||'',r.destination||'',r.user||'',r.start||'',r.complete||'',r.duration||'',cleanTAT(r.tat)||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ Ocean T&T: "+_data.length+" records");
@@ -25139,12 +25134,8 @@ function submitB2(){
 
 async function exportB2(){
   const {d1,d2,label} = _getReportDateRange();
-  let _data;
-  if(!d1 && !d2){
-    _data = await _fetchAllForExport('b2_entries', mapB2);
-  } else {
-    _data = _filterByDateRange(DB.b2entries, d1, d2);
-  }
+  showToast('⏳ Fetching B2 Entries records...');
+  const _data = await _fetchForExport('b2_entries', mapB2, d1, d2, 'completed');
   const headers=['Txn No','Source','Assigned Date','Adj Type','Task Type','Lines','Status','User','Start Time','Completed Time','Duration','TAT','Comments','Created Date'];
   const rows=_data.map(r=>[r.txn||'',r.source||'',r.assigneddate||'',r.adjtype||'',r.tasktype||'',r.lines||'',r.status||'',r.user||'',r.start||'',r.completed||'',r.duration||'',cleanTAT(r.tat)||'',r.comments||'',(r._created||'').slice(0,10)]);
   showToast("⬇️ B2 Entries: "+_data.length+" records");
