@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V8_9_fix-404-inline-manifest-icons-2026-05-02" data-build-id="v8.9-no-404">
+<html lang="en" data-build-stamp="V9_0_csp-manifest-src-datefilter-unified-2026-05-02" data-build-id="v9.0-all-filter-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -34,7 +34,7 @@ if(location.protocol === 'file:'){
   });
 }
 </script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com wss://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-src https://accounts.google.com https://apis.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; manifest-src 'self' data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com wss://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-src https://accounts.google.com https://apis.google.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -13619,45 +13619,14 @@ function kpiShowTab(id){
       (tab.hasTeam?`<span style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.06em;margin-left:4px">👥 TEAM</span>`+teamHtml:'');
   }
 
-  // Filter data — robust multi-format date normalisation
+  // Filter data using _recToYMD() — handles all 3 date formats via _submitRaw ET Date
   let data=tab.db()||[];
   if(_kpiD1||_kpiD2){
     data=data.filter(r=>{
-      // _created holds the raw DB string in various formats (ISO, DD-MM-YYYY, D/M/YYYY)
-      // _submitRaw is an ET Date object set by _toETDate() in map functions — most reliable
-      let ymd='';
-      // 1. Use _submitRaw ET Date object if available (set by all map functions)
-      if(r._submitRaw instanceof Date && !isNaN(r._submitRaw)){
-        ymd=r._submitRaw.getFullYear()+'-'+String(r._submitRaw.getMonth()+1).padStart(2,'0')+'-'+String(r._submitRaw.getDate()).padStart(2,'0');
-      }
-      // 2. Fallback to _created raw string with multi-format parse
-      if(!ymd){
-        const raw=String(r._created||r[tab.ef]||r.date||'').trim();
-        if(raw && raw!=='—'){
-          // ISO: 2026-04-01T... or 2026-04-01 ...
-          if(raw.match(/^\d{4}-\d{2}-\d{2}/)){
-            ymd=raw.slice(0,10);
-          }
-          // DD-MM-YYYY: 30-04-2026 16:03:22
-          else if(raw.match(/^\d{2}-\d{2}-\d{4}/)){
-            const p=raw.split(/[\s-T]/);
-            ymd=p[2]+'-'+p[1]+'-'+p[0];
-          }
-          // D/M/YYYY: 1/4/2026 16:58
-          else if(raw.match(/^\d{1,2}\/\d{1,2}\/\d{4}/)){
-            const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-            if(m) ymd=m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
-          }
-          // Last resort: native Date parse
-          else {
-            const d=new Date(raw);
-            if(!isNaN(d)) ymd=d.toISOString().slice(0,10);
-          }
-        }
-      }
-      if(!ymd) return true; // unknown date — include
-      if(_kpiD1 && ymd < _kpiD1) return false;
-      if(_kpiD2 && ymd > _kpiD2) return false;
+      const ymd=_recToYMD(r);
+      if(!ymd) return true;
+      if(_kpiD1&&ymd<_kpiD1) return false;
+      if(_kpiD2&&ymd>_kpiD2) return false;
       return true;
     });
   }
@@ -14659,96 +14628,107 @@ function _exportStripClientName(headers, rows){
 // made the loop exit early and silently drop records — e.g. Release was
 // returning 5,325 of 6,858, missing 1,533 rows.
 // ── Unified export fetcher ────────────────────────────────────────────────
-// When d1/d2 are provided: server-side date filter on dateCol (avoids in-memory
-// truncation — DB arrays only hold 30 days). When omitted: full table fetch.
-// This is the ONLY correct way to export historical date ranges.
+// Fetches ALL rows from a table using keyset pagination (no server-side date
+// filter — DB date columns are stored as DD-MM-YYYY text so Postgres .gte()
+// comparison would be alphabetical and wrong). Client-side filter is applied
+// after fetch using _toETDate() which handles all 3 date formats correctly.
 async function _fetchForExport(table, mapFn, d1, d2, dateCol){
   if(!_supa){ showToast('⚠️ Not connected to database',true); return []; }
   const client = _supaAdmin || _supa;
   const PAGE = 1000;
-  const col = dateCol || TABLE_SORT_COL[table] || 'created_at';
 
-  // HEAD call → expected total (for progress %)
+  // HEAD call → expected total count (for progress display only)
   let expectedTotal = null;
   try{
     const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    let headUrl = SUPA_URL+'/rest/v1/'+table+'?select=id';
-    if(d1) headUrl += '&'+col+'=gte.'+d1;
-    if(d2) headUrl += '&'+col+'=lte.'+d2+'T23:59:59';
-    const res = await fetch(headUrl,{method:'HEAD',headers:{apikey:_rawKey,'Authorization':'Bearer '+_rawKey,'Prefer':'count=exact'}});
+    const res = await fetch(SUPA_URL+'/rest/v1/'+table+'?select=id',{
+      method:'HEAD',
+      headers:{apikey:_rawKey,'Authorization':'Bearer '+_rawKey,'Prefer':'count=exact'}
+    });
     const cr = res.headers.get('Content-Range');
     if(cr){ const n=parseInt(cr.split('/')[1]); if(!isNaN(n)) expectedTotal=n; }
   }catch(_e){}
 
+  // Fetch all rows via keyset pagination (id > lastId ascending)
   const all=[], seen=new Set();
   let lastId=0, safety=0;
-  const HARD_CAP=500;
+  const HARD_CAP=500; // 500 × 1000 = 500k rows max
 
   while(safety++<HARD_CAP){
-    let q = client.from(table).select('*').gt('id',lastId).order('id',{ascending:true}).limit(PAGE);
-    if(d1) q = q.gte(col, d1);
-    if(d2) q = q.lte(col, d2+'T23:59:59');
-    const {data,error} = await q;
+    const {data,error}=await client.from(table).select('*')
+      .gt('id',lastId).order('id',{ascending:true}).limit(PAGE);
     if(error){ console.warn('[export]',table,error.message); await new Promise(r=>setTimeout(r,400)); continue; }
     if(!data||data.length===0) break;
     for(const row of data){ if(row.id!=null&&!seen.has(row.id)){ seen.add(row.id); all.push(row); } }
     lastId=data[data.length-1].id;
     if(safety%5===0){
       const pct=expectedTotal?Math.round(all.length/expectedTotal*100):null;
-      showToast('⏳ '+table+': '+all.length.toLocaleString()+(pct!==null?' ('+pct+'%)':'')+'...');
+      showToast('⏳ '+table+': '+all.length.toLocaleString()+(pct?(' ('+pct+'%)'):'')+' fetched...');
     }
-    if(data.length<PAGE){ if(expectedTotal===null||all.length>=expectedTotal) break; }
+    if(data.length<PAGE){ if(!expectedTotal||all.length>=expectedTotal) break; }
   }
-  if(expectedTotal!==null&&all.length<expectedTotal)
-    console.warn('[export]',table,'fetched',all.length,'of',expectedTotal);
-  return mapFn?all.map(mapFn):all;
+
+  // Map rows first so _toETDate() is called (sets _submitRaw as ET Date object)
+  const mapped = mapFn ? all.map(mapFn) : all;
+
+  // Client-side date filter using _submitRaw (ET Date) — correct for all formats
+  if(!d1&&!d2) return mapped;
+  return _filterMappedByDate(mapped, d1, d2);
 }
 
-// Keep old name as alias for backward compatibility
+// Keep old name as alias
 async function _fetchAllForExport(table, mapFn){ return _fetchForExport(table, mapFn); }
 
-function _getReportDateRange(){
-  const d1 = document.getElementById('rd1')?.value || '';
-  const d2 = document.getElementById('rd2')?.value || '';
-  return { d1, d2,
-    label: d1&&d2 ? d1+'_to_'+d2 : d1 ? 'from_'+d1 : d2 ? 'to_'+d2 : 'all',
-    display: d1&&d2 ? d1+' to '+d2 : d1 ? 'From '+d1 : d2 ? 'To '+d2 : 'All Records'
-  };
+// ── Date helpers ────────────────────────────────────────────────────────────
+// Extract YYYY-MM-DD string from a mapped record using _submitRaw (ET Date)
+// or _created raw string as fallback. Used by both export and KPI filter.
+function _recToYMD(r){
+  // Primary: _submitRaw is an ET Date set by _toETDate() in all map functions
+  if(r._submitRaw instanceof Date && !isNaN(r._submitRaw)){
+    const d=r._submitRaw;
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  // Fallback: parse _created raw string with multi-format support
+  const raw=String(r._created||'').trim();
+  if(!raw||raw==='—') return '';
+  // ISO 2026-04-01T... or 2026-04-01 ...
+  if(raw.match(/^\d{4}-\d{2}-\d{2}/)) return raw.slice(0,10);
+  // DD-MM-YYYY: 30-04-2026 ...
+  if(raw.match(/^(\d{2})-(\d{2})-(\d{4})/)){
+    const p=raw.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    return p[3]+'-'+p[2]+'-'+p[1];
+  }
+  // D/M/YYYY: 1/4/2026 ...
+  const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  // Last resort native parse
+  const d=new Date(raw);
+  if(!isNaN(d)) return d.toISOString().slice(0,10);
+  return '';
 }
 
-// ── Date range filter for in-memory arrays ────────────────────────────────
-// NOTE: Only used when no DB fetch is possible. All exports should prefer
-// _fetchForExport with server-side date filter for accuracy.
-// d1/d2 are YYYY-MM-DD strings (local date — no timezone conversion).
-function _filterByDateRange(arr, d1, d2){
+// Filter already-mapped records by YYYY-MM-DD date range (inclusive)
+function _filterMappedByDate(arr, d1, d2){
   if(!d1&&!d2) return arr;
-  // Parse d1/d2 as LOCAL noon to avoid UTC midnight timezone issues
-  // e.g. "2026-04-01" → April 1 00:00 local, not UTC midnight (which is March 31 ET)
-  const _start = d1 ? new Date(d1+'T00:00:00') : null;
-  const _end   = d2 ? new Date(d2+'T23:59:59') : null;
   return (arr||[]).filter(r=>{
-    const raw = r._created||r.submitted||r.submittedTime||r.completedTime||r.created||'';
-    if(!raw||raw==='—'||raw==='') return true;
-    const s=String(raw).trim();
-    let ms=NaN;
-    // ISO string
-    const d=new Date(s.replace(' ','T'));
-    if(!isNaN(d)) ms=d.getTime();
-    // DD-MM-YYYY
-    if(isNaN(ms)){
-      const m=s.replace(/::/g,':').match(/^(\d{2})-(\d{2})-(\d{4})[T ]?(\d{2}:\d{2}(?::\d{2})?)?/);
-      if(m){ const d2=new Date(m[3]+'-'+m[2]+'-'+m[1]+'T'+(m[4]||'00:00:00')); if(!isNaN(d2)) ms=d2.getTime(); }
-    }
-    // D/M/YYYY
-    if(isNaN(ms)){
-      const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[T ](\d{1,2}:\d{2}(?::\d{2})?))? *$/);
-      if(m){ const d2=new Date(m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')+'T'+(m[4]||'00:00:00')); if(!isNaN(d2)) ms=d2.getTime(); }
-    }
-    if(isNaN(ms)) return true;
-    if(_start&&ms<_start.getTime()) return false;
-    if(_end  &&ms>_end.getTime())   return false;
+    const ymd=_recToYMD(r);
+    if(!ymd) return true; // no date — include
+    if(d1&&ymd<d1) return false;
+    if(d2&&ymd>d2) return false;
     return true;
   });
+}
+
+// Legacy alias used in several places — now delegates to _filterMappedByDate
+function _filterByDateRange(arr, d1, d2){ return _filterMappedByDate(arr, d1, d2); }
+
+function _getReportDateRange(){
+  const d1=document.getElementById('rd1')?.value||'';
+  const d2=document.getElementById('rd2')?.value||'';
+  return{d1,d2,
+    label:d1&&d2?d1+'_to_'+d2:d1?'from_'+d1:d2?'to_'+d2:'all',
+    display:d1&&d2?d1+' to '+d2:d1?'From '+d1:d2?'To '+d2:'All Records'
+  };
 }
 
 async function exportLVS(){
@@ -24479,30 +24459,28 @@ async function exportRelease2(){
 // a date filter is active — DB.release2 is a 90-day rolling window that may
 // be capped and cannot be trusted for historical date-range queries.
 async function _fetchReleaseDateRange(d1, d2){
-  if(!_supa) return _filterByDateRange(DB.release2, d1, d2);
+  if(!_supa) return _filterMappedByDate((DB.release2||[]), d1, d2);
+  // Release 'submitted' column IS ISO timestamptz — server-side filter works correctly here
   showToast('⏳ Fetching release data from server...');
   const client = _supaAdmin || _supa;
   const PAGE = 1000;
-  const all = [];
-  const seen = new Set();
-  let lastId = 0;
-  let safety = 0;
-  const HARD_CAP = 500;
-  while(safety++ < HARD_CAP){
-    let q = client.from('release').select('*').gt('id', lastId).order('id',{ascending:true}).limit(PAGE);
+  const all = [], seen = new Set();
+  let lastId = 0, safety = 0;
+  while(safety++ < 500){
+    let q = client.from('release').select('*').gt('id',lastId).order('id',{ascending:true}).limit(PAGE);
     if(d1) q = q.gte('submitted', d1);
     if(d2) q = q.lte('submitted', d2+'T23:59:59');
-    const {data, error} = await q;
-    if(error){ console.warn('[release export] page error:', error.message); break; }
-    if(!data || data.length === 0) break;
-    for(const row of data){
-      if(row.id!=null && !seen.has(row.id)){ seen.add(row.id); all.push(row); }
-    }
+    const {data,error} = await q;
+    if(error){ console.warn('[release export]',error.message); break; }
+    if(!data||data.length===0) break;
+    for(const row of data){ if(row.id!=null&&!seen.has(row.id)){ seen.add(row.id); all.push(row); } }
     lastId = data[data.length-1].id;
-    if(safety % 5 === 0) showToast('⏳ Release export: '+all.length.toLocaleString()+' records fetched...');
-    if(data.length < PAGE) break;
+    if(safety%5===0) showToast('⏳ Release: '+all.length.toLocaleString()+' records fetched...');
+    if(data.length<PAGE) break;
   }
-  return all.map(mapRelease);
+  const mapped = all.map(mapRelease);
+  // Apply client-side filter too for safety (handles edge cases)
+  return d1||d2 ? _filterMappedByDate(mapped, d1, d2) : mapped;
 }
 
 // ══════════════════════════════════════════
