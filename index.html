@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_3_kpi-server-fetch-createdAat-2026-05-02" data-build-id="v9.3-kpi-export-server-fetch">
+<html lang="en" data-build-stamp="V9_3_kpi-server-fetch-createdAt-2026-05-02" data-build-id="v9.3-kpi-export-server-fetch">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13683,7 +13683,6 @@ async function kpiShowTab(id){
   if(_kpiMode && tab.modeF) data=data.filter(r=>(r[tab.modeF]||'')=== _kpiMode);
   if(_kpiTeam && tab.teamF) data=data.filter(r=>(r[tab.teamF]||'')=== _kpiTeam);
 
-  const c2=document.getElementById('kpiTabContent');
   if(!c2) return;
 
   // ── Stat KPIs ──
