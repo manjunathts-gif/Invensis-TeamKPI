@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_3_kpi-server-fetch-createdAt-2026-05-02" data-build-id="v9.3-kpi-export-server-fetch">
+<html lang="en" data-build-stamp="V9_4_correct-dateCol-per-table-2026-05-02" data-build-id="v9.4-datecol-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -13141,55 +13141,55 @@ function fmtMins(m){
 // hasMode/hasTeam/hasClient/hasShift = which filter dropdowns + panels to show
 const KPI_TABS=[
   {id:'release',label:'🚀 Release',   color:'#e11d48',bg:'#fff1f2',
-   db:()=>DB.release2, tbl:'release',    mapFn:r=>mapRelease(r),
+   db:()=>DB.release2, tbl:'release',    mapFn:r=>mapRelease(r),   dateCol:'submitted',
    uf:'user', ef:'submitted', tf:'tat', sf:'status',
    doneVals:['submitted','recap done'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'pars',  label:'📄 PARS Docs', color:'#0d9488',bg:'#f0fdfa',
-   db:()=>DB.parsDocs,  tbl:'pars_docs',  mapFn:r=>mapPARSDocs(r),
+   db:()=>DB.parsDocs,  tbl:'pars_docs',  mapFn:r=>mapPARSDocs(r),  dateCol:'created_time',
    uf:'user', ef:'created',   tf:'tat', sf:null,
    doneVals:[], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:true},
   {id:'ocean', label:'🌊 Ocean Docs',color:'#2563eb',bg:'#eff6ff',
-   db:()=>DB.oceanDocs, tbl:'ocean_docs', mapFn:r=>mapOceanDocs(r),
+   db:()=>DB.oceanDocs, tbl:'ocean_docs', mapFn:r=>mapOceanDocs(r), dateCol:'created_time',
    uf:'user', ef:'created',   tf:'tat', sf:null,
    doneVals:[], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:true, hasMailbox:true},
   {id:'lvs',   label:'📋 LVS',       color:'#4d79ff',bg:'#eef2ff',
-   db:()=>DB.lvs,       tbl:'lvs',        mapFn:r=>mapLVS(r),
+   db:()=>DB.lvs,       tbl:'lvs',        mapFn:r=>mapLVS(r),        dateCol:'submitted_time',
    uf:'assignedTo',ef:'submittedTime',tf:'tat',sf:'status',
    doneVals:['tat reached','TAT Reached'], holdVal:'Hold',
    clientF:'clientName', teamF:'team', modeF:null,
    hasMode:false,hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'cls',   label:'🗂️ Classifier',color:'#0ea5e9',bg:'#f0f9ff',
-   db:()=>DB.cls,       tbl:'cls',         mapFn:r=>mapCLS(r),
+   db:()=>DB.cls,       tbl:'cls',         mapFn:r=>mapCLS(r),        dateCol:'submitted_time',
    uf:'assignedTo',ef:'submittedTime',tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientName', teamF:'team', modeF:'mode',
    hasMode:true, hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'comp',  label:'✅ Compliance', color:'#7c3aed',bg:'#f0ebff',
-   db:()=>DB.comp,      tbl:'comp',        mapFn:r=>mapCOMP(r),
+   db:()=>DB.comp,      tbl:'comp',        mapFn:r=>mapCOMP(r),       dateCol:'completed_time',
    uf:'assignedTo',ef:'completedTime',tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
   {id:'partlot',label:'📦 Part Lot', color:'#d97706',bg:'#fffbeb',
-   db:()=>DB.partLot,   tbl:'part_lot',    mapFn:r=>mapPartLot(r),
+   db:()=>DB.partLot,   tbl:'part_lot',    mapFn:r=>mapPartLot(r),    dateCol:'completed_time',
    uf:'user',      ef:'completed', tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
    hasMode:false,hasTeam:false,hasClient:false,hasShift:false,hasMailbox:false},
   {id:'oceantt',label:'🔍 Ocean T&T',color:'#0891b2',bg:'#e0f7fa',
-   db:()=>DB.oceanTT,   tbl:'ocean_tt',    mapFn:r=>mapOceanTT(r),
+   db:()=>DB.oceanTT,   tbl:'ocean_tt',    mapFn:r=>mapOceanTT(r),    dateCol:'complete_time',
    uf:'user',      ef:'complete',  tf:'tat',sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:'clientname', teamF:'team', modeF:null,
    hasMode:false,hasTeam:true, hasClient:true, hasShift:false,hasMailbox:false},
   {id:'b2',    label:'📝 B2 Entries', color:'#f59e0b',bg:'#fffbeb',
-   db:()=>DB.b2entries, tbl:'b2_entries',  mapFn:r=>mapB2(r),
+   db:()=>DB.b2entries, tbl:'b2_entries',  mapFn:r=>mapB2(r),         dateCol:'completed',
    uf:'user',      ef:'completed', tf:null,  sf:'status',
    doneVals:['completed'], holdVal:'Hold',
    clientF:null, teamF:null, modeF:null,
@@ -13595,21 +13595,23 @@ function _initKpiDarkCharts(){
   }
 }
 
-// ── FIX: Universal server-fetch by created_at for KPI Dashboard + Export ────
-// DB.xxx is a 30-day rolling window. When filtering April while today is May 2,
-// April 1-2 records are missing. This fetches directly from Supabase by created_at.
-async function _fetchTaskByCreatedDate(table, mapFn, d1, d2){
+// ── FIX: Universal server-fetch by correct date column per table ─────────────
+// DB.xxx is a 30-day rolling window — misses records older than 30 days.
+// dateCol: the actual DB column to filter on (submitted_time, created_time, etc.)
+// Each table has its own date column — never blindly use created_at.
+async function _fetchTaskByCreatedDate(table, mapFn, d1, d2, dateCol){
   if(!_supa) return [];
+  const col = dateCol || 'created_at'; // fallback only if explicitly not known
   const client = _supaAdmin || _supa;
   const PAGE = 1000;
   const all = [], seen = new Set();
   let lastId = 0, safety = 0;
   while(safety++ < 500){
     let q = client.from(table).select('*').gt('id',lastId).order('id',{ascending:true}).limit(PAGE);
-    if(d1) q = q.gte('created_at', d1);
-    if(d2) q = q.lte('created_at', d2+'T23:59:59');
+    if(d1) q = q.gte(col, d1);
+    if(d2) q = q.lte(col, d2+'T23:59:59');
     const {data,error} = await q;
-    if(error){ console.warn('[KPI fetch '+table+']',error.message); break; }
+    if(error){ console.warn('[KPI fetch '+table+']', error.message||JSON.stringify(error)); break; }
     if(!data||data.length===0) break;
     for(const row of data){ if(row.id!=null&&!seen.has(row.id)){ seen.add(row.id); all.push(row); } }
     lastId = data[data.length-1].id;
@@ -13650,7 +13652,7 @@ async function kpiShowTab(id){
   // (not just the 30-day in-memory window which misses older dates like April 1-2)
   let rawData;
   if((_kpiD1||_kpiD2) && tab.tbl && typeof _fetchTaskByCreatedDate==='function'){
-    rawData = await _fetchTaskByCreatedDate(tab.tbl, tab.mapFn, _kpiD1, _kpiD2);
+    rawData = await _fetchTaskByCreatedDate(tab.tbl, tab.mapFn, _kpiD1, _kpiD2, tab.dateCol);
   } else {
     rawData = tab.db()||[];
   }
@@ -14417,7 +14419,15 @@ async function exportAllTasksXLSX(){
 
     // FIX: When date filter active, server-fetch ALL tasks by created_at.
     // DB.xxx is a 30-day rolling window — misses records older than 30 days.
-    showToast('\u23f3 Preparing export — fetching all task data from server...');
+    showToast('\u23f3 Fetching all task data from server in parallel...');
+
+    // Live progress overlay so user knows it is working
+    const _progEl = document.createElement('div');
+    _progEl.id='exportProgressOverlay';
+    _progEl.style.cssText='position:fixed;bottom:24px;right:24px;z-index:99999;background:#1e293b;color:#f1f5f9;padding:14px 20px;border-radius:12px;font-size:13px;font-weight:700;font-family:var(--font);box-shadow:0 4px 24px #0006;min-width:260px';
+    _progEl.innerHTML='\u23f3 Fetching records from server...<br><span id="exportProgDetail" style="font-size:11px;opacity:.7">Starting parallel fetch for all tasks</span>';
+    document.body.appendChild(_progEl);
+    const _progUpdate = txt => { const el=document.getElementById('exportProgDetail'); if(el) el.textContent=txt; };
 
     let _lvsData,_clsData,_compData,_parsData,_oceanDocsData,
         _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData;
@@ -14431,20 +14441,26 @@ async function exportAllTasksXLSX(){
     } else {
       [_lvsData,_clsData,_compData,_parsData,_oceanDocsData,
        _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData] = await Promise.all([
-        _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2),
-        _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2),
-        _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2),
-        _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2),
-        _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2),
-        _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2),
-        _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2),
-        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2),
-        _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2),
-        isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2),
-        _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2),
+        _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2,'submitted_time'),
+        _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2,'submitted_time'),
+        _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2,'completed_time'),
+        _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2,'created_time'),
+        _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2,'created_time'),
+        _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2,'completed_time'),
+        _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2,'submitted'),
+        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2,'complete_time'),
+        _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2,'completed'),
+        isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2,'submitted'),
+        _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2,'submitted'),
       ]);
     }
 
+    // Remove progress overlay
+    const _po=document.getElementById('exportProgressOverlay'); if(_po) _po.remove();
+    if(!_noFilter){
+      const _fetched=[_lvsData,_clsData,_compData,_parsData,_oceanDocsData,_partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData].reduce((s,a)=>s+(a||[]).length,0);
+      showToast('\u2705 Fetched '+_fetched.toLocaleString()+' records — building Excel...');
+    }
     function _trueTotal(arr){ return (arr||[]).length; }
     const taskDefs=[
       {name:'LVS',         data:_lvsData},
