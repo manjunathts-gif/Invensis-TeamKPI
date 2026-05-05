@@ -1,6 +1,5 @@
-
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_6_export-by-created-date-FIX-2026-05-04" data-build-id="v9.6-export-createdAt-match-db">
+<html lang="en" data-build-stamp="V9_7_present-month-default-filters-2026-05-05" data-build-id="v9.7-present-month-tab-filter">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -17727,6 +17726,18 @@ function exportTruckTATChallenges(){
 function normTeam(t){ return (t||'').toLowerCase().replace(/^team[-\s]*/,'').trim(); }
 
 function renderAudit(c){
+  // ── Auto-seed current ET month filter on first open (blank filter = present month) ──
+  (function _seedAuditMonth(){
+    const af = window._auditFilters || {};
+    if(!af.d1 && !af.d2){
+      const _now = nowET();
+      const y = _now.getFullYear(), m = _now.getMonth();
+      const _p = v => String(v).padStart(2,'0');
+      const firstDay = y+'-'+_p(m+1)+'-01';
+      const lastDay  = y+'-'+_p(m+1)+'-'+_p(new Date(y,m+1,0).getDate());
+      window._auditFilters = Object.assign({}, af, {d1: firstDay, d2: lastDay});
+    }
+  })();
   // Smart re-render: if already on audit page, just refresh the tab content
   if(c.querySelector('#auditTabContent') && !window._forceRefresh){
     _rebuildAuditMap();
@@ -20482,6 +20493,13 @@ function submitClosing(){
 // ══════════════════════════════════════════
 function renderTATIssue(c){
   if(!c) return;
+  // ── Current ET month boundaries ──
+  const _tiNow = nowET();
+  const _tiY = _tiNow.getFullYear(), _tiM = _tiNow.getMonth();
+  const _tiP = v => String(v).padStart(2,'0');
+  const _tiFirst = _tiY+'-'+_tiP(_tiM+1)+'-01';
+  const _tiLast  = _tiY+'-'+_tiP(_tiM+1)+'-'+_tiP(new Date(_tiY,_tiM+1,0).getDate());
+
   const all=(DB.release2||[]).filter(r=>{
     const tv=(r.tat||'').toLowerCase();
     return tv.includes('not reached')||tv.includes('not-reached');
@@ -20529,7 +20547,17 @@ function renderTATIssue(c){
     </table></div>
   </div>
   <div id="pg_ti"></div>`;
-  pgSetData('ti', all);
+  // ── Pre-set date inputs to current ET month so table opens showing present month ──
+  const _tiD1 = document.getElementById('ti_fd1');
+  const _tiD2 = document.getElementById('ti_fd2');
+  if(_tiD1 && !_tiD1.value) _tiD1.value = _tiFirst;
+  if(_tiD2 && !_tiD2.value) _tiD2.value = _tiLast;
+  // Filter to present month by default
+  const _tiFiltered = all.filter(r => {
+    const s = String(r._created||'').slice(0,10);
+    return s >= _tiFirst && s <= _tiLast;
+  });
+  pgSetData('ti', _tiFiltered);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
 }
@@ -20604,6 +20632,12 @@ function clearTIFilter(){
 function renderDCIssue(c){
   if(!c) return;
   const canEdit = isAdmin()||CU?.role==='Supervisor';
+  // ── Current ET month boundaries ──
+  const _dcNow = nowET();
+  const _dcY = _dcNow.getFullYear(), _dcM = _dcNow.getMonth();
+  const _dcP = v => String(v).padStart(2,'0');
+  const _dcFirst = _dcY+'-'+_dcP(_dcM+1)+'-01';
+  const _dcLast  = _dcY+'-'+_dcP(_dcM+1)+'-'+_dcP(new Date(_dcY,_dcM+1,0).getDate());
 
   // Helper — parse display date string to Date object
   function _pd(s){
@@ -20815,8 +20849,18 @@ function renderDCIssue(c){
   </div>
   <div id="pg_dc"></div>`;
 
+  // ── Pre-set date inputs to current ET month so table opens showing present month ──
+  const _dcD1 = document.getElementById('dc_fd1');
+  const _dcD2 = document.getElementById('dc_fd2');
+  if(_dcD1 && !_dcD1.value) _dcD1.value = _dcFirst;
+  if(_dcD2 && !_dcD2.value) _dcD2.value = _dcLast;
+  // Filter to present month by default
+  const _dcFiltered = all.filter(r => {
+    const s = String(r._created||'').slice(0,10);
+    return s >= _dcFirst && s <= _dcLast;
+  });
   // Init pagination and render
-  pgSetData('dc', all);
+  pgSetData('dc', _dcFiltered);
   _renderDCRows(pgSlice('dc'));
   pgRender('dc','pg_dc','pgGoDC');
 }
