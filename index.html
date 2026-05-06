@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_7_present-month-default-filters-2026-05-05" data-build-id="v9.7-present-month-tab-filter">
+<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-05" data-build-id="v9.9-export-created-date-all-tasks">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -14163,10 +14163,38 @@ function renderReports(c){
   const clsUsers=DB.users.filter(u=>u.task==='Classifier');
   const compUsers=DB.users.filter(u=>u.task==='Compliance');
 
+  // ── Always filter report tables by created date (default = current ET month) ──
+  // Seed inputs first so _getReportDateRange() can read them
+  (function _seedReportDates(){
+    const _i1=document.getElementById('rd1'), _i2=document.getElementById('rd2');
+    if((!_i1||!_i1.value) && (!_i2||!_i2.value)){
+      const _n=nowET(),_y=_n.getFullYear(),_m=_n.getMonth();
+      const _p=v=>String(v).padStart(2,'0');
+      const _d1=_y+'-'+_p(_m+1)+'-01';
+      const _d2=_y+'-'+_p(_m+1)+'-'+_p(new Date(_y,_m+1,0).getDate());
+      if(_i1) _i1.value=_d1;
+      if(_i2) _i2.value=_d2;
+    }
+  })();
+  const _rd=_getReportDateRange();
+  const _rD1=_rd.d1, _rD2=_rd.d2;
+  function _filterByCreated(arr){
+    return (arr||[]).filter(r=>{
+      const s=String(r._created||'').slice(0,10);
+      if(_rD1&&s<_rD1) return false;
+      if(_rD2&&s>_rD2) return false;
+      return true;
+    });
+  }
+  const _fLVS   = _filterByCreated(DB.lvs);
+  const _fCLS   = _filterByCreated(DB.cls);
+  const _fCOMP  = _filterByCreated(DB.comp);
+  const _fClose = _filterByCreated(DB.closing||[]);
+
   const lvsRows=lvsUsers.map(u=>{
-    const total=DB.lvs.filter(r=>r.assignedTo===u.name).length;
-    const reached=DB.lvs.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat reached').length;
-    const missed=DB.lvs.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat not reached').length;
+    const total=_fLVS.filter(r=>r.assignedTo===u.name).length;
+    const reached=_fLVS.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat reached').length;
+    const missed=_fLVS.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat not reached').length;
     const tatTotal=reached+missed;
     const pct=tatTotal?Math.round(reached/tatTotal*100):0;
     const col=pct>=80?'var(--emerald)':pct>=50?'var(--amber)':'var(--rose)';
@@ -14174,25 +14202,25 @@ function renderReports(c){
       <td class="mono" style="text-align:center;color:var(--primary)">${total}</td>
       <td class="mono" style="text-align:center;color:var(--emerald)">${reached}</td>
       <td class="mono" style="text-align:center;color:var(--rose)">${missed}</td>
-      <td class="mono" style="text-align:center;color:var(--amber)">${DB.lvs.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td>
+      <td class="mono" style="text-align:center;color:var(--amber)">${_fLVS.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td>
       <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${col}">${pct}%</td></tr>`;
   }).join('');
 
   const clsRows=clsUsers.map(u=>{
-    const total=DB.cls.filter(r=>r.assignedTo===u.name).length;
-    const comp=DB.cls.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
+    const total=_fCLS.filter(r=>r.assignedTo===u.name).length;
+    const comp=_fCLS.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
     return`<tr><td style="font-weight:700">${u.name}</td>
       <td class="mono" style="text-align:center;color:var(--teal)">${total}</td>
       <td class="mono" style="text-align:center;color:var(--emerald)">${comp}</td>
-      <td class="mono" style="text-align:center;color:var(--amber)">${DB.cls.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td></tr>`;
+      <td class="mono" style="text-align:center;color:var(--amber)">${_fCLS.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td></tr>`;
   }).join('');
 
   const compRows=compUsers.map(u=>{
-    const total=DB.comp.filter(r=>r.assignedTo===u.name).length;
-    const completed=DB.comp.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
-    const hold=DB.comp.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length;
-    const pending=DB.comp.filter(r=>r.assignedTo===u.name&&r.status==='Pending').length;
-    const durs=DB.comp.filter(r=>r.assignedTo===u.name&&r.duration&&r.duration!=='00:00:00').map(r=>{const p=r.duration.split(':');return parseInt(p[0])*60+parseInt(p[1]);});
+    const total=_fCOMP.filter(r=>r.assignedTo===u.name).length;
+    const completed=_fCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
+    const hold=_fCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length;
+    const pending=_fCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Pending').length;
+    const durs=_fCOMP.filter(r=>r.assignedTo===u.name&&r.duration&&r.duration!=='00:00:00').map(r=>{const p=r.duration.split(':');return parseInt(p[0])*60+parseInt(p[1]);});
     const avgDur=durs.length?(()=>{const avg=Math.round(durs.reduce((a,b)=>a+b,0)/durs.length);return pad(Math.floor(avg/60))+':'+pad(avg%60)+':00';})():'—';
     return`<tr><td style="font-weight:700">${u.name}</td>
       <td class="mono" style="text-align:center;color:var(--violet)">${total}</td>
@@ -14203,7 +14231,7 @@ function renderReports(c){
   }).join('');
 
   // ── Closing HVS report data (non-Client only) ──
-  const closingAll = DB.closing || [];
+  const closingAll = _fClose;
   const closingUsers = [...new Set(closingAll.map(r=>r.user).filter(Boolean))].sort();
   const closingRows = !isClient() ? closingUsers.map(u=>{
     const recs = closingAll.filter(r=>r.user===u);
@@ -14280,7 +14308,7 @@ function renderReports(c){
   <div class="tw" style="margin-bottom:20px">
     <div class="th2"><div class="tt">Classifier Production Report</div><div class="tc">${clsUsers.length} users</div></div>
     <table class="dt"><thead><tr><th>User</th><th style="text-align:center">Total</th><th style="text-align:center">Completed</th><th style="text-align:center">Hold</th></tr></thead>
-    <tbody>${clsRows||`<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">No Classifier data</td></tr>`}</tbody>
+    <tbody id="clsRepBody">${clsRows||`<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">No Classifier data</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -14291,7 +14319,7 @@ function renderReports(c){
       <th>User</th><th style="text-align:center">Total</th><th style="text-align:center">Completed</th>
       <th style="text-align:center">Hold</th><th style="text-align:center">Pending</th><th style="text-align:center">Avg Duration</th>
     </tr></thead>
-    <tbody>${compRows||`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No Compliance data</td></tr>`}</tbody>
+    <tbody id="compRepBody">${compRows||`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No Compliance data</td></tr>`}</tbody>
     </table>
   </div>
 
@@ -14325,13 +14353,13 @@ function renderReports(c){
 }
 
 function applyReportFilter(){
-  // Update date badge in export section
-  const _bd1=document.getElementById('rd1')?.value||'';
-  const _bd2=document.getElementById('rd2')?.value||'';
+  const d1=document.getElementById('rd1')?.value||'';
+  const d2=document.getElementById('rd2')?.value||'';
+  // Update badge
   const badge=document.getElementById('rpt_date_badge');
   if(badge){
-    if(_bd1||_bd2){
-      const lbl = _bd1&&_bd2?_bd1+' → '+_bd2:_bd1?'From '+_bd1:'To '+_bd2;
+    if(d1||d2){
+      const lbl=d1&&d2?d1+' → '+d2:d1?'From '+d1:'To '+d2;
       badge.textContent='📅 '+lbl;
       badge.style.background='rgba(124,58,237,.12)';
       badge.style.color='var(--primary)';
@@ -14340,14 +14368,22 @@ function applyReportFilter(){
       badge.style.background='var(--primary-pale)';
     }
   }
-  const d1=document.getElementById('rd1')?.value;
-  const d2=document.getElementById('rd2')?.value;
-  if(!d1&&!d2)return;
-  // Filter LVS report rows
+  // Filter helper using _created field
+  function _f(arr){
+    return (arr||[]).filter(r=>{
+      const s=String(r._created||'').slice(0,10);
+      if(d1&&s<d1) return false;
+      if(d2&&s>d2) return false;
+      return true;
+    });
+  }
+  const filteredLVS  = _f(DB.lvs);
+  const filteredCLS  = _f(DB.cls);
+  const filteredCOMP = _f(DB.comp);
+  const filteredClose= _f(DB.closing||[]);
+
+  // ── LVS ──
   const lvsUsers=DB.users.filter(u=>u.task==='LVS');
-  let filteredLVS=DB.lvs;
-  if(d1) filteredLVS=filteredLVS.filter(r=>String(r._created||'').slice(0,10)>=d1);
-  if(d2) filteredLVS=filteredLVS.filter(r=>String(r._created||'').slice(0,10)<=d2);
   const tbody=document.getElementById('lvsRepBody');
   if(tbody) tbody.innerHTML=lvsUsers.map(u=>{
     const total=filteredLVS.filter(r=>r.assignedTo===u.name).length;
@@ -14363,12 +14399,70 @@ function applyReportFilter(){
       <td class="mono" style="text-align:center;color:var(--amber)">${filteredLVS.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td>
       <td style="text-align:center;font-family:var(--mono);font-weight:800;color:${col}">${pct}%</td></tr>`;
   }).join('');
+
+  // ── Classifier ──
+  const clsUsers=DB.users.filter(u=>u.task==='Classifier');
+  const clsBody=document.getElementById('clsRepBody');
+  if(clsBody) clsBody.innerHTML=clsUsers.map(u=>{
+    const total=filteredCLS.filter(r=>r.assignedTo===u.name).length;
+    const comp=filteredCLS.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
+    return`<tr><td style="font-weight:700">${u.name}</td>
+      <td class="mono" style="text-align:center;color:var(--teal)">${total}</td>
+      <td class="mono" style="text-align:center;color:var(--emerald)">${comp}</td>
+      <td class="mono" style="text-align:center;color:var(--amber)">${filteredCLS.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length}</td></tr>`;
+  }).join('');
+
+  // ── Compliance ──
+  const compUsers=DB.users.filter(u=>u.task==='Compliance');
+  const compBody=document.getElementById('compRepBody');
+  if(compBody) compBody.innerHTML=compUsers.map(u=>{
+    const total=filteredCOMP.filter(r=>r.assignedTo===u.name).length;
+    const completed=filteredCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Completed').length;
+    const hold=filteredCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Hold').length;
+    const pending=filteredCOMP.filter(r=>r.assignedTo===u.name&&r.status==='Pending').length;
+    const durs=filteredCOMP.filter(r=>r.assignedTo===u.name&&r.duration&&r.duration!=='00:00:00').map(r=>{const p=r.duration.split(':');return parseInt(p[0])*60+parseInt(p[1]);});
+    const avgDur=durs.length?(()=>{const avg=Math.round(durs.reduce((a,b)=>a+b,0)/durs.length);return pad(Math.floor(avg/60))+':'+pad(avg%60)+':00';})():'—';
+    return`<tr><td style="font-weight:700">${u.name}</td>
+      <td class="mono" style="text-align:center;color:var(--violet)">${total}</td>
+      <td class="mono" style="text-align:center;color:var(--emerald)">${completed}</td>
+      <td class="mono" style="text-align:center;color:var(--amber)">${hold}</td>
+      <td class="mono" style="text-align:center;color:var(--sky)">${pending}</td>
+      <td class="mono" style="text-align:center;color:var(--indigo)">${avgDur}</td></tr>`;
+  }).join('');
+
+  // ── Closing HVS ──
+  const closeBody=document.getElementById('closingRepBody');
+  if(closeBody){
+    const closeUsers=[...new Set(filteredClose.map(r=>r.user).filter(Boolean))].sort();
+    closeBody.innerHTML=closeUsers.map(u=>{
+      const recs=filteredClose.filter(r=>r.user===u);
+      const total=recs.length;
+      const completed=recs.filter(r=>r.status==='Completed').length;
+      const hold=recs.filter(r=>r.status==='Hold').length;
+      const submitted=recs.filter(r=>r.status==='Submitted to Customs').length;
+      const carm=recs.filter(r=>r.status==='Send to CARM').length;
+      return`<tr><td style="font-weight:700">${u}</td>
+        <td class="mono" style="text-align:center;color:var(--primary)">${total}</td>
+        <td class="mono" style="text-align:center;color:var(--emerald)">${completed}</td>
+        <td class="mono" style="text-align:center;color:var(--amber)">${hold}</td>
+        <td class="mono" style="text-align:center;color:var(--sky)">${submitted}</td>
+        <td class="mono" style="text-align:center;color:var(--teal)">${carm}</td></tr>`;
+    }).join('');
+  }
 }
 function clearReportFilter(){
-  const badge=document.getElementById('rpt_date_badge');
-  if(badge){badge.textContent='📅 All Records';badge.style.background='var(--primary-pale)';}
+  // Clear the inputs first — renderReports will re-seed with current month
   ['rd1','rd2'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   renderReports(document.getElementById('pc'));
+  // After re-render, read the seeded values and update badge
+  const _d1=document.getElementById('rd1')?.value||'';
+  const _d2=document.getElementById('rd2')?.value||'';
+  const badge=document.getElementById('rpt_date_badge');
+  if(badge && _d1 && _d2){
+    badge.textContent='📅 '+_d1+' → '+_d2;
+    badge.style.background='rgba(124,58,237,.12)';
+    badge.style.color='var(--primary)';
+  }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -14394,11 +14488,10 @@ async function exportAllTasksXLSX(){
     const today = todayStrET();
 
     function makeSheet(headers, dataRows){
-      // Strip Client Name column for Client role
+      // Strip restricted columns for Client role
       if(isClient()){
-        const rmIdx = headers.reduce((a,h,i)=>{
-          if(h==='Client Name') a.push(i); return a;
-        },[]);
+        const CLIENT_STRIP_COLS=new Set(['Client Name','TAT','TAT Analytics','TAT Analytics Comment','Audit By','Error Type','Quality %','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration']);
+        const rmIdx = headers.reduce((a,h,i)=>{ if(CLIENT_STRIP_COLS.has(h)) a.push(i); return a; },[]);
         if(rmIdx.length){
           const keep=(_,i)=>!rmIdx.includes(i);
           headers = headers.filter(keep);
@@ -14413,12 +14506,10 @@ async function exportAllTasksXLSX(){
 
     // ── 1. Summary ──
     const {d1:_xd1, d2:_xd2, label:_xlabel, display:_xdisplay} = _getReportDateRange();
-    const _xf = arr => _filterByDateRange(arr, _xd1, _xd2);
-    const _noFilter = !_xd1 && !_xd2;
     const _tc = window._trueCounts || {};
 
-    // FIX: When date filter active, server-fetch ALL tasks by created_at.
-    // DB.xxx is a 30-day rolling window — misses records older than 30 days.
+    // Always server-fetch by created_at — DB.xxx is a rolling window and must not be used for exports.
+    // _getReportDateRange() already guarantees d1/d2 are set (defaults to current ET month).
     showToast('\u23f3 Fetching all task data from server in parallel...');
 
     // Live progress overlay so user knows it is working
@@ -14432,35 +14523,25 @@ async function exportAllTasksXLSX(){
     let _lvsData,_clsData,_compData,_parsData,_oceanDocsData,
         _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData;
 
-    if(_noFilter){
-      _lvsData=DB.lvs||[];_clsData=DB.cls||[];_compData=DB.comp||[];
-      _parsData=DB.parsDocs||[];_oceanDocsData=DB.oceanDocs||[];
-      _partLotData=DB.partLot||[];_rlData=DB.release2||[];
-      _ottData=DB.oceanTT||[];_b2Data=DB.b2entries||[];
-      _closingData=DB.closing||[];_auditData=DB.audit||[];
-    } else {
-      [_lvsData,_clsData,_compData,_parsData,_oceanDocsData,
-       _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData] = await Promise.all([
-        _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2,'created_at'),
-        _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2,'created_at'),
-        isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2,'start_time'),
-        _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2,'created_at'),
-      ]);
-    }
+    [_lvsData,_clsData,_compData,_parsData,_oceanDocsData,
+     _partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData] = await Promise.all([
+      _fetchTaskByCreatedDate('lvs',        mapLVS,       _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('cls',        mapCLS,       _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('comp',       mapCOMP,      _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('pars_docs',  mapPARSDocs,  _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('ocean_docs', mapOceanDocs, _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('part_lot',   mapPartLot,   _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('release',    mapRelease,   _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('ocean_tt',   mapOceanTT,   _xd1,_xd2,'created_at'),
+      _fetchTaskByCreatedDate('b2_entries', mapB2,        _xd1,_xd2,'created_at'),
+      isClient()?Promise.resolve([]):_fetchTaskByCreatedDate('closing',mapClosing,_xd1,_xd2,'start_time'),
+      _fetchTaskByCreatedDate('audit',      mapAudit,     _xd1,_xd2,'created_at'),
+    ]);
 
     // Remove progress overlay
     const _po=document.getElementById('exportProgressOverlay'); if(_po) _po.remove();
-    if(!_noFilter){
-      const _fetched=[_lvsData,_clsData,_compData,_parsData,_oceanDocsData,_partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData].reduce((s,a)=>s+(a||[]).length,0);
-      showToast('\u2705 Fetched '+_fetched.toLocaleString()+' records — building Excel...');
-    }
+    const _fetched=[_lvsData,_clsData,_compData,_parsData,_oceanDocsData,_partLotData,_rlData,_ottData,_b2Data,_closingData,_auditData].reduce((s,a)=>s+(a||[]).length,0);
+    showToast('\u2705 Fetched '+_fetched.toLocaleString()+' records — building Excel...');
     function _trueTotal(arr){ return (arr||[]).length; }
     const taskDefs=[
       {name:'LVS',         data:_lvsData},
@@ -14480,17 +14561,19 @@ async function exportAllTasksXLSX(){
       ['Generated Date:', today],
       ['Date Range:', _xdisplay||'All Records'],
       ['Generated By:', CU?.name||'Admin'],
-      _noFilter ? ['Note:', 'Record counts reflect true DB totals. TAT stats are based on locally cached data.'] : [],
       [],
-      ['Task Name','Total Records','TAT Reached','TAT Not Reached','TAT Compliance %'],
-      ...taskDefs.map(t=>{
-        const _eff = t.data || [];
-        const total = _trueTotal(_eff);
-        const reached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
-        const notReached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
-        const tatTotal=reached+notReached;
-        return[t.name, total, reached, notReached, tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
-      }),
+      ...(isClient()
+        ? [['Task Name','Total Records'],
+           ...taskDefs.map(t=>{ const _eff=t.data||[]; return[t.name,_trueTotal(_eff)]; })]
+        : [['Task Name','Total Records','TAT Reached','TAT Not Reached','TAT Compliance %'],
+           ...taskDefs.map(t=>{
+             const _eff=t.data||[];
+             const total=_trueTotal(_eff);
+             const reached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv==='tat reached'||(tv.includes('reached')&&!tv.includes('not'));}).length;
+             const notReached=_eff.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;
+             const tatTotal=reached+notReached;
+             return[t.name,total,reached,notReached,tatTotal?Math.round(reached/tatTotal*100)+'%':'N/A'];
+           })]),
       [],
       ['TOTAL', taskDefs.reduce((s,t)=>s+_trueTotal(t.data),0)],
     ];
@@ -14543,8 +14626,7 @@ async function exportAllTasksXLSX(){
         const sepIdx=combined.indexOf(' || [Truck TAT Analytics]');
         const userCmt=sepIdx>=0?combined.slice(0,sepIdx):combined;
         const analytics=sepIdx>=0?combined.slice(sepIdx+4):(combined.startsWith('[Truck TAT Analytics]')?combined:'');
-        const _xlsxClientExport=isClient();
-        return[r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',r.docrcvd||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',userCmt,analytics,(r._created||'').slice(0,10),_xlsxClientExport?'':ar?.auditor||'',_xlsxClientExport?'':ar?.errorType||'',_xlsxClientExport?'':ar?.score||'',_xlsxClientExport?'':ar?.doubleSign||'',_xlsxClientExport?'':ar?.comments||'',_xlsxClientExport?'':ar?.startTime||'',_xlsxClientExport?'':ar?.endTime||'',_xlsxClientExport?'':ar?.duration||''];
+        return[r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',r.docrcvd||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',userCmt,analytics,(r._created||'').slice(0,10),ar?.auditor||'',ar?.errorType||'',ar?.score||'',ar?.doubleSign||'',ar?.comments||'',ar?.startTime||'',ar?.endTime||'',ar?.duration||''];
       })
     ), 'Release');
 
@@ -14618,10 +14700,12 @@ function csvCell(val){
 }
 
 function exportCSV(rows,headers,filename,summaryInfo){
-  // Strip Client Name column for Client role
+  // Strip & blank restricted columns for Client role
   if(isClient()){
+    // Columns to remove entirely (column + its data)
+    const CLIENT_REMOVE_COLS=new Set(['Client Name','Client name','TAT','TAT Analytics','TAT Analytics Comment']);
     const removeIdx = headers.reduce((acc,h,i)=>{
-      if(h==='Client Name'||h==='Client name') acc.push(i);
+      if(CLIENT_REMOVE_COLS.has(h)) acc.push(i);
       return acc;
     },[]);
     if(removeIdx.length){
@@ -14629,18 +14713,22 @@ function exportCSV(rows,headers,filename,summaryInfo){
       headers = headers.filter(keep);
       rows    = rows.map(row=>Array.isArray(row)?row.filter(keep):row);
     }
-    // Blank out audit columns for Client role (keep columns, clear values)
-    const auditBlankCols=['Audit By','Error Type','Quality Score %','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
-    const auditBlankIdx = headers.reduce((acc,h,i)=>{
-      if(auditBlankCols.includes(h)) acc.push(i);
+    // Audit columns — remove entirely for Client role
+    const auditRemoveCols=['Audit By','Error Type','Quality Score %','Quality %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
+    const auditRemoveIdx = headers.reduce((acc,h,i)=>{
+      if(auditRemoveCols.includes(h)) acc.push(i);
       return acc;
     },[]);
-    if(auditBlankIdx.length){
-      rows = rows.map(row=>{
-        if(!Array.isArray(row)) return row;
-        const r=[...row];
-        auditBlankIdx.forEach(i=>{ r[i]=''; });
-        return r;
+    if(auditRemoveIdx.length){
+      const keep2 = (_,i)=>!auditRemoveIdx.includes(i);
+      headers = headers.filter(keep2);
+      rows    = rows.map(row=>Array.isArray(row)?row.filter(keep2):row);
+    }
+    // Strip TAT rows from summaryInfo.extras too
+    if(summaryInfo && Array.isArray(summaryInfo.extras)){
+      const TAT_EXTRA_LABELS=new Set(['TAT Reached','TAT Not Reached','TAT Compliance %']);
+      summaryInfo = Object.assign({}, summaryInfo, {
+        extras: summaryInfo.extras.filter(pair=>!Array.isArray(pair)||!TAT_EXTRA_LABELS.has(pair[0]))
       });
     }
   }
@@ -14802,8 +14890,19 @@ function _filterMappedByDate(arr, d1, d2){
 function _filterByDateRange(arr, d1, d2){ return _filterMappedByDate(arr, d1, d2); }
 
 function _getReportDateRange(){
-  const d1=document.getElementById('rd1')?.value||'';
-  const d2=document.getElementById('rd2')?.value||'';
+  let d1=document.getElementById('rd1')?.value||'';
+  let d2=document.getElementById('rd2')?.value||'';
+  // Auto-default: if both blank, use current ET month so exports always filter by created date
+  if(!d1 && !d2){
+    const _n=nowET(), _y=_n.getFullYear(), _m=_n.getMonth();
+    const _p=v=>String(v).padStart(2,'0');
+    d1=_y+'-'+_p(_m+1)+'-01';
+    d2=_y+'-'+_p(_m+1)+'-'+_p(new Date(_y,_m+1,0).getDate());
+    // Also populate the inputs so the user can see what filter is active
+    const _i1=document.getElementById('rd1'), _i2=document.getElementById('rd2');
+    if(_i1&&!_i1.value) _i1.value=d1;
+    if(_i2&&!_i2.value) _i2.value=d2;
+  }
   return{d1,d2,
     label:d1&&d2?d1+'_to_'+d2:d1?'from_'+d1:d2?'to_'+d2:'all',
     display:d1&&d2?d1+' to '+d2:d1?'From '+d1:d2?'To '+d2:'All Records'
@@ -24536,7 +24635,6 @@ async function exportRelease2(){
     'Doc Rcvd Date','Profile Code','Status','User','Start Time','Submitted Time','Duration','TAT',
     'User Comments','TAT Analytics Comment','Created Date',
     'Audit By','Error Type','Quality Score %','Double Sign','Audit Comments','Audit Start','Audit End','Audit Duration'];
-  const _isClientExport = isClient();
   const rows=_data.map(r=>{
     const ar=window._auditByTxn?.get(String(r.txn));
     const combined=r.comments||'';
@@ -24548,8 +24646,8 @@ async function exportRelease2(){
       r.txn||'',r.transcreated||'',r.eta||'',r.client||'',r.clientname||'',r.team||'',r.mode||'',r.lines||'',
       r.docrcvd||'',r.profileCode||'',r.status||'',r.user||'',r.start||'',r.submitted||'',r.duration||'',cleanTAT(r.tat)||'',
       userCmt||'',analyticsCmt||'',(r._created||'').slice(0,10),
-      _isClientExport?'':ar?.auditor||'',_isClientExport?'':ar?.errorType||'',_isClientExport?'':ar?.score||'',_isClientExport?'':ar?.doubleSign||'',
-      _isClientExport?'':ar?.comments||'',_isClientExport?'':ar?.startTime||'',_isClientExport?'':ar?.endTime||'',_isClientExport?'':ar?.duration||''
+      ar?.auditor||'',ar?.errorType||'',ar?.score||'',ar?.doubleSign||'',
+      ar?.comments||'',ar?.startTime||'',ar?.endTime||'',ar?.duration||''
     ];
   });
   const _rlTR = _data.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;
