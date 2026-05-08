@@ -4363,8 +4363,8 @@ WHERE tat IS NULL OR tat = '';`
 }
 async function dbInsert(table,row){
   if(!_supa) return null;
-  // REST client insert already returns representation via Prefer header — no .select() needed
-  const {data,error}=await _supa.from(table).insert([row]);
+  // .select() ensures Supabase returns the saved row (with id) — required for _dbid tracking
+  const {data,error}=await _supa.from(table).insert([row]).select();
   if(error){
     const code=error.code||''; const emsg=error.message||error.code||'Unknown error';
     const missing=code==='PGRST205'||emsg.toLowerCase().includes('not find the table')||emsg.toLowerCase().includes('schema cache');
@@ -10404,7 +10404,7 @@ function buildNav(){
 
   if(isMgr){
     items=[
-      {id:'dashboard',l:'📊 Dashboard',g:'main'},
+      {id:'dashboard',l:'⚙️ Operation Dashboard',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
       {id:'compliance',l:'✅ Compliance',g:'tasks'},
@@ -10440,7 +10440,7 @@ function buildNav(){
   } else if(isSup){
     // Supervisor: Dashboard + ALL tasks + Audit + Reports + TAT Analyzer + Instructions + Error Report
     items=[
-      {id:'dashboard',l:'📊 Dashboard',g:'main'},
+      {id:'dashboard',l:'⚙️ Operation Dashboard',g:'main'},
       {id:'status',l:'📡 Status',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
@@ -10833,13 +10833,17 @@ function syncRefreshAll(primaryPage){
 // ══════════════════════════════════════════════════════════
 function renderLVS(c){
   const today=todayDateStringET();
+  const _now=nowET();
+  const _curYM=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
   const _rawAll=DB.lvs;
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
+  // Present month data for cards
+  const allMonth = all.filter(r=>String(r._created||'').slice(0,7)===_curYM);
   const todayR=all.filter(r=>String(r._created||'').slice(0,10)===today);
-  const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
-  const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+  const tatR=allMonth.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+  const tatN=allMonth.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
   const tc=tatPct>=80?'c-em':tatPct>=50?'c-am':'c-ro';
 
@@ -10850,15 +10854,16 @@ function renderLVS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="lvsTodayCard">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="lvsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="lvsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="lvsHoldCard">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
-    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv" id="lvsSubmitCarmCard">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
+    ${(()=>{return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="lvsTatReachedCard">${tatR}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="lvsTatNotCard">${tatN}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="lvsHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv" id="lvsSubmitCarmCard">${allMonth.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">This Month</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setLVSMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearLVSFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="lf_d1" type="date" placeholder="Start Date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="lf_d2" type="date" placeholder="End Date"/>
@@ -10892,7 +10897,15 @@ function renderLVS(c){
     </table></div>
   </div>
 <div id="pg_lvs"></div>`;
-  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  const _d=_scopeByUser(DB.lvs,'assignedTo');
+  // Default: show present month; admin/supervisor can use "All Data" button
+  const _now2=nowET();const _ym2=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0');
+  const _dMonth=_d.filter(r=>String(r._created||'').slice(0,7)===_ym2);
+  // Seed date filters
+  const _fd1=document.getElementById('lf_d1');const _fd2=document.getElementById('lf_d2');
+  if(_fd1&&!_fd1.value){const _f=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0')+'-01';_fd1.value=_f;}
+  if(_fd2&&!_fd2.value){const _l=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now2.getFullYear(),_now2.getMonth()+1,0).getDate()).padStart(2,'0');_fd2.value=_l;}
+  pgSetData('lvs',_dMonth);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
   if(_restoreFilter('lvs')) applyLVSFilter();
 }
 
@@ -11089,9 +11102,28 @@ function applyLVSFilter(){
 function pgGoLVS(p){
   pgGo('lvs', p, renderLVSRows, 'pg_lvs', 'pgGoLVS');
 }
-function clearLVSFilter(){
+function clearLVSFilter(showAll){
   _clearFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
-  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  let _d=_scopeByUser(DB.lvs,'assignedTo');
+  // By default restrict to present month; admin/supervisor can pass showAll=true
+  if(!showAll){
+    const _now=nowET();const _ym=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    // Seed date inputs to current month
+    const _f=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now.getFullYear(),_now.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('lf_d1');const d2=document.getElementById('lf_d2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+}
+function setLVSMonthFilter(){
+  const _now=nowET();
+  const _f=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now.getFullYear(),_now.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('lf_d1');const d2=document.getElementById('lf_d2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyLVSFilter();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11379,6 +11411,9 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
+  const _clsNow=nowET();
+  const _clsYM=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0');
+  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_clsYM);
   const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
@@ -11388,15 +11423,16 @@ function renderCLS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="clsTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clsCompletedCard">${all.filter(r=>r.status==='Completed').length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clsHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
-    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="clsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="clsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clsCompletedCard">${allMonth.filter(r=>r.status==='Completed').length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clsHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
+    ${(()=>{const tr=allMonth.filter(r=>r.tat==='TAT Reached').length;const tn=allMonth.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="clsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="clsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setCLSMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearCLSFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="cf_d1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="cf_d2" type="date"/>
@@ -11419,14 +11455,19 @@ function renderCLS(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal);box-shadow:0 3px 10px rgba(13,148,136,.3);" onclick="openCLS()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Classifier Records</div><div class="tc" id="clsCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">Classifier Records</div><div class="tc" id="clsCount">${allMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn Number</th><th>Mode</th><th>Assigned To</th><th>Start Time</th><th>Submitted</th><th>Duration</th><th>TAT (≤15 min)</th><th>Status</th><th>Comments</th></tr></thead>
       <tbody id="clsTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_cls"></div>`;
-  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  const _d=_scopeByUser(DB.cls,'assignedTo');
+  const _dMonthCLS=_d.filter(r=>String(r._created||'').slice(0,7)===_clsYM);
+  const _cf1=document.getElementById('cf_d1');const _cf2=document.getElementById('cf_d2');
+  if(_cf1&&!_cf1.value){const _f=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0')+'-01';_cf1.value=_f;}
+  if(_cf2&&!_cf2.value){const _l=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_clsNow.getFullYear(),_clsNow.getMonth()+1,0).getDate()).padStart(2,'0');_cf2.value=_l;}
+  pgSetData('cls',_dMonthCLS);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
   if(_restoreFilter('cls')) applyCLSFilter();
 }
 
@@ -11500,9 +11541,26 @@ function applyCLSFilter(){
 function pgGoCLS(p){
   pgGo('cls', p, renderCLSRows, 'pg_cls', 'pgGoCLS');
 }
-function clearCLSFilter(){
+function clearCLSFilter(showAll){
   _clearFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
-  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  let _d=_scopeByUser(DB.cls,'assignedTo');
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('cf_d1');const d2=document.getElementById('cf_d2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+}
+function setCLSMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('cf_d1');const d2=document.getElementById('cf_d2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyCLSFilter();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -12378,24 +12436,42 @@ function renderDashboard(c){
   <!-- HERO -->
   <div class="dash-ed-hero">
     <div>
-      <div class="dash-ed-main-title">${isTL&&!isMgr?`🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}`:`Admin <strong>Command</strong><br>Centre`}</div>
+      <div class="dash-ed-main-title">${isTL&&!isMgr?`🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}`:`⚙️ Operation <strong>Dashboard</strong>`}</div>
       <div class="dash-ed-sub">Welcome, ${CU.name} &nbsp;·&nbsp; ${now.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
     </div>
     <div class="dash-ed-pills">
       <div class="dash-ed-pill-time">${now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
       <div class="dash-ed-pill-live" id="realtimeIndicator">🟢 LIVE</div>
+      ${(isMgr||isAdmin())?`<button onclick="window._dashShowMonth=!window._dashShowMonth;renderDashboard(document.getElementById('pc'))" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${window._dashShowMonth?'📅 This Month':'📊 All Time'}</button>`:''}
     </div>
   </div>
 
-  <!-- KPI CARDS -->
+  <!-- KPI CARDS -->${(()=>{
+    // Compute month-filtered totals for admin toggle
+    const _curYM2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const _showMonth = !!(window._dashShowMonth);
+    const statsMonth={};
+    visibleDefs.forEach(d=>{
+      const mRecs=_showMonth?d.db.filter(r=>String(r._created||'').slice(0,7)===_curYM2):d.db;
+      statsMonth[d.key]={total:mRecs.length,todayCnt:stats[d.key].todayCnt};
+    });
+    return ``;
+  })()}
   <div class="dash-ed-kpi-grid">
-    ${visibleDefs.map(d=>`
-      <div class="dash-ed-kpi" data-kpi="${d.key}" style="background:linear-gradient(135deg,${d.grad})">
-        <div class="dash-ed-kpi-ico">${d.ico}</div>
-        <div class="dash-ed-kpi-lbl">${d.label}</div>
-        <div class="dash-ed-kpi-num">${stats[d.key].total.toLocaleString()}</div>
-        <div class="dash-ed-kpi-foot">Today: ${stats[d.key].todayCnt}</div>
-      </div>`).join('')}
+    ${(()=>{
+      const _curYM2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+      const _showMonth=!!(window._dashShowMonth);
+      return visibleDefs.map(d=>{
+        const cnt=_showMonth?d.db.filter(r=>String(r._created||'').slice(0,7)===_curYM2).length:stats[d.key].total;
+        return`
+        <div class="dash-ed-kpi" data-kpi="${d.key}" style="background:linear-gradient(135deg,${d.grad})">
+          <div class="dash-ed-kpi-ico">${d.ico}</div>
+          <div class="dash-ed-kpi-lbl">${d.label}</div>
+          <div class="dash-ed-kpi-num">${cnt.toLocaleString()}</div>
+          <div class="dash-ed-kpi-foot">${_showMonth?'This Month':'Today: '+stats[d.key].todayCnt}</div>
+        </div>`;
+      }).join('');
+    })()}
     <div class="dash-ed-kpi" data-kpi="holdAll" style="background:linear-gradient(135deg,#dc2626,#f87171)">
       <div class="dash-ed-kpi-ico">⏸️</div>
       <div class="dash-ed-kpi-lbl">On Hold</div>
@@ -16047,7 +16123,10 @@ function renderMyStatus(c){
     else if(tv==='tat not reached') teamTatMissCnt++;
   }
   const teamTatPct=(teamTatOkCnt+teamTatMissCnt)?Math.round(teamTatOkCnt/(teamTatOkCnt+teamTatMissCnt)*100):0;
-  const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
+  // Active members this month: union of loginUsers (task + active) and users who submitted this month
+  const _monthTeamRecs = teamRecs.filter(r => r._dateYM === curYM);
+  const _monthActiveNames = new Set(_monthTeamRecs.map(r=>r[tm.fld]||'').filter(Boolean));
+  const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),..._monthActiveNames]);
   const usersArr=[...allUsersSet].sort();
 
   // Backwards-compat aliases used further down in the render HTML (only a few
@@ -16158,7 +16237,7 @@ function renderMyStatus(c){
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">Team Month</div><div class="sv">${teamMonthRecs.length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${teamHold.length}</div></div>
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Team TAT%</div><div class="sv">${teamTatPct}%</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Members</div><div class="sv">${allUsersSet.size}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Members</div><div class="sv">${allUsersSet.size}</div><div class="sf">This Month</div></div>
   </div>
   <div class="tw" style="margin-bottom:14px">
     <div class="th2"><div class="tt">👥 Team Members — ${tm.label}</div><div class="tc">${allUsersSet.size} members · today vs month</div></div>
@@ -18965,6 +19044,11 @@ function renderPARSDocs(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
+  const _pdNow=nowET();
+  const _pdYM=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0');
+  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_pdYM);
+  const _pdFirst=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0')+'-01';
+  const _pdLast=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_pdNow.getFullYear(),_pdNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📄 PARS Docs Clerk <span class="pbadge">Live</span></div>
@@ -18972,13 +19056,14 @@ function renderPARSDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="pdTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setPDMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearPDFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="pd_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="pd_fd2" type="date"/>
@@ -19001,14 +19086,19 @@ function renderPARSDocs(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--sky)" onclick="openPARSDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">PARS Docs Records</div><div class="tc" id="pdCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">PARS Docs Records</div><div class="tc" id="pdCount">${allMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Mailbox</th><th>Subject</th><th>Mail Rcvd</th><th>Txn</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Mode</th><th>ETA</th><th>User</th><th>Start</th><th>Created</th><th>Duration</th><th>TAT</th><th>Comments</th><th>Edit</th></tr></thead>
       <tbody id="pdTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_pd"></div>`;
-  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  const _d=_scopeByUser(DB.parsDocs,'user');
+  const _dMonthPD=_d.filter(r=>String(r._created||'').slice(0,7)===_pdYM);
+  const _pfd1=document.getElementById('pd_fd1');const _pfd2=document.getElementById('pd_fd2');
+  if(_pfd1&&!_pfd1.value)_pfd1.value=_pdFirst;
+  if(_pfd2&&!_pfd2.value)_pfd2.value=_pdLast;
+  pgSetData('pd',_dMonthPD);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
   if(_restoreFilter('pd')) applyPDFilter();
 }
 
@@ -19065,9 +19155,26 @@ function applyPDFilter(){
 function pgGoPD(p){
   pgGo('pd', p, renderPDRows, 'pg_pd', 'pgGoPD');
 }
-function clearPDFilter(){
+function clearPDFilter(showAll){
   _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_fmode','pd_search']);
-  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  let _d=_scopeByUser(DB.parsDocs,'user');
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('pd_fd1');const d2=document.getElementById('pd_fd2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+}
+function setPDMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('pd_fd1');const d2=document.getElementById('pd_fd2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyPDFilter();
 }
 
 function editPARSRecord(idx){
@@ -19433,6 +19540,11 @@ function renderOceanDocs(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
+  const _odNow=nowET();
+  const _odYM=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0');
+  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_odYM);
+  const _odFirst=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0')+'-01';
+  const _odLast=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_odNow.getFullYear(),_odNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🌊 Ocean Docs Clerk <span class="pbadge">Live</span></div>
@@ -19440,13 +19552,14 @@ function renderOceanDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="odTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setODMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearODFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="od_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="od_fd2" type="date"/>
@@ -19469,14 +19582,19 @@ function renderOceanDocs(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal)" onclick="openOceanDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Ocean Docs Records</div><div class="tc" id="odCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">Ocean Docs Records</div><div class="tc" id="odCount">${allMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Mailbox</th><th>Subject</th><th>Mail Rcvd</th><th>Txn</th><th>Client</th><th>Team</th><th>Mode</th><th>Ship Type</th><th>User</th><th>Start Time</th><th>Created Time</th><th>Duration</th><th>TAT</th><th>Shift</th><th>Comments</th></tr></thead>
       <tbody id="odTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_od"></div>`;
-  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  const _d=_scopeByUser(DB.oceanDocs,'user');
+  const _dMonthOD=_d.filter(r=>String(r._created||'').slice(0,7)===_odYM);
+  const _ofd1=document.getElementById('od_fd1');const _ofd2=document.getElementById('od_fd2');
+  if(_ofd1&&!_ofd1.value)_ofd1.value=_odFirst;
+  if(_ofd2&&!_ofd2.value)_ofd2.value=_odLast;
+  pgSetData('od',_dMonthOD);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
   if(_restoreFilter('od')) applyODFilter();
 }
 
@@ -19530,9 +19648,26 @@ function applyODFilter(){
 function pgGoOD(p){
   pgGo('od', p, renderODRows, 'pg_od', 'pgGoOD');
 }
-function clearODFilter(){
+function clearODFilter(showAll){
   _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_fmode','od_search']);
-  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  let _d=_scopeByUser(DB.oceanDocs,'user');
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('od_fd1');const d2=document.getElementById('od_fd2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+}
+function setODMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('od_fd1');const d2=document.getElementById('od_fd2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyODFilter();
 }
 
 function editOceanDocsRecord(idx){
@@ -19717,6 +19852,11 @@ function renderPartLot(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
+  const _plNow=nowET();
+  const _plYM=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0');
+  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_plYM);
+  const _plFirst=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0')+'-01';
+  const _plLast=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_plNow.getFullYear(),_plNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📦 Part Lot <span class="pbadge">Live</span></div>
@@ -19724,13 +19864,14 @@ function renderPartLot(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="plTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setPLMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearPLFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="pl_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="pl_fd2" type="date"/>
@@ -19745,14 +19886,19 @@ function renderPartLot(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--amber)" onclick="openPartLot()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Part Lot Records</div><div class="tc" id="plCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">Part Lot Records</div><div class="tc" id="plCount">${allMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Subject</th><th>Txn</th><th>PARS No</th><th>Mail Rcvd</th><th>User</th><th>Start</th><th>Completed</th><th>Duration</th><th>TAT</th><th>Comments</th></tr></thead>
       <tbody id="plTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_pl"></div>`;
-  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  const _d=_scopeByUser(DB.partLot,'user');
+  const _dMonthPL=_d.filter(r=>String(r._created||'').slice(0,7)===_plYM);
+  const _pld1=document.getElementById('pl_fd1');const _pld2=document.getElementById('pl_fd2');
+  if(_pld1&&!_pld1.value)_pld1.value=_plFirst;
+  if(_pld2&&!_pld2.value)_pld2.value=_plLast;
+  pgSetData('pl',_dMonthPL);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
   if(_restoreFilter('pl')) applyPLFilter();
 }
 
@@ -19796,9 +19942,26 @@ function applyPLFilter(){
 function pgGoPL(p){
   pgGo('pl', p, renderPLRows, 'pg_pl', 'pgGoPL');
 }
-function clearPLFilter(){
+function clearPLFilter(showAll){
   _clearFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
-  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  let _d=_scopeByUser(DB.partLot,'user');
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('pl_fd1');const d2=document.getElementById('pl_fd2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+}
+function setPLMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('pl_fd1');const d2=document.getElementById('pl_fd2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyPLFilter();
 }
 
 function openPartLot(){
@@ -20035,6 +20198,11 @@ function renderRelease2(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
+  const _rlNow=nowET();
+  const _rlYM=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0');
+  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_rlYM);
+  const _rlFirst=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0')+'-01';
+  const _rlLast=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_rlNow.getFullYear(),_rlNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🚀 Release <span class="pbadge">Live</span></div>
@@ -20042,27 +20210,25 @@ function renderRelease2(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
+    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
     ${(()=>{
-      // Profile Code stats — visible to all Release roles
-      const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
-      const pcNo=all.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
-      const pcNone=all.filter(r=>!r.profileCode||r.profileCode==='—').length;
+      const pcYes=allMonth.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
+      const pcNo=allMonth.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
       return`
-        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv" id="rlPcYesCard">${pcYes}</div><div class="sf">Yes</div></div>
-        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv" id="rlPcNoCard">${pcNo}</div><div class="sf">No</div></div>`;
+        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv" id="rlPcYesCard">${pcYes}</div><div class="sf">This Month</div></div>
+        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv" id="rlPcNoCard">${pcNo}</div><div class="sf">This Month</div></div>`;
     })()}
     ${(()=>{
       if(!(CU&&CU.role==='Team Lead'&&CU.task==='Release'))return'';
-      const _allTxnSet=new Set(all.map(r=>String(r.txn)));
+      const _allTxnSet=new Set(allMonth.map(r=>String(r.txn)));
       const _auditedInAll=DB.audit.filter(a=>_allTxnSet.has(String(a.txn)));
       const auditDone=_auditedInAll.length;
-      const auditPending=all.length-auditDone;
+      const auditPending=allMonth.length-auditDone;
       const todayAudited=_auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length;
-      const pct=all.length?Math.round(auditDone/all.length*100):0;
+      const pct=allMonth.length?Math.round(auditDone/allMonth.length*100):0;
       return`
         <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv" id="rlAuditDoneCard">${_auditedInAll.length}</div><div class="sf" id="rlAuditPctCard">${pct}% audited</div></div>
         <div class="sc c-sky"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Audit Pending</div><div class="sv" id="rlAuditPendCard">${auditPending}</div><div class="sf">Not yet audited</div></div>
@@ -20071,7 +20237,8 @@ function renderRelease2(c){
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setRLMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearRLFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="rl_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="rl_fd2" type="date"/>
@@ -20099,7 +20266,7 @@ function renderRelease2(c){
     ${isAdmin()?'<button onclick="bulkFixReleaseTAT()" style="padding:8px 14px;background:#fff7ed;border:1.5px solid rgba(245,158,11,.4);color:#b45309;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px;" title="Recalculate TAT for ALL Release records using correct date-only rule for Ocean/Air/Rail">⚡ Fix All TAT</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${allMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Profile Code</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>Comments</th><th>⭐ Quality</th>${(CU&&CU.role==='Team Lead'&&CU.task==='Release'&&canEditData())?'<th>🔍 Audit</th><th>✏️ Edit</th>':''}</tr></thead>
       <tbody id="rlTbody"></tbody>
@@ -20112,7 +20279,11 @@ function renderRelease2(c){
   requestAnimationFrame(()=>{
     setTimeout(()=>{
       const _d=_scopeByUser(DB.release2,'user');
-      pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+      const _dMonthRL=_d.filter(r=>String(r._created||'').slice(0,7)===_rlYM);
+      const _rfd1=document.getElementById('rl_fd1');const _rfd2=document.getElementById('rl_fd2');
+      if(_rfd1&&!_rfd1.value)_rfd1.value=_rlFirst;
+      if(_rfd2&&!_rfd2.value)_rfd2.value=_rlLast;
+      pgSetData('rl',_dMonthRL);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
       if(_restoreFilter('rl')) applyRLFilter();
     },0);
   });
@@ -20263,9 +20434,26 @@ function applyRLFilter(){
 function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
-function clearRLFilter(){
+function clearRLFilter(showAll){
   _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
-  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+  let _d=_scopeByUser(DB.release2,'user');
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
+    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('rl_fd1');const d2=document.getElementById('rl_fd2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+  }
+  pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+}
+function setRLMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('rl_fd1');const d2=document.getElementById('rl_fd2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyRLFilter();
 }
 
 // ══════════════════════════════════════════
@@ -20604,21 +20792,28 @@ function renderTATIssue(c){
     return tv.includes('not reached')||tv.includes('not-reached');
   });
   const today=todayDateStringET();
-  const modes=[...new Set(all.map(r=>r.mode||'—').filter(Boolean))].sort();
+  // Default to present month for cards and table
+  const _tiFilteredMonth = all.filter(r => {
+    const s = String(r._created||'').slice(0,10);
+    return s >= _tiFirst && s <= _tiLast;
+  });
+  const modes=[...new Set(_tiFilteredMonth.map(r=>r.mode||'—').filter(Boolean))].sort();
   c.innerHTML=`
   <div class="ph">
     <div>
       <div class="pt">🚨 TAT Issue <span class="pbadge">Live</span></div>
-      <div class="ps">All Release records where TAT Not Reached — across all modes</div>
+      <div class="ps">Release records where TAT Not Reached — present month · use date filter to see all</div>
     </div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${all.length}</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${_tiFilteredMonth.length}</div><div class="sf">This Month</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
+    ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${_tiFilteredMonth.filter(r=>r.mode===m).length}</div></div>`).join('')}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
+    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setTIMonthFilter()">📅 This Month</button>
+    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearTIFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="ti_fd1" type="date" placeholder="From"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="ti_fd2" type="date" placeholder="To"/>
@@ -20639,7 +20834,7 @@ function renderTATIssue(c){
     <button class="btn-cl" onclick="clearTIFilter()">Clear</button>
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">TAT Not Reached — Release Records</div><div class="tc" id="tiCount">${all.length} records</div></div>
+    <div class="th2"><div class="tt">TAT Not Reached — Release Records</div><div class="tc" id="tiCount">${_tiFilteredMonth.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th>Client</th><th>Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>TAT Reason / Comments</th>${isAdmin()?'<th>✏️ Edit</th>':''}</tr></thead>
       <tbody id="tiTbody"></tbody>
@@ -20651,12 +20846,8 @@ function renderTATIssue(c){
   const _tiD2 = document.getElementById('ti_fd2');
   if(_tiD1 && !_tiD1.value) _tiD1.value = _tiFirst;
   if(_tiD2 && !_tiD2.value) _tiD2.value = _tiLast;
-  // Filter to present month by default
-  const _tiFiltered = all.filter(r => {
-    const s = String(r._created||'').slice(0,10);
-    return s >= _tiFirst && s <= _tiLast;
-  });
-  pgSetData('ti', _tiFiltered);
+  // Use already-computed month-filtered data (cards and table must match)
+  pgSetData('ti', _tiFilteredMonth);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
 }
@@ -20716,12 +20907,27 @@ function applyTIFilter(){
   pgRender('ti','pg_ti','pgGoTI');
 }
 function pgGoTI(p){ pgGo('ti', p, renderTIRows, 'pg_ti', 'pgGoTI'); }
-function clearTIFilter(){
+function clearTIFilter(showAll){
   ['ti_fd1','ti_fd2','ti_fu','ti_fteam','ti_fmode','ti_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  const data=(DB.release2||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');});
+  let data=(DB.release2||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');});
+  if(!showAll){
+    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
+    const _f=_ym+'-01';const _l=_ym+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+    const d1=document.getElementById('ti_fd1');const d2=document.getElementById('ti_fd2');
+    if(d1)d1.value=_f;if(d2)d2.value=_l;
+    data=data.filter(r=>String(r._created||'').slice(0,7)===_ym);
+  }
   pgSetData('ti', data);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
+}
+function setTIMonthFilter(){
+  const _n=nowET();
+  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
+  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
+  const d1=document.getElementById('ti_fd1');const d2=document.getElementById('ti_fd2');
+  if(d1)d1.value=_f;if(d2)d2.value=_l;
+  applyTIFilter();
 }
 
 // ══════════════════════════════════════════════════════════
