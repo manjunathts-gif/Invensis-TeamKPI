@@ -5072,12 +5072,10 @@ function _silentRefreshPage(id){
       return;
     }
     if(id==='mystatus'){
-      // Fast in-place: restore from HTML cache if available, else render fresh
-      if(window._myStatusHtmlCache && c.children.length > 0){
-        // Cards are already visible — just do a lightweight stat update
+      // Fast in-place: if content is rendered and data cached, just update numbers
+      if(window._myStatusHtmlCache && c.innerHTML){
         _myStatusFastUpdate();
       } else {
-        // First render or container was cleared — render fresh but without skeleton delay
         renderMyStatus(c);
       }
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
@@ -10346,6 +10344,10 @@ function doLogout(){
   Object.keys(_endCaptured).forEach(k=>{ _endCaptured[k]=false; });
 
   CU=null; selectedTask='';
+  // Clear page caches so next user gets a fresh render
+  window._myStatusHash = null;
+  window._myStatusHtmlCache = false;
+  window._dashShowMonth = undefined; // reset to default (This Month)
   SEC.sessionStart=0;
   document.getElementById('appShell').style.display='none';
   document.getElementById('loginPage').style.display='flex';
@@ -10416,7 +10418,7 @@ function buildNav(){
 
   if(isMgr){
     items=[
-      {id:'dashboard',l:'⚙️ Operation Dashboard',g:'main'},
+      {id:'dashboard',l:'⚙️ Dashboard',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
       {id:'compliance',l:'✅ Compliance',g:'tasks'},
@@ -10452,7 +10454,7 @@ function buildNav(){
   } else if(isSup){
     // Supervisor: Dashboard + ALL tasks + Audit + Reports + TAT Analyzer + Instructions + Error Report
     items=[
-      {id:'dashboard',l:'⚙️ Operation Dashboard',g:'main'},
+      {id:'dashboard',l:'⚙️ Dashboard',g:'main'},
       {id:'status',l:'📡 Status',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
@@ -10754,7 +10756,14 @@ function showPage(id){
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
 
   // Show skeleton immediately so the click feels instant
-  _showPageSkeleton(c, id);
+  // Skip skeleton for mystatus — it renders fast enough to go direct, skeleton causes flicker
+  if(id !== 'mystatus') _showPageSkeleton(c, id);
+
+  // For mystatus: render synchronously right here — no deferred setTimeout, no skeleton blink
+  if(id === 'mystatus'){
+    renderMyStatus(c);
+    return;
+  }
 
   // ── DEFERRED HEAVY RENDER: setTimeout(0) yields to browser paint first,
   //    then renders on next event-loop tick. Avoids rAF handler violations
@@ -12194,26 +12203,23 @@ function refreshTaskHeatmap(){
 }
 
 // ── Dashboard month toggle — lightweight in-place card swap (no full re-render) ──
-// Default: show THIS MONTH (window._dashShowMonth===undefined → treat as true on first render)
+// Default: show THIS MONTH (window._dashShowMonth===undefined or true → This Month, false → All Time)
 function toggleDashMonth(){
-  // If undefined (first click), current state is "This Month" so toggle to "All Time"
+  // Toggle: undefined/true → false (All Time), false → true (This Month)
   window._dashShowMonth = (window._dashShowMonth === false) ? true : false;
+  const showMonth = (window._dashShowMonth !== false);
   const btn = document.getElementById('dashMonthToggle');
-  if(btn) btn.textContent = window._dashShowMonth === false ? '📊 All Time' : '📅 This Month';
-  // Compute month-filtered counts per task and swap card values in-place
+  // Button text = what is NOW showing
+  if(btn) btn.textContent = showMonth ? '📅 This Month' : '📊 All Time';
+  // Compute and swap card values in-place
   const now = nowET();
   const curYM = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
   const todayYMD = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const _taskDefs = [
-    {key:'lvs',db:DB.lvs},
-    {key:'cls',db:DB.cls},
-    {key:'comp',db:DB.comp},
-    {key:'parsDocs',db:DB.parsDocs},
-    {key:'oceanDocs',db:DB.oceanDocs},
-    {key:'partLot',db:DB.partLot},
-    {key:'release2',db:DB.release2},
-    {key:'oceanTT',db:DB.oceanTT},
-    {key:'b2entries',db:DB.b2entries},
+    {key:'lvs',db:DB.lvs},{key:'cls',db:DB.cls},{key:'comp',db:DB.comp},
+    {key:'parsDocs',db:DB.parsDocs},{key:'oceanDocs',db:DB.oceanDocs},
+    {key:'partLot',db:DB.partLot},{key:'release2',db:DB.release2},
+    {key:'oceanTT',db:DB.oceanTT},{key:'b2entries',db:DB.b2entries},
   ];
   _taskDefs.forEach(d=>{
     const el = document.querySelector(`.dash-ed-kpi[data-kpi="${d.key}"]`);
@@ -12221,7 +12227,7 @@ function toggleDashMonth(){
     const numEl = el.querySelector('.dash-ed-kpi-num');
     const footEl = el.querySelector('.dash-ed-kpi-foot');
     if(!numEl) return;
-    if(window._dashShowMonth){
+    if(showMonth){
       const cnt = d.db.filter(r=>String(r._created||'').slice(0,7)===curYM).length;
       numEl.textContent = cnt.toLocaleString();
       if(footEl) footEl.textContent = 'This Month';
@@ -12348,7 +12354,9 @@ function renderDashboard(c){
         }
       }
     };
-    // KPI cards: total + today
+    // KPI cards: total + today — respect month toggle
+    const _curYMsmart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const _showMonthSmart = (window._dashShowMonth !== false);
     visibleDefs.forEach(d=>{
       const s=stats[d.key];
       const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
@@ -12356,14 +12364,17 @@ function renderDashboard(c){
         const numEl=kpiEl.querySelector('.dash-ed-kpi-num');
         const footEl=kpiEl.querySelector('.dash-ed-kpi-foot');
         if(numEl){
+          const displayVal = _showMonthSmart
+            ? d.db.filter(r=>String(r._created||'').slice(0,7)===_curYMsmart).length
+            : s.total;
           const _old = parseFloat(String(numEl.textContent).replace(/[^0-9.\-]/g,''))||0;
-          numEl.textContent = s.total.toLocaleString();
-          if(s.total > _old){
+          numEl.textContent = displayVal.toLocaleString();
+          if(displayVal > _old){
             numEl.classList.remove('kpi-pulse');
             requestAnimationFrame(()=>{ numEl.classList.add('kpi-pulse'); setTimeout(()=>numEl.classList.remove('kpi-pulse'),900); });
           }
         }
-        if(footEl) footEl.textContent='Today: '+s.todayCnt;
+        if(footEl) footEl.textContent = _showMonthSmart ? 'This Month' : 'Today: '+s.todayCnt;
       }
     });
     // On Hold card
@@ -12493,7 +12504,7 @@ function renderDashboard(c){
     <div class="dash-ed-pills">
       <div class="dash-ed-pill-time">${now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
       <div class="dash-ed-pill-live" id="realtimeIndicator">🟢 LIVE</div>
-      ${(isMgr||isAdmin())?`<button onclick="toggleDashMonth()" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${window._dashShowMonth===false?'📊 All Time':'📅 This Month'}</button>`:''}
+      ${(isMgr||isAdmin())?`<button onclick="toggleDashMonth()" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${(window._dashShowMonth===false)?'📊 All Time':'📅 This Month'}</button>`:''}
     </div>
   </div>
 
@@ -16125,8 +16136,9 @@ function _myStatusFastUpdate(){
 }
 
 function renderMyStatus(c){
+  if(!c) return;
   const isTL=CU.role==='Team Lead';
-  // Cache check — skip full re-render if data hasn't changed
+  // Cache check — skip full re-render if data hasn't changed AND content exists
   const _myTaskDb = {
     'LVS':DB.lvs,'Classifier':DB.cls,'Compliance':DB.comp,
     'PARS Docs Clerk':DB.parsDocs,'Ocean Docs Clerk':DB.oceanDocs,
@@ -16134,10 +16146,13 @@ function renderMyStatus(c){
     'B2 Entries':DB.b2entries,'Ocean T&T':DB.oceanTT
   }[CU.task];
   const _myHash = (_myTaskDb||[]).length + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
-  if(window._myStatusHash === _myHash && c.children.length > 0){
-    return; // no change — skip re-render, prevents blink
+  if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML){
+    // Data hasn't changed and we have cached HTML — just do a fast stat update
+    _myStatusFastUpdate();
+    return;
   }
   window._myStatusHash = _myHash;
+  window._myStatusHtmlCache = true; // mark that content has been rendered
 
   const taskMap={
     'LVS':{db:DB.lvs,fld:'assignedTo',label:'LVS',icon:'📋'},
