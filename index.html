@@ -5071,6 +5071,18 @@ function _silentRefreshPage(id){
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
+    if(id==='mystatus'){
+      // Fast in-place: restore from HTML cache if available, else render fresh
+      if(window._myStatusHtmlCache && c.children.length > 0){
+        // Cards are already visible — just do a lightweight stat update
+        _myStatusFastUpdate();
+      } else {
+        // First render or container was cleared — render fresh but without skeleton delay
+        renderMyStatus(c);
+      }
+      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
+      return;
+    }
     if(id==='dashboard'){
       renderDashboard(c); // dashboard has smart re-render built in
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
@@ -12181,6 +12193,45 @@ function refreshTaskHeatmap(){
   body.innerHTML = buildTaskHeatRows(allDB, hours, dateStr);
 }
 
+// ── Dashboard month toggle — lightweight in-place card swap (no full re-render) ──
+// Default: show THIS MONTH (window._dashShowMonth===undefined → treat as true on first render)
+function toggleDashMonth(){
+  // If undefined (first click), current state is "This Month" so toggle to "All Time"
+  window._dashShowMonth = (window._dashShowMonth === false) ? true : false;
+  const btn = document.getElementById('dashMonthToggle');
+  if(btn) btn.textContent = window._dashShowMonth === false ? '📊 All Time' : '📅 This Month';
+  // Compute month-filtered counts per task and swap card values in-place
+  const now = nowET();
+  const curYM = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const todayYMD = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+  const _taskDefs = [
+    {key:'lvs',db:DB.lvs},
+    {key:'cls',db:DB.cls},
+    {key:'comp',db:DB.comp},
+    {key:'parsDocs',db:DB.parsDocs},
+    {key:'oceanDocs',db:DB.oceanDocs},
+    {key:'partLot',db:DB.partLot},
+    {key:'release2',db:DB.release2},
+    {key:'oceanTT',db:DB.oceanTT},
+    {key:'b2entries',db:DB.b2entries},
+  ];
+  _taskDefs.forEach(d=>{
+    const el = document.querySelector(`.dash-ed-kpi[data-kpi="${d.key}"]`);
+    if(!el) return;
+    const numEl = el.querySelector('.dash-ed-kpi-num');
+    const footEl = el.querySelector('.dash-ed-kpi-foot');
+    if(!numEl) return;
+    if(window._dashShowMonth){
+      const cnt = d.db.filter(r=>String(r._created||'').slice(0,7)===curYM).length;
+      numEl.textContent = cnt.toLocaleString();
+      if(footEl) footEl.textContent = 'This Month';
+    } else {
+      numEl.textContent = d.db.length.toLocaleString();
+      if(footEl) footEl.textContent = 'Today: '+d.db.filter(r=>String(r._created||'').slice(0,10)===todayYMD).length;
+    }
+  });
+}
+
 function renderDashboard(c){
   const today = todayDateStringET();
   const now   = nowET();
@@ -12442,25 +12493,16 @@ function renderDashboard(c){
     <div class="dash-ed-pills">
       <div class="dash-ed-pill-time">${now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
       <div class="dash-ed-pill-live" id="realtimeIndicator">🟢 LIVE</div>
-      ${(isMgr||isAdmin())?`<button onclick="window._dashShowMonth=!window._dashShowMonth;renderDashboard(document.getElementById('pc'))" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${window._dashShowMonth?'📅 This Month':'📊 All Time'}</button>`:''}
+      ${(isMgr||isAdmin())?`<button onclick="toggleDashMonth()" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${window._dashShowMonth===false?'📊 All Time':'📅 This Month'}</button>`:''}
     </div>
   </div>
 
-  <!-- KPI CARDS -->${(()=>{
-    // Compute month-filtered totals for admin toggle
-    const _curYM2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-    const _showMonth = !!(window._dashShowMonth);
-    const statsMonth={};
-    visibleDefs.forEach(d=>{
-      const mRecs=_showMonth?d.db.filter(r=>String(r._created||'').slice(0,7)===_curYM2):d.db;
-      statsMonth[d.key]={total:mRecs.length,todayCnt:stats[d.key].todayCnt};
-    });
-    return ``;
-  })()}
+  <!-- KPI CARDS -->
   <div class="dash-ed-kpi-grid">
     ${(()=>{
       const _curYM2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-      const _showMonth=!!(window._dashShowMonth);
+      // Default = This Month unless user explicitly toggled to All Time
+      const _showMonth = (window._dashShowMonth !== false);
       return visibleDefs.map(d=>{
         const cnt=_showMonth?d.db.filter(r=>String(r._created||'').slice(0,7)===_curYM2).length:stats[d.key].total;
         return`
@@ -16024,6 +16066,64 @@ function renderGDrive(c){
 // ══════════════════════════════════════════════════════════
 // MY STATUS PAGE — personal production view for Co-Ordinators
 // ══════════════════════════════════════════════════════════
+// ── My Status: fast in-place stat update (no full re-render) ──
+// Called when user returns to My Status tab — updates numbers only, no layout rebuild
+function _myStatusFastUpdate(){
+  const taskMap={
+    'LVS':{db:DB.lvs,fld:'assignedTo'},'Classifier':{db:DB.cls,fld:'assignedTo'},
+    'Compliance':{db:DB.comp,fld:'assignedTo'},'PARS Docs Clerk':{db:DB.parsDocs,fld:'user'},
+    'Ocean Docs Clerk':{db:DB.oceanDocs,fld:'user'},'Part Lot':{db:DB.partLot,fld:'user'},
+    'Release':{db:DB.release2,fld:'user'},'B2 Entries':{db:DB.b2entries,fld:'user'},
+    'Ocean T&T':{db:DB.oceanTT,fld:'user'}
+  };
+  const tm=taskMap[CU.task]; if(!tm) return;
+  const today=todayDateStringET();
+  const now=new Date();
+  const todayKey=now.toDateString();
+  const curYM=now.getFullYear()*100+now.getMonth();
+  const myNameLC=(CU.name||'').trim().toLowerCase();
+  const _getDate=r=>{
+    if(r._dateCache) return r._dateCache;
+    const d=parseAppDate(r._created)||new Date(0);
+    r._dateCache=d;r._dateKey=d.toDateString();r._dateYM=d.getFullYear()*100+d.getMonth();
+    r._dateHr=String(d.getHours()).padStart(2,'0');
+    return d;
+  };
+  let todayCnt=0,monthCnt=0,holdCnt=0,tatOk=0,tatMiss=0;
+  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
+  const hourCounts={}; hours.forEach(h=>hourCounts[h]=0);
+  for(const r of (tm.db||[])){
+    if((r[tm.fld]||'').trim().toLowerCase()!==myNameLC) continue;
+    _getDate(r);
+    if(r._dateKey===todayKey){ todayCnt++; if(hourCounts[r._dateHr]!==undefined) hourCounts[r._dateHr]++; }
+    if(r._dateYM===curYM) monthCnt++;
+    if((r.status||'').toLowerCase()==='hold') holdCnt++;
+    const tv=(r.tat||'').toLowerCase();
+    if(tv==='tat reached') tatOk++;
+    else if(tv==='tat not reached') tatMiss++;
+  }
+  const tatPct=(tatOk+tatMiss)?Math.round(tatOk/(tatOk+tatMiss)*100):0;
+  // Update stat cards in place — no layout change
+  const _set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  _set('_ms_today', todayCnt);
+  _set('_ms_month', monthCnt);
+  _set('_ms_hold', holdCnt);
+  _set('_ms_tatOk', tatPct+'%');
+  _set('_ms_tatMiss', tatMiss);
+  _set('_ms_tatPct', tatPct+'%');
+  _set('_ms_today2', todayCnt);
+  _set('_ms_month2', monthCnt);
+  _set('_ms_todayLbl', todayCnt+' entries · ★ = current hour');
+  // Update hour heatmap cells
+  hours.forEach(h=>{
+    const el=document.getElementById('_ms_hr_'+h);
+    if(el){ const cnt=hourCounts[h]; el.textContent=cnt||'—'; el.className='hcell '+(cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4'); }
+  });
+  // Update hash so a fresh re-render isn't triggered
+  const newHash=(tm.db||[]).length+'|'+(DB.errors||[]).length+'|'+now.toDateString();
+  window._myStatusHash=newHash;
+}
+
 function renderMyStatus(c){
   const isTL=CU.role==='Team Lead';
   // Cache check — skip full re-render if data hasn't changed
@@ -16223,9 +16323,9 @@ function renderMyStatus(c){
       <div style="margin-top:6px"><span style="background:rgba(255,255,255,.18);padding:2px 10px;border-radius:20px;font-size:10px">${_esc(CU.loginName||CU.username||'')}</span></div>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap">
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${todayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Today</div></div>
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${monthRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Month</div></div>
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${tatPct}%</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">TAT</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_today">${todayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Today</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_month">${monthRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Month</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_tatPct">${tatPct}%</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">TAT</div></div>
       ${isTL?`<div style="text-align:center;border-left:1px solid rgba(255,255,255,.2);padding-left:16px"><div style="font-size:24px;font-weight:800">${teamTodayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Team Today</div></div>`:''}
     </div>
   </div>
@@ -16261,17 +16361,17 @@ function renderMyStatus(c){
   <!-- My Records View -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv">${myRecs.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${todayRecs.length}</div></div>
-    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv">${monthRecs.length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${holdRecs.length}</div></div>
-    <div class="sc ${tatPct>=80?'c-em':tatPct>=60?'c-am':'c-ro'}"><div class="sc-top"></div><div class="si">✅</div><div class="sl">TAT Rate</div><div class="sv">${tatPct}%</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="_ms_today2">${todayRecs.length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv" id="_ms_month2">${monthRecs.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="_ms_hold">${holdRecs.length}</div></div>
+    <div class="sc ${tatPct>=80?'c-em':tatPct>=60?'c-am':'c-ro'}"><div class="sc-top"></div><div class="si">✅</div><div class="sl">TAT Rate</div><div class="sv" id="_ms_tatOk">${tatPct}%</div></div>
     ${myErrors.length?`<div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">My Errors</div><div class="sv">${myErrors.length}</div></div>`:''}
   </div>
 
   <!-- Hourly Heatmap -->
   <div class="tw" style="margin-bottom:14px">
-    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc">${todayRecs.length} entries · ★ = current hour</div></div>
-    <div style="overflow-x:auto"><table class="dt"><thead><tr>${hourCells}</tr></thead><tbody><tr>${dataCells}</tr></tbody></table></div>
+    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc" id="_ms_todayLbl">${todayRecs.length} entries · ★ = current hour</div></div>
+    <div style="overflow-x:auto"><table class="dt"><thead><tr>${hourCells}</tr></thead><tbody><tr>${hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return`<td id="_ms_hr_${h}" class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('')}</tr></tbody></table></div>
     <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:10px;font-size:11px;color:var(--text3);align-items:center;background:var(--surface2)">
       <span>HEAT:</span>
       <span class="hcell h1" style="border-radius:4px;padding:2px 8px">1</span>
