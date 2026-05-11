@@ -16151,7 +16151,7 @@ function renderMyStatus(c){
   // FIX: Include current-month count in hash so a partial DB load (fewer records)
   // forces a full re-render and never serves stale numbers after refresh.
   const _myTaskDbArr = _myTaskDb || [];
-  const _curYMStr = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const _now = new Date(); const _curYMStr = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
   const _monthCount = _myTaskDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMStr).length;
   const _myHash = _myTaskDbArr.length + '|' + _monthCount + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
   if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML){
