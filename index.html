@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-05" data-build-id="v9.9-export-created-date-all-tasks">
+<html lang="en" data-build-stamp="V9_10_team-members-current-month-fix-2026-05-11" data-build-id="v9.10-team-members-month-fix">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -16130,8 +16130,11 @@ function _myStatusFastUpdate(){
     const el=document.getElementById('_ms_hr_'+h);
     if(el){ const cnt=hourCounts[h]; el.textContent=cnt||'—'; el.className='hcell '+(cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4'); }
   });
-  // Update hash so a fresh re-render isn't triggered
-  const newHash=(tm.db||[]).length+'|'+(DB.errors||[]).length+'|'+now.toDateString();
+  // Update hash so a fresh re-render isn't triggered — must match new hash format
+  const _tmDbArr = tm.db||[];
+  const _curYMFast = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const _monthCntFast = _tmDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMFast).length;
+  const newHash=_tmDbArr.length+'|'+_monthCntFast+'|'+(DB.errors||[]).length+'|'+now.toDateString();
   window._myStatusHash=newHash;
 }
 
@@ -16145,7 +16148,12 @@ function renderMyStatus(c){
     'Part Lot':DB.partLot,'Release':DB.release2,
     'B2 Entries':DB.b2entries,'Ocean T&T':DB.oceanTT
   }[CU.task];
-  const _myHash = (_myTaskDb||[]).length + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
+  // FIX: Include current-month count in hash so a partial DB load (fewer records)
+  // forces a full re-render and never serves stale numbers after refresh.
+  const _myTaskDbArr = _myTaskDb || [];
+  const _curYMStr = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const _monthCount = _myTaskDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMStr).length;
+  const _myHash = _myTaskDbArr.length + '|' + _monthCount + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
   if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML){
     // Data hasn't changed and we have cached HTML — just do a fast stat update
     _myStatusFastUpdate();
@@ -16293,12 +16301,16 @@ function renderMyStatus(c){
     if(!agg) continue;
     _getDate(r); // ensures date cache is populated (usually already is)
     if(r._dateKey === todayKey) agg.today++;
-    if(r._dateYM === curYM) agg.month++;
-    const st = (r.status||'').toLowerCase();
-    if(st==='hold') agg.hold++;
-    const tv = (r.tat||'').toLowerCase();
-    if(tv==='tat reached') agg.tatOk++;
-    else if(tv==='tat not reached') agg.tatMiss++;
+    // FIX: only count month/hold/TAT for current-month records so the
+    // Team Members table always shows current-month figures, not all-time totals.
+    if(r._dateYM === curYM){
+      agg.month++;
+      const st = (r.status||'').toLowerCase();
+      if(st==='hold') agg.hold++;
+      const tv = (r.tat||'').toLowerCase();
+      if(tv==='tat reached') agg.tatOk++;
+      else if(tv==='tat not reached') agg.tatMiss++;
+    }
   }
   // Max today-count across all users — O(users) instead of O(users × records)
   let _maxToday = 1;
