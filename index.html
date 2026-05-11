@@ -5072,8 +5072,9 @@ function _silentRefreshPage(id){
       return;
     }
     if(id==='mystatus'){
-      // Fast in-place: if content is rendered and data cached, just update numbers
-      if(window._myStatusHtmlCache && c.innerHTML){
+      // Fast in-place: only if content is rendered AND the DOM actually has mystatus content
+      const _hasMsContent = c.innerHTML && c.querySelector('#_ms_today') !== null;
+      if(window._myStatusHtmlCache && _hasMsContent){
         _myStatusFastUpdate();
       } else {
         renderMyStatus(c);
@@ -10757,7 +10758,13 @@ function showPage(id){
 
   // Show skeleton immediately so the click feels instant
   // Skip skeleton for mystatus — it renders fast enough to go direct, skeleton causes flicker
-  if(id !== 'mystatus') _showPageSkeleton(c, id);
+  if(id !== 'mystatus'){
+    // Another page is about to overwrite #pc — invalidate the mystatus cache so
+    // returning to My Status always triggers a full re-render, not a stale fast-update.
+    window._myStatusHash = null;
+    window._myStatusHtmlCache = false;
+    _showPageSkeleton(c, id);
+  }
 
   // For mystatus: render synchronously right here — no deferred setTimeout, no skeleton blink
   if(id === 'mystatus'){
@@ -16154,7 +16161,7 @@ function renderMyStatus(c){
   const _now = new Date(); const _curYMStr = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
   const _monthCount = _myTaskDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMStr).length;
   const _myHash = _myTaskDbArr.length + '|' + _monthCount + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
-  if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML){
+  if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML && c.querySelector('#_ms_today') !== null){
     // Data hasn't changed and we have cached HTML — just do a fast stat update
     _myStatusFastUpdate();
     return;
