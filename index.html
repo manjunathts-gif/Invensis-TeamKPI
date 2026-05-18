@@ -1,8 +1,5 @@
-
-
-
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-05" data-build-id="v9.9-export-created-date-all-tasks">
+<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-18" data-build-id="v9.9-export-created-date-all-tasks">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4467,13 +4464,33 @@ async function dbInsert(table,row){
   else if(typeof window._trueCounts[table]==='number') window._trueCounts[table]++;
 
   // ── Add to local DB array immediately ──
+  // ── FIX (undefined-row bug): map raw snake_case row → camelCase BEFORE pushing
+  //    AND skip the push if dbInsertOptimistic has already inserted an optimistic
+  //    row for this txn (otherwise we get a duplicate, un-mapped row at index 0
+  //    that renders every column as "undefined").
   const _tMap3={'release':'release','lvs':'lvs','pars_docs':'parsDocs','cls':'cls',
     'comp':'comp','ocean_docs':'oceanDocs','ocean_tt':'oceanTT','b2_entries':'b2Entries',
     'closing':'closing','part_lot':'partLot','audit':'audit','client_errors':'clientErrors',
     'attendance_log':'attendanceLog','idle_log':'idleLog','break_warnings':'breakWarnings',
     'clients':'clients','instructions':'instructions'};
   const _k3i=_tMap3[table];
-  if(_k3i&&DB&&DB[_k3i]&&result) DB[_k3i].unshift(result);
+  if(_k3i && DB && DB[_k3i] && result){
+    const _arr = DB[_k3i];
+    const _rid = String(result.id||'');
+    const _rtxn = String(result.txn||result.user_name||'').trim();
+    const _existsById  = _rid  && _arr.some(r => String(r._dbid||r.id||'')===_rid);
+    const _pendingSame = _rtxn && _arr.some(r => r._pendingOwnInsert && String(r.txn||r.user_name||'').trim()===_rtxn);
+    if(!_existsById && !_pendingSame){
+      // Run through the correct mapper so camelCase fields (releaseDate, clientName,
+      // assignedTo, startTime, submittedTime, ...) are populated for the UI.
+      let _mapped = result;
+      try{
+        const _rtMap = (typeof REALTIME_MAP!=='undefined') ? REALTIME_MAP.find(e=>e.table===table) : null;
+        if(_rtMap && typeof _rtMap.map==='function') _mapped = _rtMap.map(result);
+      }catch(_e){}
+      _arr.unshift(_mapped);
+    }
+  }
 
   // ── Update card DOM directly ──
   const _cardMap2={
@@ -11472,27 +11489,34 @@ function renderLVSRows(data){
     return;
   }
   tbody.innerHTML=data.map((r,i)=>{
+    // ── FIX: fall back to snake_case fields if the row hasn't been mapped yet
+    //    (defence-in-depth so we never render literal "undefined" in the table)
+    const _rd  = r.releaseDate   ?? r.release_date   ?? '—';
+    const _cn  = r.clientName    ?? r.client_name    ?? '—';
+    const _at  = r.assignedTo    ?? r.assigned_to    ?? '—';
+    const _st  = r.startTime     ?? r.start_time     ?? '—';
+    const _sb  = r.submittedTime ?? r.submitted_time ?? '—';
     const tatB=tatBadge(r.tat);
     const stOpts=['Completed','Hold','Submit to CARM'].map(o=>`<option ${r.status===o?'selected':''}>${o}</option>`).join('');
     return`<tr>
       <td class="mono" style="color:var(--text3)">${i+1}</td>
       <td class="mono" style="color:var(--primary);font-weight:700">${_esc(r.txn)}</td>
-      <td>${r.releaseDate}</td>
+      <td>${_rd}</td>
       <td class="mono" style="color:var(--indigo)">${_clientCode(r.client)}</td>
-      <td class="hide-client" style="font-weight:500">${_clientName(_esc(r.clientName))}</td>
-      <td><span class="badge b-te">${r.team}</span></td>
-      <td>${r.type}</td>
-      <td class="mono" style="text-align:center">${r.lines}</td>
+      <td class="hide-client" style="font-weight:500">${_clientName(_esc(_cn))}</td>
+      <td><span class="badge b-te">${r.team||'—'}</span></td>
+      <td>${r.type||'—'}</td>
+      <td class="mono" style="text-align:center">${r.lines??'—'}</td>
       <td>
         <div style="display:flex;align-items:center;gap:6px">
           <select class="status-sel" id="lsts_${i}" onchange="">${stOpts}</select>
           ${canEditData()?'<button class="btn-upd" onclick="updateLVSStatus('+i+','+r._idx+')">Update</button>':''}
         </div>
       </td>
-      <td style="font-weight:600">${r.assignedTo}</td>
-      <td class="mono" style="font-size:11px;color:var(--text3)">${r.startTime}</td>
-      <td class="mono" style="font-size:11px;color:var(--text3)">${r.submittedTime}</td>
-      <td class="mono" style="color:var(--sky)">${r.duration}</td>
+      <td style="font-weight:600">${_at}</td>
+      <td class="mono" style="font-size:11px;color:var(--text3)">${_st}</td>
+      <td class="mono" style="font-size:11px;color:var(--text3)">${_sb}</td>
+      <td class="mono" style="color:var(--sky)">${r.duration||'—'}</td>
       <td>${tatB}</td>
       <td>${r.irs?'<span class="badge b-em">✓</span>':'<span class="badge b-ro">✗</span>'}</td>
       ${(CU&&CU.task==='Manager'&&canEditData())?`<td>${isAdmin()?adminActionBtns('lvs',r._dbid||r.id,r.txn):`<button class="btn-upd" style="background:var(--indigo)" onclick="editLVSRecord(${r._idx})">✏️ Edit</button>`}</td>`:'<td></td>'}
@@ -27513,5 +27537,4 @@ function _buildLvsErrPopup(clientNo){
 </body>
 </html>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fa4ad7609dcea32',t:'MTc3ODUzOTE0NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fdd00d19a20dc75',t:'MTc3OTEyOTc2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fa4ad7609dcea32',t:'MTc3ODUzOTE0NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fdd16388f225d35',t:'MTc3OTEzMDYzOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
