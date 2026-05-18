@@ -1,5 +1,8 @@
+
+
+
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-19" data-build-id="v9.9-export-created-date-all-tasks">
+<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-05" data-build-id="v9.9-export-created-date-all-tasks">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -4075,8 +4078,8 @@ async function dbLoadRelease(){
   if(window._rlCache && window._rlCacheTs && (_now - window._rlCacheTs) < 5*60*1000){
     return window._rlCache;
   }
-  // Server-side cutoff — 90 days, ISO format Postgres can compare directly
-  const cutoff = new Date(_now - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
+  // Server-side cutoff — 30 days (was 90) for faster initial load
+  const cutoff = new Date(_now - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0,10); // YYYY-MM-DD
   let allRows = [];
   let from = 0;
   const BATCH = 1000;
@@ -4212,11 +4215,12 @@ async function dbLoadRecent(table, days=30){
   if(!_supa) return [];
   const dateCol = TABLE_SORT_COL[table] || 'created_at';
 
-  // Fetch ALL rows by id DESC — no server-side date filter to avoid text comparison
-  // issues with mixed date formats (ISO vs DD-MM-YYYY in same column).
-  // Tables are small enough (max ~5000 rows) that fetching all is fine.
-  // Client-side filter below handles all date formats correctly.
+  // PERF FIX: limit how much we actually pull from the server.
+  // The previous code ignored `days` and fetched up to 10000 rows per table
+  // unconditionally → 12 tables × ~5000 rows = ~60 MB JSON on first load,
+  // freezing the browser for minutes. We now cap by `days` (≈300 rows/day).
   const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const _hardCap = Math.max(500, Math.min(10000, days * 300));
 
   let allRows = [];
   let from = 0;
@@ -4234,7 +4238,7 @@ async function dbLoadRecent(table, days=30){
     if(data && data.length > 0) allRows = allRows.concat(data);
     if(!data || data.length < BATCH) break; // reached last page
     from += BATCH;
-    if(from >= 10000) break; // hard safety cap
+    if(from >= _hardCap) break; // PERF: stop once we have `days` worth of data
   }
 
   // Client-side date filter — handles all 3 formats stored in DB:
@@ -4880,14 +4884,14 @@ async function loadAllFromSupabase(){
       setTimeout(async()=>{
         try{
           const [lvsF,clsF,compF,parsF,relF] = await Promise.all([
-            dbLoadRecent('lvs',30), dbLoadRecent('cls',30), dbLoadRecent('comp',30),
-            dbLoadRecent('pars_docs',30), dbLoadRelease()
+            dbLoadRecent('lvs',7), dbLoadRecent('cls',7), dbLoadRecent('comp',7),
+            dbLoadRecent('pars_docs',7), dbLoadRelease()
           ]);
           const [oceanF,partF,ottF,b2F,errF,auditF,closingF] = await Promise.all([
-            dbLoadRecent('ocean_docs',30), dbLoadRecent('part_lot',30),
-            dbLoadRecent('ocean_tt',30), dbLoadRecent('b2_entries',30),
-            dbLoadRecent('client_errors',90), dbLoadRecent('audit',90),
-            dbLoadRecent('closing',30)
+            dbLoadRecent('ocean_docs',7), dbLoadRecent('part_lot',7),
+            dbLoadRecent('ocean_tt',7), dbLoadRecent('b2_entries',7),
+            dbLoadRecent('client_errors',30), dbLoadRecent('audit',30),
+            dbLoadRecent('closing',7)
           ]);
           DB.lvs       = lvsF.map(mapLVS);      DB.lvs.forEach((r,i)=>r._idx=i);
           DB.cls       = clsF.map(mapCLS);      DB.cls.forEach((r,i)=>r._idx=i);
@@ -27537,4 +27541,5 @@ function _buildLvsErrPopup(clientNo){
 </body>
 </html>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fa4ad7609dcea32',t:'MTc3ODUzOTE0NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fdd353f4acbd81d',t:'MTc3OTEzMTkwOQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fa4ad7609dcea32',t:'MTc3ODUzOTE0NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fdd6926996929b7',t:'MTc3OTEzNDAzNA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
