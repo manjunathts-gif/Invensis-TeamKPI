@@ -1,5 +1,8 @@
+
+
+
 <!DOCTYPE html>
-<html lang="en" data-build-stamp="V9_10_team-members-current-month-fix-2026-05-14" data-build-id="v9.10-team-members-month-fix">
+<html lang="en" data-build-stamp="V9_9_export-always-created-date-filter-2026-05-05" data-build-id="v9.9-export-created-date-all-tasks">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -34,7 +37,7 @@ if(location.protocol === 'file:'){
   });
 }
 </script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; manifest-src 'self' data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com wss://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com; frame-src https://accounts.google.com https://apis.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://invensis.myteamkpi.com https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; manifest-src 'self' data:; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com https://static.cloudflareinsights.com https://www.gstatic.com https://translate.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://www.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://invensis.myteamkpi.com wss://invensis.myteamkpi.com https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://storage.googleapis.com https://*.googleapis.com https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://cloudflareinsights.com https://*.cloudflareinsights.com https://translate.googleapis.com; frame-src https://accounts.google.com https://apis.google.com;">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -44,8 +47,8 @@ if(location.protocol === 'file:'){
 <meta property="og:title" content="KPI Tracking — Production Management"/>
 <meta property="og:url" content="https://invensis.myteamkpi.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" onerror="console.warn('[KPI] supabase-js CDN load failed — realtime disabled');window._supaJSLoadFailed=true;"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css"/>
+<script src="/cdn/supabase/supabase.min.js" onerror="console.warn('[KPI] supabase-js CDN load failed — realtime disabled');window._supaJSLoadFailed=true;"></script>
+<link rel="stylesheet" href="/cdn/bootstrap-icons/bootstrap-icons.min.css"/>
 <!-- XLSX loaded on-demand when export is triggered — not on every page load -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -184,36 +187,41 @@ body{background:#f4f6fa;color:var(--text);font-family:var(--font);min-height:100
 /* ═══════ Error-History blink + big header styles (v7.12) ═══════ */
 @keyframes errBlinkRed{
   0%,100%{opacity:1;color:#dc2626;text-shadow:0 0 0 rgba(220,38,38,0);}
-  50%{opacity:.55;color:#991b1b;text-shadow:0 0 12px rgba(220,38,38,.55);}
+  50%{opacity:.4;color:#7f1d1d;text-shadow:0 0 20px rgba(220,38,38,.9);}
 }
 @keyframes errBlinkBg{
-  0%,100%{background:#fff4f4;border-color:#dc2626;}
-  50%{background:#fee2e2;border-color:#991b1b;}
+  0%,100%{background:#fff4f4;border-color:#dc2626;box-shadow:0 0 0 rgba(220,38,38,0);}
+  50%{background:#fee2e2;border-color:#991b1b;box-shadow:0 0 24px rgba(220,38,38,.4);}
 }
-.err-blink-red{animation:errBlinkRed 1s ease-in-out infinite;color:#dc2626 !important;font-weight:900 !important;}
-.err-blink-box{animation:errBlinkBg 1.4s ease-in-out infinite;border:2px solid #dc2626;}
+@keyframes errPulseScale{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.04);}
+}
+.err-blink-red{animation:errBlinkRed .8s ease-in-out infinite;color:#dc2626 !important;font-weight:900 !important;}
+.err-blink-box{animation:errBlinkBg 1s ease-in-out infinite;border:3px solid #dc2626;}
 .err-big-header{
-  font-size:28px !important;
+  font-size:34px !important;
   font-weight:900 !important;
   color:#fff !important;
   letter-spacing:-.5px !important;
   line-height:1.15 !important;
-  text-shadow:0 2px 8px rgba(0,0,0,.15);
+  text-shadow:0 2px 12px rgba(0,0,0,.3);
+  animation:errPulseScale 1s ease-in-out infinite;
 }
 .err-big-type{
-  display:inline-block;padding:8px 18px;border-radius:10px;
-  background:linear-gradient(135deg,#b91c1c,#dc2626);
-  color:#fff !important;font-size:20px;font-weight:900;
+  display:inline-block;padding:10px 22px;border-radius:10px;
+  background:linear-gradient(135deg,#7f1d1d,#dc2626);
+  color:#fff !important;font-size:24px;font-weight:900;
   letter-spacing:.3px;text-transform:uppercase;
-  box-shadow:0 6px 16px rgba(220,38,38,.35);
-  animation:errBlinkRed 1.1s ease-in-out infinite;
+  box-shadow:0 6px 20px rgba(220,38,38,.5);
+  animation:errBlinkRed .9s ease-in-out infinite;
 }
 .err-big-comment{
-  font-size:16px !important;font-weight:700 !important;
-  line-height:1.55 !important;color:#7f1d1d !important;
-  background:#fff4f4;border-left:5px solid #dc2626;
-  padding:10px 14px;border-radius:0 10px 10px 0;
-  animation:errBlinkRed 1.6s ease-in-out infinite;
+  font-size:18px !important;font-weight:800 !important;
+  line-height:1.6 !important;color:#7f1d1d !important;
+  background:#fff4f4;border-left:6px solid #dc2626;
+  padding:14px 18px;border-radius:0 12px 12px 0;
+  animation:errBlinkBg 1.2s ease-in-out infinite;
 }
 /* Centred rectangular error popup */
 .err-modal-center{
@@ -1251,7 +1259,7 @@ body.role-client [data-col="clientname"]{
   font-size:32px; font-weight:900; line-height:1;
   color:#fff; letter-spacing:-1.5px;
 }
-.dash-ed-kpi-foot { font-size:10px; color:rgba(255,255,255,.65); margin-top:6px; font-weight:500; }
+.dash-ed-kpi-foot { font-size:11px; color:#ffffff; opacity:.95; margin-top:6px; font-weight:700; letter-spacing:.2px; background:rgba(0,0,0,.22); padding:3px 10px; border-radius:14px; display:inline-block; backdrop-filter:blur(4px); }
 
 /* ── Live-sync pulse: flash + glow when a counter ticks up ── */
 @keyframes kpiPulse {
@@ -3668,7 +3676,7 @@ document.addEventListener('keydown', function(ev){
 // ╚══════════════════════════════════════════════════════╝
 const SUPA_URL = 'https://invensis.myteamkpi.com/db';
 // API key — assembled at runtime
-const _k1='3f231032381d3933153310130f20136b143313291334086f3919136c13312a020c191063743f23102a39691733153310203e0218',_k2='3203371c2000091329133410360033136c1334002f3b0d1033390d3e2d0012086c030d6b6c3e1d6b353b1d0c6b13332d33393763',_k3='290009136c13371c2f38686e331619102a03020b3315301f6914200b6f150e0f68170e0f2913370c6e3919136c17301b6f171e0f',_k4='69170e032214026a7400181e3c20220d0c6c056a6e2a171e693e0f2e3f14021d6d11341b1e0a3911393c1935180a28103c2a6b62';
+const _k1='3f231032381d3933153310130f20136b143313291334086f3919136c13312a020c19106374',_k2='3f2310233868223613303533030d6f2c38331329133736203923136c1334182c3969083439370c203e191329133736323e19136c170e3969141e316f140e032214092d330002322d13303523171e312d140e392214301f6b3c0b74',_k3='301c2a391e0033696e6b3016312a083b16201c3611',_k4='192338300b323337361d052d192e08372c11173e1b1b';
 const _xk=0x5A;
 function _dk(h){return h.match(/.{2}/g).map(b=>String.fromCharCode(parseInt(b,16)^_xk)).join('');}
 const SUPA_ANON = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
@@ -3727,6 +3735,14 @@ function _makeSupaClient(){
       try { data = JSON.parse(txt); } catch(e){}
       const cr = r.headers.get('Content-Range');
       const count = cr ? (parseInt(cr.split('/')[1])||null) : null;
+      // ── FIX (undefined-row bug): When proxy strips `Prefer: return=representation`,
+      // a successful POST returns 201 with empty body → data is null → caller has no
+      // saved row to map → optimistic row loses _dbid → vanishes on refresh.
+      // Echo back the request body as the saved row so the UI/DB stays consistent.
+      if(r.ok && (data===null || (Array.isArray(data) && data.length===0)) && method==='POST' && body){
+        data = Array.isArray(body) ? body : [body];
+        console.warn('[KPI] POST returned empty body (proxy likely strips Prefer header) — using request body as saved row');
+      }
       return {data: r.ok ? data : null, error: r.ok ? null : {message: txt}, count};
     } catch(e) {
       // Classify network/IO errors and auto-retry up to 2x for GET requests
@@ -3945,31 +3961,84 @@ if(_supa && SUPA_SERVICE_KEY==='YOUR_SERVICE_ROLE_KEY') console.warn('⚠️ Ser
 const RT_PROXY_URL  = 'https://invensis.myteamkpi.com';   // must proxy /realtime/v1/* with WS upgrade
 let   _rtUseProxy   = true;  // flip to false on fallback
 let _supaRT = null;
+// ── Native WebSocket Realtime (replaces supabase-js realtime) ──
+let _nativeWS = null;
+let _nativeWSReady = false;
+let _nativeWSReconnTimer = null;
+
 function _initSupaRT(){
+  _supaRT = null; // supabase-js realtime disabled — using native WS instead
+}
+
+function _connectNativeWS(){
+  if(_nativeWS && (_nativeWS.readyState===WebSocket.OPEN||_nativeWS.readyState===WebSocket.CONNECTING)) return;
   try{
-    // Guard: supabase-js failed to load (404 or extension block)
-    if(window._supaJSLoadFailed){ console.warn('[RT] supabase-js not loaded (CDN failed)'); return; }
-    if(typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function'){
-      console.warn('[RT] supabase-js not available — realtime disabled');
-      return;
-    }
-    const _rawKey = _dk(_k1)+_dk(_k2)+_dk(_k3)+_dk(_k4);
-    // Resolve the direct Supabase URL from JWT payload for fallback
-    let _directUrl = '';
-    try{
-      const _payload = JSON.parse(atob(_rawKey.split('.')[1]));
-      if(_payload.ref) _directUrl = 'https://'+_payload.ref+'.supabase.co';
-    }catch(je){}
-    const _rtUrl = _rtUseProxy ? RT_PROXY_URL : _directUrl;
-    if(!_rtUrl){ console.warn('[RT] Could not resolve Supabase URL'); return; }
-    _supaRT = window.supabase.createClient(_rtUrl, _rawKey, {
-      realtime: { params: { eventsPerSecond: 10 } },
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-    console.log('[RT] Realtime client ready via',_rtUseProxy?'PROXY':'DIRECT',_rtUrl);
-  }catch(e){ console.warn('[RT] Failed to init realtime client:', e.message); _supaRT = null; }
+    const wsUrl = 'wss://invensis.myteamkpi.com/realtime/v1/';
+    _nativeWS = new WebSocket(wsUrl);
+    _setRTIndicator('connecting');
+
+    _nativeWS.onopen = function(){
+      _nativeWSReady = true;
+      _rtConnected = true;
+      clearTimeout(_nativeWSReconnTimer);
+      stopBgPoll();
+      _setRTIndicator('live');
+      if(!window._realtimeShownToast){
+        window._realtimeShownToast = true;
+        showToast('⚡ Realtime sync active — all users see changes instantly');
+      }
+      console.log('[RT] ✅ Native WebSocket connected');
+    };
+
+    _nativeWS.onmessage = function(evt){
+      try{
+        const msg = JSON.parse(evt.data);
+        if(msg && msg.table && msg.event && msg.row){
+          _applyRealtimeRow(msg.table, msg.row, msg.event);
+        }
+      }catch(e){}
+    };
+
+    _nativeWS.onclose = function(){
+      _nativeWSReady = false;
+      _rtConnected = false;
+      _setRTIndicator('polling');
+      if(!_bgPollInterval) startBgPoll();
+      _nativeWSReconnTimer = setTimeout(_connectNativeWS, 5000);
+      console.log('[RT] WS closed — reconnecting in 5s, polling active');
+    };
+
+    _nativeWS.onerror = function(e){
+      console.warn('[RT] WS error — falling back to polling');
+      _nativeWSReady = false;
+      _rtConnected = false;
+      _setRTIndicator('polling');
+      if(!_bgPollInterval) startBgPoll();
+    };
+  }catch(e){
+    console.warn('[RT] Native WS init failed:', e.message);
+    _setRTIndicator('polling');
+    startBgPoll();
+  }
+}
+
+function _wsBroadcast(table, event, row){
+  if(_nativeWS && _nativeWS.readyState===WebSocket.OPEN){
+    try{ _nativeWS.send(JSON.stringify({table, event, row})); }catch(e){}
+  }
 }
 _initSupaRT();
+
+// ── Performance: Cache bust control ─────────────────────────
+window._lastFullLoad = 0;
+window._FULL_LOAD_INTERVAL = 5 * 60 * 1000; // 5 minutes between full reloads
+
+// ── Fast initial load: only fetch last 90 days for large tables ──
+function _getLoadFilter(){
+  const d = new Date();
+  d.setDate(d.getDate() - 90);
+  return d.toISOString().split('T')[0]; // YYYY-MM-DD
+}
 
 // ── Generic helpers ──────────────────────────────────────────
 // Tables that do NOT have a created_at column
@@ -4363,8 +4432,8 @@ WHERE tat IS NULL OR tat = '';`
 }
 async function dbInsert(table,row){
   if(!_supa) return null;
-  // .select() ensures Supabase returns the saved row (with id) — required for _dbid tracking
-  const {data,error}=await _supa.from(table).insert([row]).select();
+  // REST client insert already returns representation via Prefer header — no .select() needed
+  const {data,error}=await _supa.from(table).insert([row]);
   if(error){
     const code=error.code||''; const emsg=error.message||error.code||'Unknown error';
     const missing=code==='PGRST205'||emsg.toLowerCase().includes('not find the table')||emsg.toLowerCase().includes('schema cache');
@@ -4391,8 +4460,43 @@ async function dbInsert(table,row){
   }
   // data is always an array [{...}] — return first row for single inserts
   const result = Array.isArray(data)?data[0]??data:data;
-  // Log successful saves so user can verify in DevTools
 
+  // ── Increment _trueCounts immediately so card updates instantly ──
+  window._trueCounts = window._trueCounts || {};
+  if(table==='release') { if(window._rlTrueCount) window._rlTrueCount++; }
+  else if(typeof window._trueCounts[table]==='number') window._trueCounts[table]++;
+
+  // ── Add to local DB array immediately ──
+  const _tMap3={'release':'release','lvs':'lvs','pars_docs':'parsDocs','cls':'cls',
+    'comp':'comp','ocean_docs':'oceanDocs','ocean_tt':'oceanTT','b2_entries':'b2Entries',
+    'closing':'closing','part_lot':'partLot','audit':'audit','client_errors':'clientErrors',
+    'attendance_log':'attendanceLog','idle_log':'idleLog','break_warnings':'breakWarnings',
+    'clients':'clients','instructions':'instructions'};
+  const _k3i=_tMap3[table];
+  if(_k3i&&DB&&DB[_k3i]&&result) DB[_k3i].unshift(result);
+
+  // ── Update card DOM directly ──
+  const _cardMap2={
+    'lvs':'lvsTotalCard','cls':'clsTotalCard','comp':'compTotalCard',
+    'pars_docs':'pdTotalCard','ocean_docs':'odTotalCard','part_lot':'plTotalCard',
+    'ocean_tt':'ottTotalCard','b2_entries':'b2TotalCard','release':'rlTotalCard',
+    'closing':'clTotalCard'
+  };
+  const _cId2=_cardMap2[table];
+  if(_cId2){
+    const _cEl=document.getElementById(_cId2);
+    if(_cEl){
+      const _newC=table==='release'?(window._rlTrueCount||0):(window._trueCounts[table]||0);
+      if(_newC>0) _cEl.textContent=_newC.toLocaleString();
+    }
+  }
+
+  // ── Re-render dashboard ──
+  const _pc2=document.getElementById('pc');
+  if(_pc2){ try{renderDashboard(_pc2);}catch(e){} }
+
+  // Broadcast to all clients for instant realtime sync
+  if(result) _wsBroadcast(table, 'INSERT', result);
   return result;
 }
 
@@ -4482,12 +4586,52 @@ async function dbUpdate(table,id,patch){
   if(Array.isArray(data) && data.length===0){
     console.warn('[KPI] dbUpdate on "'+table+'" id='+id+' returned 0 rows. Possible RLS block or ID mismatch. Check Supabase RLS policies for UPDATE on this table.');
   }
+  // Broadcast to all clients for instant realtime sync
+  if(data && Array.isArray(data) && data[0]) _wsBroadcast(table, 'UPDATE', data[0]);
   return data;
 }
 async function dbDelete(table,id){
   if(!_supa) return;
   const {error}=await _supa.from(table).delete().eq('id',id);
-  if(error) console.error('Delete '+table,error);
+  if(error){ console.error('Delete '+table,error); return; }
+
+  // ── Step 1: Remove from local DB array ──
+  if(!window._deletedIds) window._deletedIds = new Set();
+  window._deletedIds.add(String(id));
+  const _tMap2={'release':'release','lvs':'lvs','pars_docs':'parsDocs','cls':'cls','comp':'comp','ocean_docs':'oceanDocs','ocean_tt':'oceanTT','b2_entries':'b2Entries','closing':'closing','part_lot':'partLot','audit':'audit','client_errors':'clientErrors','attendance_log':'attendanceLog','idle_log':'idleLog','break_warnings':'breakWarnings','clients':'clients','instructions':'instructions'};
+  const _k2=_tMap2[table];
+  if(_k2&&DB&&DB[_k2]) DB[_k2]=DB[_k2].filter(r=>String(r.id||r._dbid||'')!==String(id));
+
+  // ── Step 2: Decrement _trueCounts immediately ──
+  window._trueCounts = window._trueCounts || {};
+  if(table==='release' && window._rlTrueCount) window._rlTrueCount--;
+  else if(typeof window._trueCounts[table]==='number' && window._trueCounts[table]>0) window._trueCounts[table]--;
+
+  // ── Step 3: Update card DOM directly without full re-render ──
+  const _cardMap={
+    'lvs':'lvsTotalCard','cls':'clsTotalCard','comp':'compTotalCard',
+    'pars_docs':'pdTotalCard','ocean_docs':'odTotalCard','part_lot':'plTotalCard',
+    'ocean_tt':'ottTotalCard','b2_entries':'b2TotalCard','release':'rlTotalCard',
+    'closing':'clTotalCard'
+  };
+  const _cardId=_cardMap[table];
+  if(_cardId){
+    const _cardEl=document.getElementById(_cardId);
+    if(_cardEl){
+      const _newCount=window._trueCounts[table]||(_k2&&DB[_k2]?DB[_k2].length:0);
+      _cardEl.textContent=_newCount.toLocaleString();
+    }
+  }
+
+  // ── Step 4: Re-render current page ──
+  const _pc=document.getElementById('pc');
+  const _curP=window._currentPage||'dashboard';
+  if(_pc){
+    try{renderDashboard(_pc);}catch(e){}
+    try{if(typeof renderMyStatus==='function')renderMyStatus(_pc);}catch(e){}
+    try{if(typeof showPage==='function') setTimeout(()=>showPage(_curP),100);}catch(e){}
+  }
+  _wsBroadcast(table, 'DELETE', {id});
 }
 
 // ── Map DB row → app object ──────────────────────────────────
@@ -4590,7 +4734,14 @@ function mapAudit(r){return{id:r.id,txn:r.txn,auditor:r.auditor,errorType:r.erro
 function mapError(r){return{id:r.id,date:r.date,txn:r.txn,client:r.client,clientName:r.client_name,team:r.team,userName:r.user_name,errorType:r.error_type,percentage:r.percentage,mode:r.mode,reportedAt:r.reported_at||null,sourceOfError:r.source_of_error||null,clientComments:r.client_comments||null,userComments:r.user_comments,createdBy:r.created_by,task:r.task||null,acknowledgedAt:r.acknowledged_at||null,acknowledgedBy:r.acknowledged_by||null,tlComments:r.tl_comments||null,_created:r.created_at||r.reported_at,_dbid:r.id};}
 function mapInstruction(r){return{id:r.id,clientNo:r.client_no,clientName:r.client_name,team:r.team,instruction:r.instruction,createdBy:r.created_by,_created:r.created_at,_dbid:r.id};}
 function mapUser(r){return{id:r.id,username:r.username,name:r.name,role:r.role,task:r.task,team:r.team||'',_dbid:r.id};}
-function mapLoginUser(r){const _n=r.emp_name||r.name||'';const _a=r.active;const _isActive=_a===true||_a==='true'||_a===1||_a==='TRUE'||(typeof _a==='undefined'?true:(_a!==false&&_a!=='false'&&_a!=='FALSE'&&_a!==0&&_a!==null));return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:_isActive,_dbid:r.id};}
+function mapLoginUser(r){
+  const _n=r.emp_name||r.name||'';
+  const _a=r.active;
+  const _isActive=_a===true||_a==='true'||_a===1||_a==='TRUE'||(typeof _a==='undefined'?true:(_a!==false&&_a!=='false'&&_a!=='FALSE'&&_a!==0&&_a!==null));
+  // Format TIME from DB — PostgreSQL returns "09:00:00", we show "09:00"
+  const _fmtTime = t => t ? String(t).substring(0,5) : '';
+  return{id:r.id,empName:_n,name:_n,username:r.task_username||r.username||'',loginName:r.login_name||'',password:r.password||r.app_login_password||'',task:r.task||'',role:r.role||'',team:r.team||'',shift:r.shift||'Day',active:_isActive,loginTime:_fmtTime(r.login_time),logoutTime:_fmtTime(r.logout_time),_dbid:r.id};
+}
 function mapClient(r){return{id:parseInt(r.id)||r.id,name:r.name,team:r.team||''};}
 
 // ── Sanitize loginUsers before caching — mask passwords ──
@@ -5068,17 +5219,6 @@ function _silentRefreshPage(id){
     // For these pages: update in-place without clearing content = no flicker
     if(id==='status'){
       renderStatus(c, window._statusActiveKey||undefined);
-      requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
-      return;
-    }
-    if(id==='mystatus'){
-      // Fast in-place: only if content is rendered AND the DOM actually has mystatus content
-      const _hasMsContent = c.innerHTML && c.querySelector('#_ms_today') !== null;
-      if(window._myStatusHtmlCache && _hasMsContent){
-        _myStatusFastUpdate();
-      } else {
-        renderMyStatus(c);
-      }
       requestAnimationFrame(()=>{ c.scrollTop = scrollY; });
       return;
     }
@@ -5624,9 +5764,13 @@ function startBgPoll(){
         }
       }
       // Silently refresh active page if data changed — skip if a form panel is open
+      // ⚡ Skip pages with heavy renders that cause visible flicker on auto-refresh.
+      // These pages still update their data in DB arrays in the background; the
+      // user sees fresh numbers when they navigate / interact with the page.
+      const _SKIP_AUTO_RENDER = new Set(['kpidashboard','perfmon','attendance','quality','reports']);
       if(changed){
         const ap=getActivePage();
-        if(ap && !isPanelOpen()){
+        if(ap && !isPanelOpen() && !_SKIP_AUTO_RENDER.has(ap)){
           // Refresh the currently visible page so cards update immediately
           _silentRefreshPage(ap);
           // Also reset _saveJustFired so next poll runs normally
@@ -5637,7 +5781,7 @@ function startBgPoll(){
         // (optimistic row added locally but DB save may still be in-flight)
         // Force-refresh the current page so dashboard cards reflect the local array
         const ap=getActivePage();
-        if(ap && !isPanelOpen()) _silentRefreshPage(ap);
+        if(ap && !isPanelOpen() && !_SKIP_AUTO_RENDER.has(ap)) _silentRefreshPage(ap);
         window._saveJustFired=false;
       }
       // Measure actual DB ping and show in UI
@@ -5645,7 +5789,19 @@ function startBgPoll(){
       const _pingMs  = _pingEnd - (window._bgPollStart||_pingEnd);
       _updateLastRefreshed(_pingMs);
     } catch(e){ console.warn('[bgPoll] error:',e.message); }
-  }, 30000); // Poll every 30s — ensures dashboard cards stay current
+  }, 8000); // ⚡ Long polling every 8s
+
+  // ⚡ Light initial refresh — re-render current page once data is loaded
+  // so the user sees the freshly fetched DB the moment the dashboard mounts.
+  // No heavy fetch here (loadAllFromSupabase already loaded everything).
+  setTimeout(()=>{
+    try{
+      const ap = (typeof getActivePage==='function') ? getActivePage() : null;
+      if(ap && !isPanelOpen() && typeof _silentRefreshPage==='function'){
+        _silentRefreshPage(ap);
+      }
+    }catch(e){}
+  }, 60);
 
 }
 // ── Keep-alive ping every 4 minutes — prevents Supabase from pausing ──
@@ -5734,14 +5890,25 @@ function _applyRealtimeRow(table, row, eventType){
         if(table==='release'){ window._rlCache=null; window._rlCacheTs=0;
           if(typeof window._rlTrueCount === 'number') window._rlTrueCount++; }
         else {
-          // ── FIX: keep cached true-counts in sync for ALL task tables ──
-          // Dashboard KPI cards read window._trueCounts[table]; previously only
-          // Release was bumped, so every other task card stayed frozen at the
-          // login-time value until the user logged back in.
           window._trueCounts = window._trueCounts || {};
           if(typeof window._trueCounts[table] === 'number') window._trueCounts[table]++;
         }
         if(table==='audit') _rebuildAuditMap();
+        // ── Update card DOM immediately ──
+        const _rtCardMap={'lvs':'lvsTotalCard','cls':'clsTotalCard','comp':'compTotalCard',
+          'pars_docs':'pdTotalCard','ocean_docs':'odTotalCard','part_lot':'plTotalCard',
+          'ocean_tt':'ottTotalCard','b2_entries':'b2TotalCard','release':'rlTotalCard','closing':'clTotalCard'};
+        const _rtCId=_rtCardMap[table];
+        if(_rtCId){
+          const _rtCEl=document.getElementById(_rtCId);
+          if(_rtCEl){
+            const _rtN=table==='release'?(window._rlTrueCount||0):(window._trueCounts[table]||0);
+            if(_rtN>0) _rtCEl.textContent=_rtN.toLocaleString();
+          }
+        }
+        // Re-render dashboard
+        const _rpc=document.getElementById('pc');
+        if(_rpc){ try{renderDashboard(_rpc);}catch(e){} }
       }
       window._perf && window._perf.rtEvents++;
     }
@@ -5820,7 +5987,7 @@ function _applyRealtimeRow(table, row, eventType){
 }
 
 function setupRealtime(){
-  if(!_supaRT){ _setRTIndicator('polling'); startBgPoll(); return; }
+  _connectNativeWS(); return;
   // Permanently disabled after max retries — rely on polling only (app still live via bgPoll)
   if(_rtDisabled){ _setRTIndicator('polling'); startBgPoll(); return; }
 
@@ -6028,12 +6195,43 @@ const ADMIN_UNAME     = _dk(_au);
 const ADMIN_PASS_HASH = _dk(_ah);
 const ADMIN_DNAME     = _dk(_ad);
 
-async function checkAdminPwd(pwd){
-  // Hash the entered password
-  const enc = new TextEncoder().encode(pwd);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  const hex = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+async function _sha256(str){
+  // Works on HTTP (local) and HTTPS
+  if(window.crypto && window.crypto.subtle){
+    try{
+      const enc=new TextEncoder().encode(str);
+      const buf=await window.crypto.subtle.digest('SHA-256',enc);
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }catch(e){}
+  }
+  // Fallback pure-JS SHA-256 for HTTP/local network
+  function _s256(s){
+    function rr(n,d){return(n>>>d)|(n<<(32-d));}
+    const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    const b=new TextEncoder().encode(s);
+    const l=b.length;
+    const bs=[];
+    for(let i=0;i<l;i++) bs.push(b[i]);
+    bs.push(0x80);
+    while(bs.length%64!==56) bs.push(0);
+    const bits=l*8;
+    for(let i=7;i>=0;i--) bs.push((bits/Math.pow(2,i*8))&0xff);
+    for(let i=0;i<bs.length;i+=64){
+      const w=[];
+      for(let j=0;j<16;j++) w.push((bs[i+j*4]<<24)|(bs[i+j*4+1]<<16)|(bs[i+j*4+2]<<8)|bs[i+j*4+3]);
+      for(let j=16;j<64;j++){const s0=rr(w[j-15],7)^rr(w[j-15],18)^(w[j-15]>>>3);const s1=rr(w[j-2],17)^rr(w[j-2],19)^(w[j-2]>>>10);w.push((w[j-16]+s0+w[j-7]+s1)>>>0);}
+      let [a,b,c,d,e,f,g,h]=H;
+      for(let j=0;j<64;j++){const S1=rr(e,6)^rr(e,11)^rr(e,25);const ch=(e&f)^(~e&g);const t1=(h+S1+ch+K[j]+w[j])>>>0;const S0=rr(a,2)^rr(a,13)^rr(a,22);const maj=(a&b)^(a&c)^(b&c);const t2=(S0+maj)>>>0;h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;}
+      H[0]=(H[0]+a)>>>0;H[1]=(H[1]+b)>>>0;H[2]=(H[2]+c)>>>0;H[3]=(H[3]+d)>>>0;H[4]=(H[4]+e)>>>0;H[5]=(H[5]+f)>>>0;H[6]=(H[6]+g)>>>0;H[7]=(H[7]+h)>>>0;
+    }
+    return H.map(v=>v.toString(16).padStart(8,'0')).join('');
+  }
+  return _s256(str);
+}
 
+async function checkAdminPwd(pwd){
+  const hex = await _sha256(pwd);
   // Try DB first
   const admins = await _loadAdminFromDB();
   if(admins && admins.length > 0){
@@ -6044,9 +6242,8 @@ async function checkAdminPwd(pwd){
 }
 
 async function hashPwd(pwd){
-  // Kept for legacy console use
-  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pwd));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  // Kept for legacy console use — uses _sha256 for HTTP compatibility
+  return await _sha256(pwd);
 }
 
 const TASK_ROLE_MAP = {
@@ -6999,6 +7196,196 @@ function _countOldRecords(months){
 }
 
 // ── Render Archive Page ───────────────────────────────────────────────
+// ── CSV Data Upload (Admin Only) ──────────────────────────────────────────
+const CSV_TABLE_MAP = {
+  'lvs_rows':              { table:'lvs',               label:'LVS' },
+  'cls_rows':              { table:'cls',               label:'Classifier' },
+  'comp_rows':             { table:'comp',              label:'Compliance' },
+  'pars_docs_rows':        { table:'pars_docs',         label:'PARS Docs' },
+  'ocean_docs_rows':       { table:'ocean_docs',        label:'Ocean Docs' },
+  'ocean_tt_rows':         { table:'ocean_tt',          label:'Ocean TT' },
+  'part_lot_rows':         { table:'part_lot',          label:'Part Lot' },
+  'release_rows':          { table:'release',           label:'Release' },
+  'b2_entries_rows':       { table:'b2_entries',        label:'B2 Entries' },
+  'closing_rows':          { table:'closing',           label:'Closing' },
+  'audit_rows':            { table:'audit',             label:'Audit' },
+  'client_errors_rows':    { table:'client_errors',     label:'Client Errors' },
+  'attendance_log_rows':   { table:'attendance_log',    label:'Attendance Log' },
+  'break_warnings_rows':   { table:'break_warnings',    label:'Break Warnings' },
+  'idle_log_rows':         { table:'idle_log',          label:'Idle Log' },
+  'huddle_messages_rows':  { table:'huddle_messages',   label:'Huddle Messages' },
+  'huddle_acknowledgments_rows':{ table:'huddle_acknowledgments', label:'Huddle Acks' },
+  'instructions_rows':     { table:'instructions',      label:'Instructions' },
+  'tat_reasons_rows':      { table:'tat_reasons',       label:'TAT Reasons' },
+  'extensions_rows':       { table:'extensions',        label:'Extensions' },
+  'login_users_rows':      { table:'login_users',       label:'Login Users' },
+};
+
+function _parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2) return [];
+  const headers = lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).map(line=>{
+    const vals=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){ inQ=!inQ; }
+      else if(ch===','&&!inQ){ vals.push(cur); cur=''; }
+      else cur+=ch;
+    }
+    vals.push(cur);
+    const obj={};
+    headers.forEach((h,i)=>{ const v=(vals[i]||'').replace(/^"|"$/g,'').trim(); obj[h]=v===''?null:v; });
+    return obj;
+  });
+}
+
+async function _csvUploadTable(table, rows, statusEl){
+  const BATCH=100;
+  let inserted=0, errors=0;
+  for(let i=0;i<rows.length;i+=BATCH){
+    const batch=rows.slice(i,i+BATCH);
+    try{
+      const res=await fetch(`${SUPA_URL}/rest/v1/${table}`,{
+        method:'POST',
+        headers:{'apikey':SUPA_ANON,'Authorization':'Bearer '+SUPA_ANON,'Content-Type':'application/json','Prefer':'return=minimal,resolution=ignore-duplicates'},
+        body:JSON.stringify(batch)
+      });
+      if(res.ok||res.status===201||res.status===200){ inserted+=batch.length; }
+      else{ const e=await res.text(); console.warn(`Batch error ${table}:`,e); errors+=batch.length; }
+    } catch(e){ errors+=batch.length; }
+    statusEl.textContent=`Uploading... ${Math.min(i+BATCH,rows.length)}/${rows.length}`;
+  }
+  return {inserted,errors};
+}
+
+function renderCSVUpload(c){
+  if(!isAdmin()){
+    c.innerHTML=`<div class="ph"><div class="pt">🚫 Access Denied</div>
+      <div class="ps">CSV Upload is for Admin only.</div></div>`;
+    return;
+  }
+  c.innerHTML=`
+  <div class="ph">
+    <div>
+      <div class="pt">📥 CSV Data Upload <span class="pbadge">Admin</span></div>
+      <div class="ps">Upload Supabase CSV exports directly into the server database</div>
+    </div>
+  </div>
+  <div style="max-width:860px;margin:0 auto;padding:0 16px 40px">
+    <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:14px 18px;margin-bottom:24px;font-size:13px;color:var(--amber)">
+      ⚠️ <b>Important:</b> CSV filenames must match table names exactly (e.g. <code>lvs_rows.csv</code>, <code>login_users_rows.csv</code>). Existing duplicate records will be skipped automatically.
+    </div>
+    <div style="border:2px dashed rgba(99,102,241,.4);border-radius:16px;padding:40px 24px;text-align:center;background:rgba(99,102,241,.04);cursor:pointer;transition:all .2s" id="csvDropZone"
+      ondragover="event.preventDefault();this.style.borderColor='var(--primary)';this.style.background='rgba(99,102,241,.1)'"
+      ondragleave="this.style.borderColor='rgba(99,102,241,.4)';this.style.background='rgba(99,102,241,.04)'"
+      ondrop="_csvHandleDrop(event)"
+      onclick="document.getElementById('csvFileInput').click()">
+      <div style="font-size:40px;margin-bottom:10px">📂</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text1);margin-bottom:6px">Drop CSV files here or click to browse</div>
+      <div style="font-size:12px;color:var(--text3)">Select multiple files at once — all tables supported</div>
+      <input type="file" id="csvFileInput" multiple accept=".csv" style="display:none" onchange="_csvHandleFiles(this.files)">
+    </div>
+    <div id="csvFileList" style="margin-top:20px"></div>
+    <div id="csvUploadBtn" style="display:none;margin-top:16px;text-align:center">
+      <button class="btn-add" style="padding:12px 36px;font-size:14px;font-weight:700" onclick="_csvStartUpload()">⬆️ Upload All to Server</button>
+      <button class="btn-cl" style="padding:12px 24px;font-size:13px;margin-left:10px" onclick="_csvClearFiles()">✖ Clear</button>
+    </div>
+    <div id="csvResults" style="margin-top:24px"></div>
+  </div>`;
+
+  window._csvFiles={};
+}
+
+function _csvHandleDrop(e){
+  e.preventDefault();
+  document.getElementById('csvDropZone').style.borderColor='rgba(99,102,241,.4)';
+  document.getElementById('csvDropZone').style.background='rgba(99,102,241,.04)';
+  _csvHandleFiles(e.dataTransfer.files);
+}
+
+function _csvHandleFiles(files){
+  if(!window._csvFiles) window._csvFiles={};
+  let html='';
+  let anyValid=false;
+  Array.from(files).forEach(f=>{
+    const baseName=f.name.replace(/\.csv$/i,'').toLowerCase();
+    const map=CSV_TABLE_MAP[baseName];
+    if(map){
+      window._csvFiles[baseName]=f;
+      anyValid=true;
+      html+=`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--card);border-radius:10px;margin-bottom:8px;border:1px solid var(--border)">
+        <span style="font-size:18px">📄</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px;color:var(--text1)">${f.name}</div>
+          <div style="font-size:11px;color:var(--text3)">→ Table: <b style="color:var(--primary)">${map.table}</b> (${map.label})</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3)">${(f.size/1024).toFixed(1)} KB</div>
+        <span id="csvStatus_${baseName}" style="font-size:12px;color:var(--text3);min-width:120px;text-align:right">Pending</span>
+      </div>`;
+    } else {
+      html+=`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(239,68,68,.06);border-radius:10px;margin-bottom:8px;border:1px solid rgba(239,68,68,.2)">
+        <span style="font-size:18px">⚠️</span>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px;color:var(--rose)">${f.name}</div>
+          <div style="font-size:11px;color:var(--text3)">Unknown filename — skipped</div>
+        </div>
+      </div>`;
+    }
+  });
+  document.getElementById('csvFileList').innerHTML=html;
+  document.getElementById('csvUploadBtn').style.display=anyValid?'block':'none';
+}
+
+function _csvClearFiles(){
+  window._csvFiles={};
+  document.getElementById('csvFileList').innerHTML='';
+  document.getElementById('csvUploadBtn').style.display='none';
+  document.getElementById('csvResults').innerHTML='';
+}
+
+async function _csvStartUpload(){
+  if(!window._csvFiles||!Object.keys(window._csvFiles).length) return;
+  document.getElementById('csvUploadBtn').style.display='none';
+  const resultsEl=document.getElementById('csvResults');
+  resultsEl.innerHTML=`<div style="font-weight:700;font-size:14px;color:var(--text1);margin-bottom:12px">📊 Upload Results</div>`;
+  let totalInserted=0, totalErrors=0;
+
+  for(const [baseName,file] of Object.entries(window._csvFiles)){
+    const map=CSV_TABLE_MAP[baseName];
+    if(!map) continue;
+    const statusEl=document.getElementById(`csvStatus_${baseName}`);
+    if(statusEl) statusEl.textContent='Reading...';
+    const text=await file.text();
+    const rows=_parseCSV(text);
+    if(!rows.length){
+      if(statusEl) statusEl.innerHTML=`<span style="color:var(--amber)">⚠️ Empty</span>`;
+      continue;
+    }
+    if(statusEl) statusEl.textContent=`Uploading 0/${rows.length}`;
+    const {inserted,errors}=await _csvUploadTable(map.table, rows, statusEl||{set textContent(){}});
+    totalInserted+=inserted; totalErrors+=errors;
+    if(statusEl){
+      if(errors===0) statusEl.innerHTML=`<span style="color:var(--emerald)">✅ ${inserted} rows</span>`;
+      else statusEl.innerHTML=`<span style="color:var(--amber)">⚠️ ${inserted} ok, ${errors} err</span>`;
+    }
+    resultsEl.innerHTML+=`<div style="display:flex;justify-content:space-between;padding:8px 14px;background:var(--card);border-radius:8px;margin-bottom:6px;border:1px solid var(--border);font-size:13px">
+      <span style="font-weight:600;color:var(--text1)">${map.label} <span style="color:var(--text3);font-weight:400">(${map.table})</span></span>
+      <span style="${errors?'color:var(--amber)':'color:var(--emerald)'}">
+        ${errors===0?`✅ ${inserted} rows inserted`:`⚠️ ${inserted} ok, ${errors} failed`}
+      </span>
+    </div>`;
+  }
+  resultsEl.innerHTML+=`<div style="margin-top:16px;padding:14px 18px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:10px;font-size:14px;font-weight:700;color:var(--emerald)">
+    ✅ Upload complete — ${totalInserted.toLocaleString()} rows inserted${totalErrors?`, ${totalErrors} failed`:''}
+  </div>
+  <div style="margin-top:10px;text-align:center">
+    <button class="btn-add" style="background:var(--indigo)" onclick="_csvClearFiles();document.getElementById('csvResults').innerHTML=''">Upload More Files</button>
+  </div>`;
+  showToast(`✅ CSV Upload complete — ${totalInserted.toLocaleString()} rows inserted`);
+}
+// ── End CSV Upload ──────────────────────────────────────────────────────────
+
 function renderArchivePage(c){
   if(!isAdmin()){
     c.innerHTML=`<div class="ph"><div class="pt">🚫 Access Denied</div>
@@ -7585,6 +7972,7 @@ function _registerSession(username){
     _startSessionPing(username);
     // Log attendance — record login time to DB
     _attendanceLogIn(username);
+    setTimeout(()=>_checkLateLogin(username), 3000); // check late login after 3s
   } catch(e){}
 }
 
@@ -7616,6 +8004,7 @@ function _clearSession(username){
     }
     if(_sessionChannel) try{ _sessionChannel.close(); }catch(e){}
     // Log attendance — record logout time to DB
+    _checkEarlyLogout(username);
     _attendanceLogOut(username);
   }catch(e){}
 }
@@ -7734,6 +8123,9 @@ function _duplicateLoginCancel(){
 
 // In-memory attendance cache {username: {loginTime, date, dbId}}
 window._attendanceCache = {};
+window._pollJitter = Math.floor(Math.random() * 3000);
+// ── Performance: limit simultaneous DB polling for large teams ──
+window._pollJitter = Math.floor(Math.random() * 8000); // 0-8s random jitter per user
 
 // ── Log login to DB ───────────────────────────────────────────────
 
@@ -7764,6 +8156,85 @@ async function _checkYesterdayBreakReminder(username, empName){
       warningId:   w.id
     });
   } catch(e){ console.warn('[BreakWarning] Yesterday check failed:', e.message); }
+}
+
+// ── Late Login / Early Logout Checker ──────────────────────
+function _checkLateLogin(username){
+  const user = DB.loginUsers.find(u=>u.username===username||u.loginName===username);
+  if(!user||!user.loginTime) return;
+  const expected = user.loginTime.trim();
+  if(!expected) return;
+  const parts = expected.split(':');
+  if(parts.length<2) return;
+  const eh=parseInt(parts[0]), em=parseInt(parts[1]);
+  const now = new Date();
+  const expectedMins = eh*60+em;
+  const actualMins = now.getHours()*60+now.getMinutes();
+  const diffMins = actualMins - expectedMins;
+  if(diffMins > 5){
+    const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    setTimeout(()=>{ showToast('⏰ You are '+diffMins+' minutes late. Expected login: '+expected, true); }, 2000);
+    _notifyLateLogin(user, diffMins, expected, timeStr);
+  }
+}
+
+function _checkEarlyLogout(username){
+  const user = DB.loginUsers.find(u=>u.username===username||u.loginName===username);
+  if(!user||!user.logoutTime) return;
+  const expected = user.logoutTime.trim();
+  if(!expected) return;
+  const parts = expected.split(':');
+  if(parts.length<2) return;
+  const eh=parseInt(parts[0]), em=parseInt(parts[1]);
+  const now = new Date();
+  const expectedMins = eh*60+em;
+  const actualMins = now.getHours()*60+now.getMinutes();
+  const diffMins = expectedMins - actualMins;
+  if(diffMins > 5){
+    showToast('⚠️ Early Logout! Expected: '+expected+'. You are leaving '+diffMins+' minutes early.', true);
+    _notifyEarlyLogout(user, diffMins, expected);
+  }
+}
+
+async function _notifyLateLogin(user, diffMins, expected, timeStr){
+  try{
+    const msg = '🚨 Late Login: '+(user.empName||user.username)+' ('+user.task+') logged in at '+timeStr+' — '+diffMins+' min late (Expected: '+expected+')';
+    if(_supa){
+      await _supa.from('huddle_messages').insert([{
+        message: msg, message_type: 'alert', target_task: 'All',
+        posted_by: 'System', posted_role: 'System',
+        show_from: new Date().toISOString().split('T')[0],
+        show_until: new Date().toISOString().split('T')[0],
+        is_active: true, checklist_items: '[]'
+      }]);
+    }
+    // ── Show immediate bold popup to Manager/Supervisor/TL ──
+    if(CU && ['Manager','Supervisor','Team Lead'].includes(CU.role)){
+      // Create a bold modal alert — not just a toast
+      const _overlay = document.createElement('div');
+      _overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      _overlay.innerHTML=`
+        <div style="background:#fff;border-radius:16px;border:3px solid #dc2626;padding:28px 32px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:errPulseScale 1s ease-in-out 3;">
+          <div style="font-size:48px;margin-bottom:12px;">🚨</div>
+          <div style="font-size:22px;font-weight:900;color:#dc2626;margin-bottom:8px;">Late Login Alert!</div>
+          <div style="font-size:16px;font-weight:700;color:#1f2937;margin-bottom:6px;">${user.empName||user.username}</div>
+          <div style="font-size:14px;color:#6b7280;margin-bottom:4px;">Task: ${user.task} | Team: ${user.team||'—'}</div>
+          <div style="font-size:14px;color:#dc2626;font-weight:700;margin-bottom:16px;">Logged in at ${timeStr} — ${diffMins} min late<br>(Expected: ${expected})</div>
+          <button onclick="this.closest('[style*=fixed]').remove()" style="padding:10px 28px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:800;cursor:pointer;">Dismiss</button>
+        </div>`;
+      document.body.appendChild(_overlay);
+      // Auto-dismiss after 30 seconds
+      setTimeout(()=>{ try{_overlay.remove();}catch(e){} }, 30000);
+    }
+  }catch(e){ console.warn('Late login notify failed:', e.message); }
+}
+
+async function _notifyEarlyLogout(user, diffMins, expected){
+  try{
+    if(CU && ['Manager','Supervisor','Team Lead'].includes(CU.role)){
+      showToast('⚠️ Early Logout: '+(user.empName||user.username)+' left '+diffMins+' min early (Expected: '+expected+')', true);
+    }
+  }catch(e){}
 }
 
 async function _attendanceLogIn(username){
@@ -9925,6 +10396,10 @@ function bootApp(){
   restoreSidebarState();
   // ── Start Realtime WebSocket — falls back to bgPoll automatically if WS unavailable ──
   if(_supa) setupRealtime();
+  // ⚡ ALWAYS start background poll on login — gives near-realtime sync (5s)
+  // even when WebSocket is unavailable. setupRealtime/onopen will stop it
+  // automatically if a true WS connection is established.
+  if(_supa && !_bgPollInterval) startBgPoll();
   // ── v6: IAE popup safety-net heartbeat (every 45s) — catches audit errors
   //        even if Supabase Realtime drops briefly or replication is off on client_errors
   if(_supa && typeof _startIAEHeartbeat==='function') _startIAEHeartbeat();
@@ -10100,16 +10575,20 @@ async function doLogin(){
     }catch(ce){}
 
     if(_hasCachedTasks){
-      // Cache has data — boot instantly, refresh in background
+      // Cache has data — boot instantly, refresh in background IMMEDIATELY
       bootApp();
       if(_supa){
+        // ⚡ Fire fresh DB load right away (was 500ms delay) so the user
+        // sees current data the moment the dashboard renders.
         setTimeout(async()=>{
           try{
             await loadAllFromSupabase();
+            // Force re-render of current page with fresh data
+            if(typeof refreshPage==='function') refreshPage();
           }catch(e){
             console.warn('Admin background load failed:',e.message);
           }
-        }, 500);
+        }, 0);
       }
     } else {
       // No cache — must load from DB first before booting
@@ -10134,10 +10613,7 @@ async function doLogin(){
   // ── Other users: check DB.loginUsers (already preloaded or cached) ──
   // Hash entered password with SHA-256 before comparison
   let _pHash = '';
-  try{
-    const _buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
-    _pHash = Array.from(new Uint8Array(_buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  }catch(he){ _pHash = p; } // fallback to plain if crypto unavailable
+  try{ _pHash = await _sha256(p); }catch(he){ _pHash = p; } // fallback to plain if unavailable
 
   let lu=null;
   for(const x of DB.loginUsers){
@@ -10345,10 +10821,6 @@ function doLogout(){
   Object.keys(_endCaptured).forEach(k=>{ _endCaptured[k]=false; });
 
   CU=null; selectedTask='';
-  // Clear page caches so next user gets a fresh render
-  window._myStatusHash = null;
-  window._myStatusHtmlCache = false;
-  window._dashShowMonth = undefined; // reset to default (This Month)
   SEC.sessionStart=0;
   document.getElementById('appShell').style.display='none';
   document.getElementById('loginPage').style.display='flex';
@@ -10419,7 +10891,7 @@ function buildNav(){
 
   if(isMgr){
     items=[
-      {id:'dashboard',l:'⚙️ Dashboard',g:'main'},
+      {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
       {id:'compliance',l:'✅ Compliance',g:'tasks'},
@@ -10448,6 +10920,7 @@ function buildNav(){
       {id:'tatreasons',l:'💬 TAT Reasons',g:'admin'},
       {id:'instructions',l:'📋 Instruction Followup',g:'admin'},
       {id:'huddle',l:'👥 Daily Huddle',g:'main'},
+      {id:'csvupload',l:'📥 CSV Data Upload',g:'admin'},
       {id:'archive',l:'🗄️ Archive & Cleanup',g:'admin'},
       {id:'perfmon',l:'⚡ Performance Monitor',g:'admin'},
       {id:'attendance',l:'🕐 Attendance',g:'admin'},
@@ -10455,7 +10928,7 @@ function buildNav(){
   } else if(isSup){
     // Supervisor: Dashboard + ALL tasks + Audit + Reports + TAT Analyzer + Instructions + Error Report
     items=[
-      {id:'dashboard',l:'⚙️ Dashboard',g:'main'},
+      {id:'dashboard',l:'📊 Dashboard',g:'main'},
       {id:'status',l:'📡 Status',g:'main'},
       {id:'lvs',l:'📋 LVS',g:'tasks'},
       {id:'classifier',l:'🗂️ Classifier',g:'tasks'},
@@ -10757,20 +11230,7 @@ function showPage(id){
   if(crumbEl) crumbEl.textContent=pageTitles[id]||'Overview';
 
   // Show skeleton immediately so the click feels instant
-  // Skip skeleton for mystatus — it renders fast enough to go direct, skeleton causes flicker
-  if(id !== 'mystatus'){
-    // Another page is about to overwrite #pc — invalidate the mystatus cache so
-    // returning to My Status always triggers a full re-render, not a stale fast-update.
-    window._myStatusHash = null;
-    window._myStatusHtmlCache = false;
-    _showPageSkeleton(c, id);
-  }
-
-  // For mystatus: render synchronously right here — no deferred setTimeout, no skeleton blink
-  if(id === 'mystatus'){
-    renderMyStatus(c);
-    return;
-  }
+  _showPageSkeleton(c, id);
 
   // ── DEFERRED HEAVY RENDER: setTimeout(0) yields to browser paint first,
   //    then renders on next event-loop tick. Avoids rAF handler violations
@@ -10831,6 +11291,7 @@ function showPage(id){
       else if(id==='huddle') renderHuddlePage(c);
       else if(id==='qualityanalytics') renderQualityAnalytics(c);
       else if(id==='idlelog') renderIdleLogPage(c);
+      else if(id==='csvupload') renderCSVUpload(c);
       else if(id==='archive') renderArchivePage(c);
       else if(id==='attendance') renderAttendancePage(c);
       else renderComing(c);
@@ -10861,17 +11322,13 @@ function syncRefreshAll(primaryPage){
 // ══════════════════════════════════════════════════════════
 function renderLVS(c){
   const today=todayDateStringET();
-  const _now=nowET();
-  const _curYM=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
   const _rawAll=DB.lvs;
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  // Present month data for cards
-  const allMonth = all.filter(r=>String(r._created||'').slice(0,7)===_curYM);
   const todayR=all.filter(r=>String(r._created||'').slice(0,10)===today);
-  const tatR=allMonth.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
-  const tatN=allMonth.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
+  const tatR=all.filter(r=>(r.tat||'').toLowerCase()==='tat reached').length;
+  const tatN=all.filter(r=>(r.tat||'').toLowerCase()==='tat not reached').length;
   const tatPct=(tatR+tatN)?Math.round(tatR/(tatR+tatN)*100):0;
   const tc=tatPct>=80?'c-em':tatPct>=50?'c-am':'c-ro';
 
@@ -10882,23 +11339,22 @@ function renderLVS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv" id="lvsTotalCard">${window._trueCounts&&window._trueCounts['lvs']?window._trueCounts['lvs'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="lvsTodayCard">${todayR.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    ${(()=>{return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="lvsTatReachedCard">${tatR}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="lvsTatNotCard">${tatN}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="lvsHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
-    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv" id="lvsSubmitCarmCard">${allMonth.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">This Month</div></div>
+    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="lvsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="lvsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="lvsHoldCard">${all.filter(r=>r.status==='Hold').length}</div><div class="sf">Needs attention</div></div>
+    <div class="sc c-in"><div class="sc-top"></div><div class="si">📤</div><div class="sl">Submit to CARM</div><div class="sv" id="lvsSubmitCarmCard">${all.filter(r=>r.status==='Submit to CARM').length}</div><div class="sf">Awaiting</div></div>
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setLVSMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearLVSFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="lf_d1" type="date" placeholder="Start Date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="lf_d2" type="date" placeholder="End Date"/>
-    <select class="fs2" id="lf_fu">
+    ${isSuperLead()?`<select class="fs2" id="lf_fu">
       <option value="">All Users</option>
       ${DB.users.filter(u=>u.task==='LVS').map(u=>`<option>${u.name}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="lf_fu" value="${CU.name}">`}
     <select class="fs2" id="lf_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.lvs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -10925,15 +11381,7 @@ function renderLVS(c){
     </table></div>
   </div>
 <div id="pg_lvs"></div>`;
-  const _d=_scopeByUser(DB.lvs,'assignedTo');
-  // Default: show present month; admin/supervisor can use "All Data" button
-  const _now2=nowET();const _ym2=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0');
-  const _dMonth=_d.filter(r=>String(r._created||'').slice(0,7)===_ym2);
-  // Seed date filters
-  const _fd1=document.getElementById('lf_d1');const _fd2=document.getElementById('lf_d2');
-  if(_fd1&&!_fd1.value){const _f=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0')+'-01';_fd1.value=_f;}
-  if(_fd2&&!_fd2.value){const _l=_now2.getFullYear()+'-'+String(_now2.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now2.getFullYear(),_now2.getMonth()+1,0).getDate()).padStart(2,'0');_fd2.value=_l;}
-  pgSetData('lvs',_dMonth);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
   if(_restoreFilter('lvs')) applyLVSFilter();
 }
 
@@ -11130,28 +11578,9 @@ function applyLVSFilter(){
 function pgGoLVS(p){
   pgGo('lvs', p, renderLVSRows, 'pg_lvs', 'pgGoLVS');
 }
-function clearLVSFilter(showAll){
+function clearLVSFilter(){
   _clearFilter('lvs',['lf_d1','lf_d2','lf_fu','lf_fteam','lf_fs','lf_search']);
-  let _d=_scopeByUser(DB.lvs,'assignedTo');
-  // By default restrict to present month; admin/supervisor can pass showAll=true
-  if(!showAll){
-    const _now=nowET();const _ym=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    // Seed date inputs to current month
-    const _f=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now.getFullYear(),_now.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('lf_d1');const d2=document.getElementById('lf_d2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
-}
-function setLVSMonthFilter(){
-  const _now=nowET();
-  const _f=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_now.getFullYear(),_now.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('lf_d1');const d2=document.getElementById('lf_d2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyLVSFilter();
+  const _d=_scopeByUser(DB.lvs,'assignedTo');pgSetData('lvs',_d);renderLVSRows(pgSlice('lvs'));pgRender('lvs','pg_lvs','pgGoLVS');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11439,9 +11868,6 @@ function renderCLS(c){
   const all = (!isSuperLead() && CU.task && CU.task!=='Manager')
     ? _rawAll.filter(r=>r.assignedTo===CU.name)
     : _rawAll;
-  const _clsNow=nowET();
-  const _clsYM=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0');
-  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_clsYM);
   const todayC=all.filter(r=>String(r._created||'').slice(0,10)===today);
 
   c.innerHTML=`
@@ -11451,23 +11877,22 @@ function renderCLS(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🗂️</div><div class="sl">Total Records</div><div class="sv" id="clsTotalCard">${window._trueCounts&&window._trueCounts['cls']?window._trueCounts['cls'].toLocaleString():all.length}</div><div class="sf">All time</div></div>
     <div class="sc c-sky"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today's Count</div><div class="sv" id="clsTodayCard">${todayC.length}</div><div class="sf">${new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clsCompletedCard">${allMonth.filter(r=>r.status==='Completed').length}</div><div class="sf">This Month</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clsHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
-    ${(()=>{const tr=allMonth.filter(r=>r.tat==='TAT Reached').length;const tn=allMonth.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="clsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="clsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Completed</div><div class="sv" id="clsCompletedCard">${all.filter(r=>r.status==='Completed').length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="clsHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
+    ${(()=>{const tr=all.filter(r=>r.tat==='TAT Reached').length;const tn=all.filter(r=>r.tat==='TAT Not Reached').length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT (≤15 min)</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="clsTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="clsTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setCLSMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearCLSFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="cf_d1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="cf_d2" type="date"/>
-    <select class="fs2" id="cf_fu">
+    ${isSuperLead()?`<select class="fs2" id="cf_fu">
       <option value="">All Users</option>
       ${DB.users.filter(u=>u.task==='Classifier').map(u=>`<option>${u.name}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="cf_fu" value="${CU.name}">`}
     <select class="fs2" id="cf_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.cls.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -11483,19 +11908,14 @@ function renderCLS(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal);box-shadow:0 3px 10px rgba(13,148,136,.3);" onclick="openCLS()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Classifier Records</div><div class="tc" id="clsCount">${allMonth.length} records</div></div>
+    <div class="th2"><div class="tt">Classifier Records</div><div class="tc" id="clsCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn Number</th><th>Mode</th><th>Assigned To</th><th>Start Time</th><th>Submitted</th><th>Duration</th><th>TAT (≤15 min)</th><th>Status</th><th>Comments</th></tr></thead>
       <tbody id="clsTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_cls"></div>`;
-  const _d=_scopeByUser(DB.cls,'assignedTo');
-  const _dMonthCLS=_d.filter(r=>String(r._created||'').slice(0,7)===_clsYM);
-  const _cf1=document.getElementById('cf_d1');const _cf2=document.getElementById('cf_d2');
-  if(_cf1&&!_cf1.value){const _f=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0')+'-01';_cf1.value=_f;}
-  if(_cf2&&!_cf2.value){const _l=_clsNow.getFullYear()+'-'+String(_clsNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_clsNow.getFullYear(),_clsNow.getMonth()+1,0).getDate()).padStart(2,'0');_cf2.value=_l;}
-  pgSetData('cls',_dMonthCLS);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
   if(_restoreFilter('cls')) applyCLSFilter();
 }
 
@@ -11569,26 +11989,9 @@ function applyCLSFilter(){
 function pgGoCLS(p){
   pgGo('cls', p, renderCLSRows, 'pg_cls', 'pgGoCLS');
 }
-function clearCLSFilter(showAll){
+function clearCLSFilter(){
   _clearFilter('cls',['cf_d1','cf_d2','cf_fu','cf_fteam','cf_fs','cf_search']);
-  let _d=_scopeByUser(DB.cls,'assignedTo');
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('cf_d1');const d2=document.getElementById('cf_d2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
-}
-function setCLSMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('cf_d1');const d2=document.getElementById('cf_d2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyCLSFilter();
+  const _d=_scopeByUser(DB.cls,'assignedTo');pgSetData('cls',_d);renderCLSRows(pgSlice('cls'));pgRender('cls','pg_cls','pgGoCLS');
 }
 
 // ══════════════════════════════════════════════════════════
@@ -11598,13 +12001,22 @@ function setCLSMonthFilter(){
 // ── Universal user dropdown builder — always includes logged-in CU as fallback ──
 // Ensures the dropdown is never empty even when DB.users/loginUsers haven't loaded yet
 function _buildUserOpts(taskName){
+  // ⚡ LOCK-TO-OWN-NAME for non-Manager roles.
+  // Per requirement: Team Lead, Team Member, and Supervisor must only see
+  // their own name in the Assign User dropdown — cannot pick someone else.
+  // Manager keeps the full list (needed for re-assignment use cases).
+  const cuName=CU?(CU.name||CU.empName||CU.username||''):'';
+  const _isMgr = CU && (CU.role==='Manager' || CU.task==='Manager');
+  if(!_isMgr && cuName){
+    return `<option value="${cuName}">${cuName}</option>`;
+  }
+  // Manager path — full list, deduped
   const users=[
     ...DB.users.filter(u=>u.task===taskName),
     ...DB.loginUsers.filter(u=>u.task===taskName&&u.active!==false)
   ];
   // Include logged-in user as fallback — but ONLY if their task matches (prevents Supervisor
   // or Manager being added to task-specific dropdowns they don't belong to)
-  const cuName=CU?CU.name||CU.empName||CU.username||'':'';
   const cuTask=(CU?.task||'').toLowerCase().trim();
   const taskMatch=cuTask===taskName.toLowerCase().trim()||cuTask==='manager'||cuTask==='';
   if(cuName&&taskMatch&&!users.some(u=>(u.empName||u.name)===cuName))
@@ -11861,7 +12273,10 @@ function renderAuditStatusTab(c,active,visibleTasks){
 
 function renderStatus(c,activeTask){
   const hours=['00','01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23'];
-  const today=todayDateStringET();  // ET today as YYYY-MM-DD e.g. "2026-04-01"
+  const today=todayDateStringET();
+  // ── Status date range filter ──
+  window._statusFrom = window._statusFrom || today;
+  window._statusTo   = window._statusTo   || today;  // ET today as YYYY-MM-DD e.g. "2026-04-01"
 
   // Helper: get ET wall-clock Date from a record — tries multiple timestamp fields
   function getRecET(r){
@@ -11906,6 +12321,9 @@ function renderStatus(c,activeTask){
   if(at._isAudit){ renderAuditStatusTab(c,active,visibleTasks); return; }
 
   const filterDate=window._statusFilterDate||'';
+  // From/To date range filter for status tab
+  const _sfrom = window._statusFrom || today;
+  const _sto   = window._statusTo   || today;
   // displayYMD: the ET date we are showing — use UTC noon to avoid midnight crossover
   const displayYMD = filterDate ? etYMD(isoToETLocalDate(new Date(filterDate+'T12:00:00Z'))) : etYMD(isoToETLocalDate(new Date()));
 
@@ -11919,7 +12337,7 @@ function renderStatus(c,activeTask){
   const allUsers=[...allUserNames].sort().map(n=>({name:n}));
 
   const now2=isoToETLocalDate(new Date());
-  const thisMonthYM = now2.getFullYear()+'-'+String(now2.getMonth()+1).padStart(2,'0');
+  const thisMonthYM = window._dashSelectedMonth || (now2.getFullYear()+'-'+String(now2.getMonth()+1).padStart(2,'0'));
 
   const hRows=allUsers.map(u=>{
     const userRecs=at.db.filter(r=>r[at.assignFld]===u.name);
@@ -12209,42 +12627,6 @@ function refreshTaskHeatmap(){
   body.innerHTML = buildTaskHeatRows(allDB, hours, dateStr);
 }
 
-// ── Dashboard month toggle — lightweight in-place card swap (no full re-render) ──
-// Default: show THIS MONTH (window._dashShowMonth===undefined or true → This Month, false → All Time)
-function toggleDashMonth(){
-  // Toggle: undefined/true → false (All Time), false → true (This Month)
-  window._dashShowMonth = (window._dashShowMonth === false) ? true : false;
-  const showMonth = (window._dashShowMonth !== false);
-  const btn = document.getElementById('dashMonthToggle');
-  // Button text = what is NOW showing
-  if(btn) btn.textContent = showMonth ? '📅 This Month' : '📊 All Time';
-  // Compute and swap card values in-place
-  const now = nowET();
-  const curYM = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const todayYMD = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const _taskDefs = [
-    {key:'lvs',db:DB.lvs},{key:'cls',db:DB.cls},{key:'comp',db:DB.comp},
-    {key:'parsDocs',db:DB.parsDocs},{key:'oceanDocs',db:DB.oceanDocs},
-    {key:'partLot',db:DB.partLot},{key:'release2',db:DB.release2},
-    {key:'oceanTT',db:DB.oceanTT},{key:'b2entries',db:DB.b2entries},
-  ];
-  _taskDefs.forEach(d=>{
-    const el = document.querySelector(`.dash-ed-kpi[data-kpi="${d.key}"]`);
-    if(!el) return;
-    const numEl = el.querySelector('.dash-ed-kpi-num');
-    const footEl = el.querySelector('.dash-ed-kpi-foot');
-    if(!numEl) return;
-    if(showMonth){
-      const cnt = d.db.filter(r=>String(r._created||'').slice(0,7)===curYM).length;
-      numEl.textContent = cnt.toLocaleString();
-      if(footEl) footEl.textContent = 'This Month';
-    } else {
-      numEl.textContent = d.db.length.toLocaleString();
-      if(footEl) footEl.textContent = 'Today: '+d.db.filter(r=>String(r._created||'').slice(0,10)===todayYMD).length;
-    }
-  });
-}
-
 function renderDashboard(c){
   const today = todayDateStringET();
   const now   = nowET();
@@ -12281,12 +12663,40 @@ function renderDashboard(c){
     oceanTT:'ocean_tt',b2entries:'b2_entries'};
 
   const stats = {};
+  // ── Month dropdown filter ──
+  if(window._dashSelectedMonth){
+    window._dashFilterCurMonth = true;
+  }
+  // ⚡ Current-Month filter (default ON) — dashboard shows the running month
+  // by default. Click the "📅 Month / All" chip on the dashboard header to
+  // toggle to all-time. Stored on window so toggling re-renders correctly.
+  if(typeof window._dashFilterCurMonth === 'undefined') window._dashFilterCurMonth = true;
+  const _cmFilter = window._dashFilterCurMonth !== false;
+  const _curY_dash = now.getFullYear();
+  const _curM_dash = now.getMonth();
+  // Returns true when record r falls inside the current ET month, OR when
+  // the month filter is turned OFF (defaults to true → keep everything).
+  const _inCurMonthDash = (r) => {
+    if(!_cmFilter) return true;
+    const ds = String(r._created||r.submittedTime||r.submitted||r.completedTime||r.completed||'');
+    // Fast path 1 — ISO from Supabase: YYYY-MM...
+    const isoM = ds.match(/^(\d{4})-(\d{2})/);
+    if(isoM) return parseInt(isoM[1])===_curY_dash && (parseInt(isoM[2])-1)===_curM_dash;
+    // Fast path 2 — DD-MM-YYYY display format
+    const ddM = ds.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+    if(ddM) return parseInt(ddM[3])===_curY_dash && (parseInt(ddM[2])-1)===_curM_dash;
+    const dt = parseAppDate(ds);
+    return !!dt && dt.getFullYear()===_curY_dash && dt.getMonth()===_curM_dash;
+  };
   visibleDefs.forEach(d=>{
-    let todayCnt=0, tatR=0, tatN=0, hold=0, pcYes=0, pcNo=0;
+    let todayCnt=0, tatR=0, tatN=0, hold=0, pcYes=0, pcNo=0, monthCnt=0;
     d.db.forEach(r=>{
       // Fast date check: slice ISO string instead of full parseAppDate
       const dateStr = String(r._created||'').slice(0,10);
       if(dateStr===todayYMD) todayCnt++;
+      // ⚡ Apply current-month filter to month-scoped aggregates
+      if(!_inCurMonthDash(r)) return;
+      monthCnt++;
       const tv=(r.tat||'').toLowerCase();
       if(tv==='tat reached') tatR++;
       else if(tv.includes('not reached')||tv.includes('not-reached')) tatN++;
@@ -12304,11 +12714,14 @@ function renderDashboard(c){
     // _trueCounts value until the user logged out/in, because _trueCounts was
     // never updated on local insert. Using Math.max guarantees the card
     // reflects new rows immediately after save (before realtime confirms).
-    const total = _rl
-      ? Math.max(window._rlTrueCount||0, d.db.length)
-      : Math.max(_tc||0, d.db.length);
+    // ⚡ When current-month filter is ON, total = monthCnt (running month only).
+    const total = _cmFilter
+      ? monthCnt
+      : (_rl
+          ? Math.max(window._rlTrueCount||0, d.db.length)
+          : Math.max(_tc||0, d.db.length));
     if(d.key==='release2'){ stats._pcYes=pcYes; stats._pcNo=pcNo; }
-    stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length};
+    stats[d.key]={todayCnt,tatR,tatN,hold,total,rawLen:d.db.length,monthCnt};
   });
 
   const totalAll = visibleDefs.reduce((s,d)=>s+stats[d.key].total,0);
@@ -12361,9 +12774,7 @@ function renderDashboard(c){
         }
       }
     };
-    // KPI cards: total + today — respect month toggle
-    const _curYMsmart = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-    const _showMonthSmart = (window._dashShowMonth !== false);
+    // KPI cards: total + today
     visibleDefs.forEach(d=>{
       const s=stats[d.key];
       const kpiEl=c.querySelector(`[data-kpi="${d.key}"]`);
@@ -12371,17 +12782,14 @@ function renderDashboard(c){
         const numEl=kpiEl.querySelector('.dash-ed-kpi-num');
         const footEl=kpiEl.querySelector('.dash-ed-kpi-foot');
         if(numEl){
-          const displayVal = _showMonthSmart
-            ? d.db.filter(r=>String(r._created||'').slice(0,7)===_curYMsmart).length
-            : s.total;
           const _old = parseFloat(String(numEl.textContent).replace(/[^0-9.\-]/g,''))||0;
-          numEl.textContent = displayVal.toLocaleString();
-          if(displayVal > _old){
+          numEl.textContent = s.total.toLocaleString();
+          if(s.total > _old){
             numEl.classList.remove('kpi-pulse');
             requestAnimationFrame(()=>{ numEl.classList.add('kpi-pulse'); setTimeout(()=>numEl.classList.remove('kpi-pulse'),900); });
           }
         }
-        if(footEl) footEl.textContent = _showMonthSmart ? 'This Month' : 'Today: '+s.todayCnt;
+        if(footEl) footEl.textContent='Today: '+s.todayCnt;
       }
     });
     // On Hold card
@@ -12505,33 +12913,39 @@ function renderDashboard(c){
   <!-- HERO -->
   <div class="dash-ed-hero">
     <div>
-      <div class="dash-ed-main-title">${isTL&&!isMgr?`🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}`:`⚙️ Operation <strong>Dashboard</strong>`}</div>
+      <div class="dash-ed-main-title">${isTL&&!isMgr?`🎯 Team Lead <strong>Dashboard</strong><br>${CU.task}`:`Admin <strong>Command</strong><br>Centre`}</div>
       <div class="dash-ed-sub">Welcome, ${CU.name} &nbsp;·&nbsp; ${now.toLocaleDateString('en-IN',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</div>
     </div>
     <div class="dash-ed-pills">
       <div class="dash-ed-pill-time">${now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div>
       <div class="dash-ed-pill-live" id="realtimeIndicator">🟢 LIVE</div>
-      ${(isMgr||isAdmin())?`<button onclick="toggleDashMonth()" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--primary);background:var(--primary-pale);color:var(--primary);font-size:11px;font-weight:700;cursor:pointer;font-family:var(--font)" id="dashMonthToggle">${(window._dashShowMonth===false)?'📊 All Time':'📅 This Month'}</button>`:''}
+      <select id="dashMonthSelect" onchange="window._dashSelectedMonth=this.value;window._dashFilterCurMonth=!!this.value;window._forceRefresh=true;renderDashboard(document.getElementById('pc'));window._forceRefresh=false;"
+        style="padding:6px 12px;border-radius:20px;font-size:11px;font-weight:800;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);cursor:pointer;outline:none;font-family:var(--font);">
+        <option value="">📅 All Time</option>
+        ${(()=>{
+          const opts=[];const n=new Date();
+          for(let i=0;i<12;i++){
+            const d=new Date(n.getFullYear(),n.getMonth()-i,1);
+            const val=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+            const lbl=d.toLocaleString('en-IN',{month:'long',year:'numeric'});
+            const sel=(window._dashSelectedMonth||'')=== val?'selected':'';
+            opts.push(`<option value="${val}" ${sel}>${lbl}</option>`);
+          }
+          return opts.join('');
+        })()}
+      </select>
     </div>
   </div>
 
   <!-- KPI CARDS -->
   <div class="dash-ed-kpi-grid">
-    ${(()=>{
-      const _curYM2=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-      // Default = This Month unless user explicitly toggled to All Time
-      const _showMonth = (window._dashShowMonth !== false);
-      return visibleDefs.map(d=>{
-        const cnt=_showMonth?d.db.filter(r=>String(r._created||'').slice(0,7)===_curYM2).length:stats[d.key].total;
-        return`
-        <div class="dash-ed-kpi" data-kpi="${d.key}" style="background:linear-gradient(135deg,${d.grad})">
-          <div class="dash-ed-kpi-ico">${d.ico}</div>
-          <div class="dash-ed-kpi-lbl">${d.label}</div>
-          <div class="dash-ed-kpi-num">${cnt.toLocaleString()}</div>
-          <div class="dash-ed-kpi-foot">${_showMonth?'This Month':'Today: '+stats[d.key].todayCnt}</div>
-        </div>`;
-      }).join('');
-    })()}
+    ${visibleDefs.map(d=>`
+      <div class="dash-ed-kpi" data-kpi="${d.key}" style="background:linear-gradient(135deg,${d.grad})">
+        <div class="dash-ed-kpi-ico">${d.ico}</div>
+        <div class="dash-ed-kpi-lbl">${d.label}</div>
+        <div class="dash-ed-kpi-num">${stats[d.key].total.toLocaleString()}</div>
+        <div class="dash-ed-kpi-foot">Today: ${stats[d.key].todayCnt}</div>
+      </div>`).join('')}
     <div class="dash-ed-kpi" data-kpi="holdAll" style="background:linear-gradient(135deg,#dc2626,#f87171)">
       <div class="dash-ed-kpi-ico">⏸️</div>
       <div class="dash-ed-kpi-lbl">On Hold</div>
@@ -14327,6 +14741,21 @@ function renderReports(c){
   const _fCOMP  = _filterByCreated(DB.comp);
   const _fClose = _filterByCreated(DB.closing||[]);
 
+  // ── Build sorted unique dates for Date x Task table ──
+  const _allTaskArrs = [
+    ..._fLVS, ..._fCLS, ..._fCOMP,
+    ..._filterByCreated(DB.parsDocs||[]),
+    ..._filterByCreated(DB.oceanDocs||[]),
+    ..._filterByCreated(DB.partLot||[]),
+    ..._filterByCreated(DB.release2||[]),
+    ..._filterByCreated(DB.oceanTT||[]),
+    ..._filterByCreated(DB.b2entries||[]),
+    ..._fClose
+  ];
+  const _dailyDates = [...new Set(
+    _allTaskArrs.map(r=>String(r._created||'').slice(0,10)).filter(d=>d&&d.length===10)
+  )].sort().reverse(); // newest first
+
   const lvsRows=lvsUsers.map(u=>{
     const total=_fLVS.filter(r=>r.assignedTo===u.name).length;
     const reached=_fLVS.filter(r=>r.assignedTo===u.name&&(r.tat||'').toLowerCase()==='tat reached').length;
@@ -14432,59 +14861,72 @@ function renderReports(c){
     <button class="btn-cl" onclick="clearReportFilter()">Clear</button>
   </div>
 
-  <div class="sh">📋 LVS — User Performance</div>
-  <div class="tw" style="margin-bottom:20px">
-    <div class="th2"><div class="tt">LVS Production Report</div><div class="tc">${lvsUsers.length} users</div></div>
-    <table class="dt"><thead><tr><th>User</th><th style="text-align:center">Total</th><th style="text-align:center">TAT Reached</th><th style="text-align:center">TAT Missed</th><th style="text-align:center">Hold</th><th style="text-align:center">TAT%</th></tr></thead>
-    <tbody id="lvsRepBody">${lvsRows||`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No LVS data</td></tr>`}</tbody>
-    </table>
-  </div>
-
-  <div class="sh">🗂️ Classifier — User Performance</div>
-  <div class="tw" style="margin-bottom:20px">
-    <div class="th2"><div class="tt">Classifier Production Report</div><div class="tc">${clsUsers.length} users</div></div>
-    <table class="dt"><thead><tr><th>User</th><th style="text-align:center">Total</th><th style="text-align:center">Completed</th><th style="text-align:center">Hold</th></tr></thead>
-    <tbody id="clsRepBody">${clsRows||`<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text3)">No Classifier data</td></tr>`}</tbody>
-    </table>
-  </div>
-
-  <div class="sh">✅ Compliance — User Performance</div>
-  <div class="tw">
-    <div class="th2"><div class="tt" style="color:var(--violet)">Compliance Production Report</div><div class="tc" style="background:var(--violet-bg);color:var(--violet)">${compUsers.length} users</div></div>
-    <table class="dt"><thead><tr>
-      <th>User</th><th style="text-align:center">Total</th><th style="text-align:center">Completed</th>
-      <th style="text-align:center">Hold</th><th style="text-align:center">Pending</th><th style="text-align:center">Avg Duration</th>
-    </tr></thead>
-    <tbody id="compRepBody">${compRows||`<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">No Compliance data</td></tr>`}</tbody>
-    </table>
-  </div>
-
-  ${!isClient()?`
-  <div class="sh" style="margin-top:24px">🔒 Closing HVS — User Performance</div>
+  <div class="sh">📅 Daily Task Count — Date × Task</div>
   <div class="tw" style="margin-bottom:20px">
     <div class="th2">
-      <div class="tt" style="color:var(--rose)">Closing HVS Production Report</div>
-      <div class="tc" style="background:var(--rose-bg);color:var(--rose)">${closingUsers.length} users · ${closingAll.length} records</div>
+      <div class="tt">Daily Production Summary</div>
+      <div class="tc">${_dailyDates.length} days</div>
     </div>
-    <div style="overflow-x:auto"><table class="dt"><thead><tr>
-      <th>User</th>
-      <th style="text-align:center">Total</th>
-      <th style="text-align:center">Completed</th>
-      <th style="text-align:center">Hold</th>
-      <th style="text-align:center">Submitted to Customs</th>
-      <th style="text-align:center">Send to CARM</th>
-      <th style="text-align:center">Avg Duration</th>
-    </tr></thead>
-    <tbody id="closingRepBody">${closingRows||`<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text3)">No Closing HVS data</td></tr>`}</tbody>
-    </table></div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:16px;font-size:12px;flex-wrap:wrap">
-      <span style="color:var(--text3)">Status Breakdown:</span>
-      <span style="font-weight:700;color:var(--emerald)">✅ Completed: ${closingAll.filter(r=>r.status==='Completed').length}</span>
-      <span style="font-weight:700;color:var(--amber)">⏸️ Hold: ${closingAll.filter(r=>r.status==='Hold').length}</span>
-      <span style="font-weight:700;color:var(--sky)">📤 Submitted to Customs: ${closingAll.filter(r=>r.status==='Submitted to Customs').length}</span>
-      <span style="font-weight:700;color:var(--teal)">📨 Send to CARM: ${closingAll.filter(r=>r.status==='Send to CARM').length}</span>
+    <div style="overflow-x:auto">
+    <table class="dt">
+      <thead><tr>
+        <th style="min-width:110px">Date</th>
+        <th style="text-align:center">LVS</th>
+        <th style="text-align:center">Classifier</th>
+        <th style="text-align:center">Compliance</th>
+        <th style="text-align:center">PARS Docs</th>
+        <th style="text-align:center">Ocean Docs</th>
+        <th style="text-align:center">Part Lot</th>
+        <th style="text-align:center">Release</th>
+        <th style="text-align:center">Ocean T&T</th>
+        <th style="text-align:center">B2 Entries</th>
+        <th style="text-align:center">Closing HVS</th>
+        <th style="text-align:center;font-weight:900;color:var(--primary)">Total</th>
+      </tr></thead>
+      <tbody>
+        ${_dailyDates.length===0?'<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text3)">No data for selected period</td></tr>':
+          _dailyDates.map(date=>{
+            const _get=(arr,dateCol)=>(arr||[]).filter(r=>{
+              const d=String(r._created||r[dateCol]||'').slice(0,10);
+              return d===date;
+            }).length;
+            const lvsC   = _get(_fLVS,'submitted_time');
+            const clsC   = _get(_fCLS,'submitted_time');
+            const compC  = _get(_fCOMP,'completed_time');
+            const pdC    = _get(_filterByCreated(DB.parsDocs),'created_time');
+            const odC    = _get(_filterByCreated(DB.oceanDocs),'created_time');
+            const plC    = _get(_filterByCreated(DB.partLot),'completed_time');
+            const rlC    = _get(_filterByCreated(DB.release2),'submitted');
+            const ottC   = _get(_filterByCreated(DB.oceanTT),'complete_time');
+            const b2C    = _get(_filterByCreated(DB.b2entries||[]),'completed');
+            const closeC = _get(_fClose,'submitted');
+            const rowTotal=lvsC+clsC+compC+pdC+odC+plC+rlC+ottC+b2C+closeC;
+            const _td=(n)=>`<td class="mono" style="text-align:center;color:${n>0?'var(--primary)':'var(--text3)'}">${n>0?n:'—'}</td>`;
+            return`<tr>
+              <td style="font-weight:700;color:var(--text1)">${date}</td>
+              ${_td(lvsC)}${_td(clsC)}${_td(compC)}${_td(pdC)}${_td(odC)}${_td(plC)}${_td(rlC)}${_td(ottC)}${_td(b2C)}${_td(closeC)}
+              <td class="mono" style="text-align:center;font-weight:900;color:var(--primary);background:rgba(99,102,241,.06)">${rowTotal>0?rowTotal:'—'}</td>
+            </tr>`;
+          }).join('')
+        }
+        ${_dailyDates.length>0?`<tr style="border-top:2px solid var(--border);background:rgba(99,102,241,.04)">
+          <td style="font-weight:900;color:var(--primary)">TOTAL</td>
+          ${['lvs','cls','comp','pd','od','pl','rl','ott','b2','close'].map(k=>{
+            const totals={
+              lvs:_fLVS.length,cls:_fCLS.length,comp:_fCOMP.length,
+              pd:_filterByCreated(DB.parsDocs).length,od:_filterByCreated(DB.oceanDocs).length,
+              pl:_filterByCreated(DB.partLot).length,rl:_filterByCreated(DB.release2).length,
+              ott:_filterByCreated(DB.oceanTT).length,b2:_filterByCreated(DB.b2entries||[]).length,
+              close:_fClose.length
+            };
+            return`<td class="mono" style="text-align:center;font-weight:900;color:var(--emerald)">${totals[k]||0}</td>`;
+          }).join('')}
+          <td class="mono" style="text-align:center;font-weight:900;color:var(--emerald);background:rgba(16,185,129,.08)">${_fLVS.length+_fCLS.length+_fCOMP.length+_filterByCreated(DB.parsDocs).length+_filterByCreated(DB.oceanDocs).length+_filterByCreated(DB.partLot).length+_filterByCreated(DB.release2).length+_filterByCreated(DB.oceanTT).length+_filterByCreated(DB.b2entries||[]).length+_fClose.length}</td>
+        </tr>`:''}
+      </tbody>
+    </table>
     </div>
-  </div>`:''}
+  </div>
   `;
 }
 
@@ -15215,14 +15657,14 @@ function renderLoginUsers(c){
     </div>
   </div>
   <div class="ib" style="background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.15)">
-    💡 <b>CSV Import Format:</b> <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:11px">emp_name, username, login_name, password, task, role, shift</code>
+    💡 <b>CSV Import Format:</b> <code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:11px">emp_name, username, login_name, password, task, role, shift, login_time, logout_time</code>
     — One user per row. Header row optional. Task must match exactly (e.g. LVS, Classifier, Release).
     <br/><input type="file" id="luCSVInput" accept=".csv" style="display:none" onchange="importLoginUsersCSV(this)"/>
   </div>
   <div class="tw">
     <div class="th2"><div class="tt">Login User List</div><div class="tc">${DB.loginUsers.length} users</div></div>
     <div style="overflow-x:auto"><table class="dt">
-      <thead><tr><th>#</th><th>Employee Name</th><th>Task Username</th><th>Login Name</th><th>Password</th><th>Task</th><th>Role</th><th>Shift</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>#</th><th>Employee Name</th><th>Task Username</th><th>Login Name</th><th>Password</th><th>Task</th><th>Role</th><th>Shift</th><th>Login Time</th><th>Logout Time</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="luTbody">${DB.loginUsers.length===0?'<tr><td colspan="10"><div class="empty"><div class="empty-ico">🔐</div><div class="empty-t">No login users yet</div><div class="empty-s">Click ＋ Add Login User to create the first user</div></div></td></tr>':
         DB.loginUsers.map((u,i)=>`<tr>
           <td class="mono" style="color:var(--text3)">${i+1}</td>
@@ -15233,6 +15675,8 @@ function renderLoginUsers(c){
           <td><span class="badge b-bl">${u.task}</span></td>
           <td><span class="badge b-in">${u.role||'Team Member'}</span></td>
           <td><span class="badge b-bl">${u.shift||'—'}</span></td>
+          <td class="mono" style="color:var(--emerald);font-size:12px">${u.loginTime||'—'}</td>
+          <td class="mono" style="color:var(--rose);font-size:12px">${u.logoutTime||'—'}</td>
           <td><span class="badge ${u.active!==false?'b-em':'b-ro'}">${u.active!==false?'Active':'Inactive'}</span></td>
           <td style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn-upd" style="background:var(--indigo)" onclick="editLoginUser(${i})">✏️ Edit</button>
@@ -15278,6 +15722,8 @@ function renderLoginUsers(c){
         <option value="Midnight">Midnight</option>
       </select>
     </div>
+    <div class="fpg"><label class="fpl" for="lu_login_time">Login Time <span style="color:var(--text3);font-size:11px">HH:MM — Eastern Time (ET) e.g. 09:00</span></label><input class="fpi" id="lu_login_time" placeholder="09:00" maxlength="5"/></div>
+    <div class="fpg"><label class="fpl" for="lu_logout_time">Logout Time <span style="color:var(--text3);font-size:11px">HH:MM — Eastern Time (ET) e.g. 18:00</span></label><input class="fpi" id="lu_logout_time" placeholder="18:00" maxlength="5"/></div>
     <input type="hidden" id="lu_edit_idx" value="-1"/>
     <div style="display:flex;gap:10px;margin-top:20px">
       <button class="btn-canc" onclick="closeLoginUserPanel()">Cancel</button>
@@ -15287,7 +15733,7 @@ function renderLoginUsers(c){
 }
 
 function openLoginUserPanel(){
-  ['lu_empname','lu_uname','lu_loginname','lu_pass','lu_role','lu_shift'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['lu_empname','lu_uname','lu_loginname','lu_pass','lu_role','lu_shift','lu_login_time','lu_logout_time'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   document.getElementById('lu_task').value='';
   document.getElementById('lu_edit_idx').value='-1';
   document.getElementById('luPanelTitle').textContent='➕ Add Login User';
@@ -15364,19 +15810,21 @@ async function saveLoginUser(){
     lu.task=task; lu.role=role; lu.shift=shift;
     if(pass){
     let _hp3=pass;
-    try{const _b3=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
-      _hp3=Array.from(new Uint8Array(_b3)).map(b=>b.toString(16).padStart(2,'0')).join('');}catch(e){}
+    try{ _hp3=await _sha256(pass); }catch(e){}
     lu.password=_hp3;
   }
-    if(_supaAdmin&&lu._dbid){
-      const patch={emp_name:empName,task_username:uname,login_name:loginName,task,role,shift};
+    if((_supaAdmin||_supa)&&lu._dbid){
+      const _ltVal = document.getElementById('lu_login_time')?.value.trim()||null;
+      const _loVal = document.getElementById('lu_logout_time')?.value.trim()||null;
+      lu.loginTime=_ltVal||''; lu.logoutTime=_loVal||'';
+      const patch={emp_name:empName,task_username:uname,login_name:loginName,task,role,shift,login_time:_ltVal||null,logout_time:_loVal||null};
       if(pass){
       let _hp2=pass;
-      try{const _b2=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
-        _hp2=Array.from(new Uint8Array(_b2)).map(b=>b.toString(16).padStart(2,'0')).join('');}catch(e){}
+      try{ _hp2=await _sha256(pass); }catch(e){}
       patch.password=_hp2;
     }
-      await dbUpdateAdmin('login_users',lu._dbid,patch);
+      try{ await dbUpdateAdmin('login_users',lu._dbid,patch); }
+      catch(ue){ await dbUpdate('login_users',lu._dbid,patch); }
     }
     showToast('✅ User updated!');
     closeLoginUserPanel();
@@ -15384,11 +15832,14 @@ async function saveLoginUser(){
   } else {
     // Hash password with SHA-256 before storing
   let _hashedPass = pass;
-  try{
-    const _pbuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass));
-    _hashedPass = Array.from(new Uint8Array(_pbuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  }catch(he){ _hashedPass = pass; }
-  const row={emp_name:empName,task_username:uname,login_name:loginName,password:_hashedPass,app_login_password:_hashedPass,task,role,shift,active:true,team:''};
+  try{ _hashedPass = await _sha256(pass); }catch(he){ _hashedPass = pass; }
+  const luLoginTime = document.getElementById('lu_login_time')?.value.trim()||null;
+  const luLogoutTime = document.getElementById('lu_logout_time')?.value.trim()||null;
+  // Validate time format HH:MM
+  const _validTime = t => !t || /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(t);
+  if(!_validTime(luLoginTime)){ showToast('⚠️ Login Time must be in HH:MM format (e.g. 09:00)',true); return; }
+  if(!_validTime(luLogoutTime)){ showToast('⚠️ Logout Time must be in HH:MM format (e.g. 18:00)',true); return; }
+  const row={emp_name:empName,task_username:uname,login_name:loginName,password:_hashedPass,app_login_password:_hashedPass,task,role,shift,active:true,team:'',login_time:luLoginTime||null,logout_time:luLogoutTime||null};
     if(_supa){
       let r=null, insertErr=null;
       try{ r=await dbInsertAdmin('login_users',row); }
@@ -15437,6 +15888,10 @@ function editLoginUser(idx){
   document.getElementById('lu_task').value=u.task||'';
   document.getElementById('lu_role').value=u.role||'Team Member';
   if(document.getElementById('lu_shift')) document.getElementById('lu_shift').value=u.shift||'';
+  const _ltE=document.getElementById('lu_login_time');
+  const _loE=document.getElementById('lu_logout_time');
+  if(_ltE) _ltE.value=u.loginTime||'';
+  if(_loE) _loE.value=u.logoutTime||'';
   document.getElementById('lu_edit_idx').value=idx;
   document.getElementById('luPanelTitle').textContent='✏️ Edit Login User';
   document.getElementById('luPanel').style.display='block';
@@ -16084,90 +16539,20 @@ function renderGDrive(c){
 // ══════════════════════════════════════════════════════════
 // MY STATUS PAGE — personal production view for Co-Ordinators
 // ══════════════════════════════════════════════════════════
-// ── My Status: fast in-place stat update (no full re-render) ──
-// Called when user returns to My Status tab — updates numbers only, no layout rebuild
-function _myStatusFastUpdate(){
-  const taskMap={
-    'LVS':{db:DB.lvs,fld:'assignedTo'},'Classifier':{db:DB.cls,fld:'assignedTo'},
-    'Compliance':{db:DB.comp,fld:'assignedTo'},'PARS Docs Clerk':{db:DB.parsDocs,fld:'user'},
-    'Ocean Docs Clerk':{db:DB.oceanDocs,fld:'user'},'Part Lot':{db:DB.partLot,fld:'user'},
-    'Release':{db:DB.release2,fld:'user'},'B2 Entries':{db:DB.b2entries,fld:'user'},
-    'Ocean T&T':{db:DB.oceanTT,fld:'user'}
-  };
-  const tm=taskMap[CU.task]; if(!tm) return;
-  const today=todayDateStringET();
-  const now=new Date();
-  const todayKey=now.toDateString();
-  const curYM=now.getFullYear()*100+now.getMonth();
-  const myNameLC=(CU.name||'').trim().toLowerCase();
-  const _getDate=r=>{
-    if(r._dateCache) return r._dateCache;
-    const d=parseAppDate(r._created)||new Date(0);
-    r._dateCache=d;r._dateKey=d.toDateString();r._dateYM=d.getFullYear()*100+d.getMonth();
-    r._dateHr=String(d.getHours()).padStart(2,'0');
-    return d;
-  };
-  let todayCnt=0,monthCnt=0,holdCnt=0,tatOk=0,tatMiss=0;
-  const hours=['09','10','11','12','13','14','15','16','17','18','19','20'];
-  const hourCounts={}; hours.forEach(h=>hourCounts[h]=0);
-  for(const r of (tm.db||[])){
-    if((r[tm.fld]||'').trim().toLowerCase()!==myNameLC) continue;
-    _getDate(r);
-    if(r._dateKey===todayKey){ todayCnt++; if(hourCounts[r._dateHr]!==undefined) hourCounts[r._dateHr]++; }
-    if(r._dateYM===curYM) monthCnt++;
-    if((r.status||'').toLowerCase()==='hold') holdCnt++;
-    const tv=(r.tat||'').toLowerCase();
-    if(tv==='tat reached') tatOk++;
-    else if(tv==='tat not reached') tatMiss++;
-  }
-  const tatPct=(tatOk+tatMiss)?Math.round(tatOk/(tatOk+tatMiss)*100):0;
-  // Update stat cards in place — no layout change
-  const _set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
-  _set('_ms_today', todayCnt);
-  _set('_ms_month', monthCnt);
-  _set('_ms_hold', holdCnt);
-  _set('_ms_tatOk', tatPct+'%');
-  _set('_ms_tatMiss', tatMiss);
-  _set('_ms_tatPct', tatPct+'%');
-  _set('_ms_today2', todayCnt);
-  _set('_ms_month2', monthCnt);
-  _set('_ms_todayLbl', todayCnt+' entries · ★ = current hour');
-  // Update hour heatmap cells
-  hours.forEach(h=>{
-    const el=document.getElementById('_ms_hr_'+h);
-    if(el){ const cnt=hourCounts[h]; el.textContent=cnt||'—'; el.className='hcell '+(cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4'); }
-  });
-  // Update hash so a fresh re-render isn't triggered — must match new hash format
-  const _tmDbArr = tm.db||[];
-  const _curYMFast = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  const _monthCntFast = _tmDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMFast).length;
-  const newHash=_tmDbArr.length+'|'+_monthCntFast+'|'+(DB.errors||[]).length+'|'+now.toDateString();
-  window._myStatusHash=newHash;
-}
-
 function renderMyStatus(c){
-  if(!c) return;
   const isTL=CU.role==='Team Lead';
-  // Cache check — skip full re-render if data hasn't changed AND content exists
+  // Cache check — skip full re-render if data hasn't changed
   const _myTaskDb = {
     'LVS':DB.lvs,'Classifier':DB.cls,'Compliance':DB.comp,
     'PARS Docs Clerk':DB.parsDocs,'Ocean Docs Clerk':DB.oceanDocs,
     'Part Lot':DB.partLot,'Release':DB.release2,
     'B2 Entries':DB.b2entries,'Ocean T&T':DB.oceanTT
   }[CU.task];
-  // FIX: Include current-month count in hash so a partial DB load (fewer records)
-  // forces a full re-render and never serves stale numbers after refresh.
-  const _myTaskDbArr = _myTaskDb || [];
-  const _now = new Date(); const _curYMStr = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
-  const _monthCount = _myTaskDbArr.filter(r=>String(r._created||'').slice(0,7)===_curYMStr).length;
-  const _myHash = _myTaskDbArr.length + '|' + _monthCount + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
-  if(window._myStatusHash === _myHash && window._myStatusHtmlCache && c.innerHTML && c.querySelector('#_ms_today') !== null){
-    // Data hasn't changed and we have cached HTML — just do a fast stat update
-    _myStatusFastUpdate();
-    return;
+  const _myHash = (_myTaskDb||[]).length + '|' + (DB.errors||[]).length + '|' + new Date().toDateString();
+  if(window._myStatusHash === _myHash && c.children.length > 0){
+    return; // no change — skip re-render, prevents blink
   }
   window._myStatusHash = _myHash;
-  window._myStatusHtmlCache = true; // mark that content has been rendered
 
   const taskMap={
     'LVS':{db:DB.lvs,fld:'assignedTo',label:'LVS',icon:'📋'},
@@ -16205,6 +16590,10 @@ function renderMyStatus(c){
   };
 
   const myNameLC = myName.trim().toLowerCase();
+  // ⚡ Current-Month default filter (applies to both My Records + Team View).
+  // Toggle via window._myStatusFilterCurMonth or the chip rendered in the header.
+  if(typeof window._myStatusFilterCurMonth === 'undefined') window._myStatusFilterCurMonth = true;
+  const _msCurMonth = window._myStatusFilterCurMonth !== false;
   // Pre-build a Map<dateKey, count> for the last 7 days so daily rows is O(n)
   const myRecs=[];
   const teamTodayArr=[]; // real array of today's records for all team members (TL table)
@@ -16220,8 +16609,10 @@ function renderMyStatus(c){
     // FIX: normalize name comparison — trim+lowercase prevents missed matches
     // when the DB has a trailing space or different casing vs CU.name
     if((r[myFld]||'').trim().toLowerCase() !== myNameLC) continue;
-    myRecs.push(r);
     _getDate(r);
+    // ⚡ Apply current-month filter when enabled
+    if(_msCurMonth && r._dateYM !== curYM) continue;
+    myRecs.push(r);
     if(r._dateKey === todayKey){
       todayCnt++;
       if(hourCounts[r._dateHr]!==undefined) hourCounts[r._dateHr]++;
@@ -16240,7 +16631,11 @@ function renderMyStatus(c){
   const myErrors=(DB.errors||[]).filter(e=>e.userName===myName);
 
   // Team data (TL only) — also single-pass using cached date fields
-  const teamRecs=tm.db||[];
+  // ⚡ Filter to current month when enabled (members + records)
+  const teamRecsAll = tm.db||[];
+  const teamRecs = _msCurMonth
+    ? teamRecsAll.filter(r => { _getDate(r); return r._dateYM === curYM; })
+    : teamRecsAll;
   let teamTodayCnt=0, teamMonthCnt=0, teamHoldCnt=0, teamTatOkCnt=0, teamTatMissCnt=0;
   for(const r of teamRecs){
     _getDate(r);
@@ -16253,10 +16648,7 @@ function renderMyStatus(c){
     else if(tv==='tat not reached') teamTatMissCnt++;
   }
   const teamTatPct=(teamTatOkCnt+teamTatMissCnt)?Math.round(teamTatOkCnt/(teamTatOkCnt+teamTatMissCnt)*100):0;
-  // Active members this month: union of loginUsers (task + active) and users who submitted this month
-  const _monthTeamRecs = teamRecs.filter(r => r._dateYM === curYM);
-  const _monthActiveNames = new Set(_monthTeamRecs.map(r=>r[tm.fld]||'').filter(Boolean));
-  const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),..._monthActiveNames]);
+  const allUsersSet=new Set([...(DB.loginUsers||[]).filter(u=>u.task===CU.task&&u.active!==false).map(u=>u.name||u.empName||''),...teamRecs.map(r=>r[tm.fld]||'')].filter(Boolean));
   const usersArr=[...allUsersSet].sort();
 
   // Backwards-compat aliases used further down in the render HTML (only a few
@@ -16308,16 +16700,12 @@ function renderMyStatus(c){
     if(!agg) continue;
     _getDate(r); // ensures date cache is populated (usually already is)
     if(r._dateKey === todayKey) agg.today++;
-    // FIX: only count month/hold/TAT for current-month records so the
-    // Team Members table always shows current-month figures, not all-time totals.
-    if(r._dateYM === curYM){
-      agg.month++;
-      const st = (r.status||'').toLowerCase();
-      if(st==='hold') agg.hold++;
-      const tv = (r.tat||'').toLowerCase();
-      if(tv==='tat reached') agg.tatOk++;
-      else if(tv==='tat not reached') agg.tatMiss++;
-    }
+    if(r._dateYM === curYM) agg.month++;
+    const st = (r.status||'').toLowerCase();
+    if(st==='hold') agg.hold++;
+    const tv = (r.tat||'').toLowerCase();
+    if(tv==='tat reached') agg.tatOk++;
+    else if(tv==='tat not reached') agg.tatMiss++;
   }
   // Max today-count across all users — O(users) instead of O(users × records)
   let _maxToday = 1;
@@ -16342,10 +16730,11 @@ function renderMyStatus(c){
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📊 My Status — ${_esc(myName)}</div><div class="ps">${tm.icon} ${tm.label} · ${_esc(CU.role||'Team Member')}</div></div>
-    ${isTL?`<div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button onclick="window._myStatusView='me';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='me'?'var(--primary)':'var(--surface2)'};color:${viewMode==='me'?'#fff':'var(--text2)'}">👤 My Records</button>
-      <button onclick="window._myStatusView='team';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='team'?'var(--primary)':'var(--surface2)'};color:${viewMode==='team'?'#fff':'var(--text2)'}">👥 Team View</button>
-    </div>`:''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span data-testid="mystatus-month-filter-chip" onclick="window._myStatusFilterCurMonth=!window._myStatusFilterCurMonth;renderMyStatus(document.getElementById('pc'))" style="cursor:pointer;padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;border:1.5px solid ${_msCurMonth?'var(--emerald,#10b981)':'var(--border)'};background:${_msCurMonth?'rgba(16,185,129,.12)':'var(--surface2)'};color:${_msCurMonth?'var(--emerald,#10b981)':'var(--text2)'};user-select:none" title="Click to toggle month filter">📅 ${_msCurMonth?now.toLocaleString('en-IN',{month:'short',year:'numeric'}):'All Time'}</span>
+      ${isTL?`<button onclick="window._myStatusView='me';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='me'?'var(--primary)':'var(--surface2)'};color:${viewMode==='me'?'#fff':'var(--text2)'}">👤 My Records</button>
+      <button onclick="window._myStatusView='team';renderMyStatus(document.getElementById('pc'))" style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);font-family:var(--font);background:${viewMode==='team'?'var(--primary)':'var(--surface2)'};color:${viewMode==='team'?'#fff':'var(--text2)'}">👥 Team View</button>`:''}
+    </div>
   </div>
 
   <!-- Profile Banner -->
@@ -16357,9 +16746,9 @@ function renderMyStatus(c){
       <div style="margin-top:6px"><span style="background:rgba(255,255,255,.18);padding:2px 10px;border-radius:20px;font-size:10px">${_esc(CU.loginName||CU.username||'')}</span></div>
     </div>
     <div style="display:flex;gap:16px;flex-wrap:wrap">
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_today">${todayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Today</div></div>
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_month">${monthRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Month</div></div>
-      <div style="text-align:center"><div style="font-size:24px;font-weight:800" id="_ms_tatPct">${tatPct}%</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">TAT</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${todayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Today</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${monthRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Month</div></div>
+      <div style="text-align:center"><div style="font-size:24px;font-weight:800">${tatPct}%</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">TAT</div></div>
       ${isTL?`<div style="text-align:center;border-left:1px solid rgba(255,255,255,.2);padding-left:16px"><div style="font-size:24px;font-weight:800">${teamTodayRecs.length}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:.4px">Team Today</div></div>`:''}
     </div>
   </div>
@@ -16371,7 +16760,7 @@ function renderMyStatus(c){
     <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">Team Month</div><div class="sv">${teamMonthRecs.length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${teamHold.length}</div></div>
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Team TAT%</div><div class="sv">${teamTatPct}%</div></div>
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Members</div><div class="sv">${allUsersSet.size}</div><div class="sf">This Month</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">👤</div><div class="sl">Members</div><div class="sv">${allUsersSet.size}</div></div>
   </div>
   <div class="tw" style="margin-bottom:14px">
     <div class="th2"><div class="tt">👥 Team Members — ${tm.label}</div><div class="tc">${allUsersSet.size} members · today vs month</div></div>
@@ -16395,17 +16784,17 @@ function renderMyStatus(c){
   <!-- My Records View -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">
     <div class="sc c-blue"><div class="sc-top"></div><div class="si">📋</div><div class="sl">Total Records</div><div class="sv">${myRecs.length}</div></div>
-    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="_ms_today2">${todayRecs.length}</div></div>
-    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv" id="_ms_month2">${monthRecs.length}</div></div>
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="_ms_hold">${holdRecs.length}</div></div>
-    <div class="sc ${tatPct>=80?'c-em':tatPct>=60?'c-am':'c-ro'}"><div class="sc-top"></div><div class="si">✅</div><div class="sl">TAT Rate</div><div class="sv" id="_ms_tatOk">${tatPct}%</div></div>
+    <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${todayRecs.length}</div></div>
+    <div class="sc c-vi"><div class="sc-top"></div><div class="si">📆</div><div class="sl">This Month</div><div class="sv">${monthRecs.length}</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv">${holdRecs.length}</div></div>
+    <div class="sc ${tatPct>=80?'c-em':tatPct>=60?'c-am':'c-ro'}"><div class="sc-top"></div><div class="si">✅</div><div class="sl">TAT Rate</div><div class="sv">${tatPct}%</div></div>
     ${myErrors.length?`<div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">My Errors</div><div class="sv">${myErrors.length}</div></div>`:''}
   </div>
 
   <!-- Hourly Heatmap -->
   <div class="tw" style="margin-bottom:14px">
-    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc" id="_ms_todayLbl">${todayRecs.length} entries · ★ = current hour</div></div>
-    <div style="overflow-x:auto"><table class="dt"><thead><tr>${hourCells}</tr></thead><tbody><tr>${hours.map(h=>{const cnt=hourCounts[h];const cls=cnt===0?'h0':cnt===1?'h1':cnt<=3?'h2':cnt<=5?'h3':'h4';return`<td id="_ms_hr_${h}" class="hcell ${cls}" style="padding:5px 2px;text-align:center;min-width:34px;font-size:13px">${cnt||'—'}</td>`;}).join('')}</tr></tbody></table></div>
+    <div class="th2"><div class="tt">⏰ Hourly Breakdown — Today</div><div class="tc">${todayRecs.length} entries · ★ = current hour</div></div>
+    <div style="overflow-x:auto"><table class="dt"><thead><tr>${hourCells}</tr></thead><tbody><tr>${dataCells}</tr></tbody></table></div>
     <div style="padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:10px;font-size:11px;color:var(--text3);align-items:center;background:var(--surface2)">
       <span>HEAT:</span>
       <span class="hcell h1" style="border-radius:4px;padding:2px 8px">1</span>
@@ -18662,8 +19051,17 @@ function _notifyInternalAuditError(rec){
 }
 
 function submitAudit(){
+  // ── Guard against double-click double-save ──
+  if(window._auditInFlight){ showToast('⚠️ Audit already saving — please wait',true); return; }
+  window._auditInFlight = true;
+  const _auditBtn = document.getElementById('auditSubmitBtn');
+  if(_auditBtn){ _auditBtn.disabled=true; _auditBtn.textContent='⏳ Saving...'; }
   // Always resolve by txn (stable) — auditActiveIdx can drift after background refresh
-  if(!auditActiveTxn && auditActiveIdx===null){showToast('⚠️ No record selected',true);return;}
+  if(!auditActiveTxn && auditActiveIdx===null){
+    window._auditInFlight=false;
+    if(_auditBtn){_auditBtn.disabled=false;_auditBtn.textContent='✅ Complete Audit & Submit';}
+    showToast('⚠️ No record selected',true);return;
+  }
   const r = auditActiveTxn
     ? DB.release2.find(rec => String(rec.txn) === auditActiveTxn)
     : DB.release2[auditActiveIdx];
@@ -18751,6 +19149,8 @@ function submitAudit(){
       console.log('[Audit→IAE] Skipped — no real error and score >= 100');
     }
 
+    window._auditInFlight=false;
+    const _ab=document.getElementById('auditSubmitBtn');if(_ab){_ab.disabled=false;_ab.textContent='✅ Complete Audit & Submit';}
     closeAuditPanel();
     showToast(`✅ Audit complete — Error: ${errorType} → Score: ${score}%`);
     window._auditReturnTo=null;
@@ -18776,6 +19176,8 @@ function submitAudit(){
       _finishAudit();
     }).catch(err=>{
       console.error('[KPI] Audit insert threw:', err);
+      window._auditInFlight=false;
+      const _ab2=document.getElementById('auditSubmitBtn');if(_ab2){_ab2.disabled=false;_ab2.textContent='✅ Complete Audit & Submit';}
       showToast('⚠️ Audit save failed: '+err.message, true);
       DB.audit.push(_localAuditRec);
       if(typeof _rebuildAuditMap==='function'){ try{ _rebuildAuditMap(); }catch(_e){} }
@@ -18850,10 +19252,10 @@ function renderCOMP(c){
     <input class="fi2" id="cpf2_d1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="cpf2_d2" type="date"/>
-    <select class="fs2" id="cpf2_fu">
+    ${isSuperLead()?`<select class="fs2" id="cpf2_fu">
       <option value="">All Users</option>
       ${DB.users.filter(u=>u.task==='Compliance').map(u=>`<option>${u.name}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="cpf2_fu" value="${CU.name}">`}
     <select class="fs2" id="cpf2_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.comp.map(r=>r.team||'').filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -19178,11 +19580,6 @@ function renderPARSDocs(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
-  const _pdNow=nowET();
-  const _pdYM=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0');
-  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_pdYM);
-  const _pdFirst=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0')+'-01';
-  const _pdLast=_pdNow.getFullYear()+'-'+String(_pdNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_pdNow.getFullYear(),_pdNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📄 PARS Docs Clerk <span class="pbadge">Live</span></div>
@@ -19190,21 +19587,20 @@ function renderPARSDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-sky"><div class="sc-top"></div><div class="si">📄</div><div class="sl">Total Records</div><div class="sv" id="pdTotalCard">${window._trueCounts&&window._trueCounts['pars_docs']?window._trueCounts['pars_docs'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="pdTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="pdTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="pdTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setPDMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearPDFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="pd_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="pd_fd2" type="date"/>
-    <select class="fs2" id="pd_fu">
+    ${isSuperLead()?`<select class="fs2" id="pd_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.parsDocs.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="pd_fu" value="${CU.name}">`}
     <select class="fs2" id="pd_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.parsDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -19220,19 +19616,14 @@ function renderPARSDocs(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--sky)" onclick="openPARSDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">PARS Docs Records</div><div class="tc" id="pdCount">${allMonth.length} records</div></div>
+    <div class="th2"><div class="tt">PARS Docs Records</div><div class="tc" id="pdCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Mailbox</th><th>Subject</th><th>Mail Rcvd</th><th>Txn</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Mode</th><th>ETA</th><th>User</th><th>Start</th><th>Created</th><th>Duration</th><th>TAT</th><th>Comments</th><th>Edit</th></tr></thead>
       <tbody id="pdTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_pd"></div>`;
-  const _d=_scopeByUser(DB.parsDocs,'user');
-  const _dMonthPD=_d.filter(r=>String(r._created||'').slice(0,7)===_pdYM);
-  const _pfd1=document.getElementById('pd_fd1');const _pfd2=document.getElementById('pd_fd2');
-  if(_pfd1&&!_pfd1.value)_pfd1.value=_pdFirst;
-  if(_pfd2&&!_pfd2.value)_pfd2.value=_pdLast;
-  pgSetData('pd',_dMonthPD);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
   if(_restoreFilter('pd')) applyPDFilter();
 }
 
@@ -19289,26 +19680,9 @@ function applyPDFilter(){
 function pgGoPD(p){
   pgGo('pd', p, renderPDRows, 'pg_pd', 'pgGoPD');
 }
-function clearPDFilter(showAll){
+function clearPDFilter(){
   _clearFilter('pd',['pd_fd1','pd_fd2','pd_fu','pd_fteam','pd_fmode','pd_search']);
-  let _d=_scopeByUser(DB.parsDocs,'user');
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('pd_fd1');const d2=document.getElementById('pd_fd2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
-}
-function setPDMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('pd_fd1');const d2=document.getElementById('pd_fd2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyPDFilter();
+  const _d=_scopeByUser(DB.parsDocs,'user');pgSetData('pd',_d);renderPDRows(pgSlice('pd'));pgRender('pd','pg_pd','pgGoPD');
 }
 
 function editPARSRecord(idx){
@@ -19674,11 +20048,6 @@ function renderOceanDocs(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
-  const _odNow=nowET();
-  const _odYM=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0');
-  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_odYM);
-  const _odFirst=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0')+'-01';
-  const _odLast=_odNow.getFullYear()+'-'+String(_odNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_odNow.getFullYear(),_odNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🌊 Ocean Docs Clerk <span class="pbadge">Live</span></div>
@@ -19686,21 +20055,20 @@ function renderOceanDocs(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-te"><div class="sc-top"></div><div class="si">🌊</div><div class="sl">Total Records</div><div class="sv" id="odTotalCard">${window._trueCounts&&window._trueCounts['ocean_docs']?window._trueCounts['ocean_docs'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="odTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="odTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="odTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setODMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearODFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="od_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="od_fd2" type="date"/>
-    <select class="fs2" id="od_fu">
+    ${isSuperLead()?`<select class="fs2" id="od_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.oceanDocs.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="od_fu" value="${CU.name}">`}
     <select class="fs2" id="od_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.oceanDocs.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -19716,19 +20084,14 @@ function renderOceanDocs(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--teal)" onclick="openOceanDocs()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Ocean Docs Records</div><div class="tc" id="odCount">${allMonth.length} records</div></div>
+    <div class="th2"><div class="tt">Ocean Docs Records</div><div class="tc" id="odCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Mailbox</th><th>Subject</th><th>Mail Rcvd</th><th>Txn</th><th>Client</th><th>Team</th><th>Mode</th><th>Ship Type</th><th>User</th><th>Start Time</th><th>Created Time</th><th>Duration</th><th>TAT</th><th>Shift</th><th>Comments</th></tr></thead>
       <tbody id="odTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_od"></div>`;
-  const _d=_scopeByUser(DB.oceanDocs,'user');
-  const _dMonthOD=_d.filter(r=>String(r._created||'').slice(0,7)===_odYM);
-  const _ofd1=document.getElementById('od_fd1');const _ofd2=document.getElementById('od_fd2');
-  if(_ofd1&&!_ofd1.value)_ofd1.value=_odFirst;
-  if(_ofd2&&!_ofd2.value)_ofd2.value=_odLast;
-  pgSetData('od',_dMonthOD);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
   if(_restoreFilter('od')) applyODFilter();
 }
 
@@ -19782,26 +20145,9 @@ function applyODFilter(){
 function pgGoOD(p){
   pgGo('od', p, renderODRows, 'pg_od', 'pgGoOD');
 }
-function clearODFilter(showAll){
+function clearODFilter(){
   _clearFilter('od',['od_fd1','od_fd2','od_fu','od_fteam','od_fmode','od_search']);
-  let _d=_scopeByUser(DB.oceanDocs,'user');
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('od_fd1');const d2=document.getElementById('od_fd2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
-}
-function setODMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('od_fd1');const d2=document.getElementById('od_fd2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyODFilter();
+  const _d=_scopeByUser(DB.oceanDocs,'user');pgSetData('od',_d);renderODRows(pgSlice('od'));pgRender('od','pg_od','pgGoOD');
 }
 
 function editOceanDocsRecord(idx){
@@ -19986,11 +20332,6 @@ function renderPartLot(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
-  const _plNow=nowET();
-  const _plYM=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0');
-  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_plYM);
-  const _plFirst=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0')+'-01';
-  const _plLast=_plNow.getFullYear()+'-'+String(_plNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_plNow.getFullYear(),_plNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">📦 Part Lot <span class="pbadge">Live</span></div>
@@ -19998,21 +20339,20 @@ function renderPartLot(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">📦</div><div class="sl">Total Records</div><div class="sv" id="plTotalCard">${window._trueCounts&&window._trueCounts['part_lot']?window._trueCounts['part_lot'].toLocaleString():all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="plTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="plTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="plTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setPLMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearPLFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="pl_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="pl_fd2" type="date"/>
-    <select class="fs2" id="pl_fu">
+    ${isSuperLead()?`<select class="fs2" id="pl_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.partLot.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="pl_fu" value="${CU.name}">`}
     <input class="fi2" id="pl_search" placeholder="🔍 Search Subject / Txn" style="min-width:160px" oninput="_debounce('pl',applyPLFilter)"/>
     <button class="btn-f" onclick="applyPLFilter()">Apply</button>
     <button class="btn-cl" onclick="clearPLFilter()">Clear</button>
@@ -20020,19 +20360,14 @@ function renderPartLot(c){
     ${!isViewOnly()?'<button class="btn-add" style="background:var(--amber)" onclick="openPartLot()">＋ Add Entry</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Part Lot Records</div><div class="tc" id="plCount">${allMonth.length} records</div></div>
+    <div class="th2"><div class="tt">Part Lot Records</div><div class="tc" id="plCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Subject</th><th>Txn</th><th>PARS No</th><th>Mail Rcvd</th><th>User</th><th>Start</th><th>Completed</th><th>Duration</th><th>TAT</th><th>Comments</th></tr></thead>
       <tbody id="plTbody"></tbody>
     </table></div>
   </div>
 <div id="pg_pl"></div>`;
-  const _d=_scopeByUser(DB.partLot,'user');
-  const _dMonthPL=_d.filter(r=>String(r._created||'').slice(0,7)===_plYM);
-  const _pld1=document.getElementById('pl_fd1');const _pld2=document.getElementById('pl_fd2');
-  if(_pld1&&!_pld1.value)_pld1.value=_plFirst;
-  if(_pld2&&!_pld2.value)_pld2.value=_plLast;
-  pgSetData('pl',_dMonthPL);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
   if(_restoreFilter('pl')) applyPLFilter();
 }
 
@@ -20076,26 +20411,9 @@ function applyPLFilter(){
 function pgGoPL(p){
   pgGo('pl', p, renderPLRows, 'pg_pl', 'pgGoPL');
 }
-function clearPLFilter(showAll){
+function clearPLFilter(){
   _clearFilter('pl',['pl_fd1','pl_fd2','pl_fu','pl_search']);
-  let _d=_scopeByUser(DB.partLot,'user');
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('pl_fd1');const d2=document.getElementById('pl_fd2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
-}
-function setPLMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('pl_fd1');const d2=document.getElementById('pl_fd2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyPLFilter();
+  const _d=_scopeByUser(DB.partLot,'user');pgSetData('pl',_d);renderPLRows(pgSlice('pl'));pgRender('pl','pg_pl','pgGoPL');
 }
 
 function openPartLot(){
@@ -20332,11 +20650,6 @@ function renderRelease2(c){
     ? _rawAll.filter(r=>r.user===CU.name)
     : _rawAll;
   const today=todayDateStringET();
-  const _rlNow=nowET();
-  const _rlYM=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0');
-  const allMonth=all.filter(r=>String(r._created||'').slice(0,7)===_rlYM);
-  const _rlFirst=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0')+'-01';
-  const _rlLast=_rlNow.getFullYear()+'-'+String(_rlNow.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_rlNow.getFullYear(),_rlNow.getMonth()+1,0).getDate()).padStart(2,'0');
   c.innerHTML=`
   <div class="ph">
     <div><div class="pt">🚀 Release <span class="pbadge">Live</span></div>
@@ -20344,25 +20657,27 @@ function renderRelease2(c){
   </div></div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${allMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">🚀</div><div class="sl">Total Records</div><div class="sv" id="rlTotalCard">${(isSuperLead()&&(window._rlTrueCount??0)>all.length)?(window._rlTrueCount):all.length}</div></div>
     <div class="sc c-em"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv" id="rlTodayCard">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${(()=>{const tr=allMonth.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=allMonth.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div><div style="font-size:9px;color:var(--text3);margin-top:4px;text-align:center">This Month</div></div>`;})()}
-    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${allMonth.filter(r=>r.status==='Hold').length}</div><div class="sf">This Month</div></div>
+    ${(()=>{const tr=all.filter(r=>(r.tat||'').toLowerCase().includes('reached')&&!(r.tat||'').toLowerCase().includes('not')).length;const tn=all.filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');}).length;return`<div class="sc-tat"><div class="sc-top"></div><div class="sc-tat-title">⏱️ TAT Status</div><div class="sc-tat-row"><div class="sc-tat-item tat-ok"><div class="sc-tat-val" id="rlTatReachedCard">${tr}</div><div class="sc-tat-lbl">✅ Reached</div></div><div class="sc-tat-divider"></div><div class="sc-tat-item tat-no"><div class="sc-tat-val" id="rlTatNotCard">${tn}</div><div class="sc-tat-lbl">❌ Not Reached</div></div></div></div>`;})()}
+    <div class="sc c-am"><div class="sc-top"></div><div class="si">⏸️</div><div class="sl">On Hold</div><div class="sv" id="rlHoldCard">${all.filter(r=>r.status==='Hold').length}</div></div>
     ${(()=>{
-      const pcYes=allMonth.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
-      const pcNo=allMonth.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
+      // Profile Code stats — visible to all Release roles
+      const pcYes=all.filter(r=>(r.profileCode||'').toLowerCase()==='yes').length;
+      const pcNo=all.filter(r=>(r.profileCode||'').toLowerCase()==='no').length;
+      const pcNone=all.filter(r=>!r.profileCode||r.profileCode==='—').length;
       return`
-        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv" id="rlPcYesCard">${pcYes}</div><div class="sf">This Month</div></div>
-        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv" id="rlPcNoCard">${pcNo}</div><div class="sf">This Month</div></div>`;
+        <div class="sc c-te"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ✅</div><div class="sv" id="rlPcYesCard">${pcYes}</div><div class="sf">Yes</div></div>
+        <div class="sc c-ro"><div class="sc-top"></div><div class="si">🔖</div><div class="sl">Profile Code ❌</div><div class="sv" id="rlPcNoCard">${pcNo}</div><div class="sf">No</div></div>`;
     })()}
     ${(()=>{
       if(!(CU&&CU.role==='Team Lead'&&CU.task==='Release'))return'';
-      const _allTxnSet=new Set(allMonth.map(r=>String(r.txn)));
+      const _allTxnSet=new Set(all.map(r=>String(r.txn)));
       const _auditedInAll=DB.audit.filter(a=>_allTxnSet.has(String(a.txn)));
       const auditDone=_auditedInAll.length;
-      const auditPending=allMonth.length-auditDone;
+      const auditPending=all.length-auditDone;
       const todayAudited=_auditedInAll.filter(a=>(parseAppDate(a._created)||new Date(0)).toDateString()===today).length;
-      const pct=allMonth.length?Math.round(auditDone/allMonth.length*100):0;
+      const pct=all.length?Math.round(auditDone/all.length*100):0;
       return`
         <div class="sc c-vi"><div class="sc-top"></div><div class="si">✅</div><div class="sl">Audit Done</div><div class="sv" id="rlAuditDoneCard">${_auditedInAll.length}</div><div class="sf" id="rlAuditPctCard">${pct}% audited</div></div>
         <div class="sc c-sky"><div class="sc-top"></div><div class="si">⏳</div><div class="sl">Audit Pending</div><div class="sv" id="rlAuditPendCard">${auditPending}</div><div class="sf">Not yet audited</div></div>
@@ -20371,15 +20686,14 @@ function renderRelease2(c){
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setRLMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearRLFilter(true)">🗂️ All Data</button>`:''}
+    <span style="font-size:11px;background:rgba(245,158,11,.12);color:var(--amber);padding:2px 8px;border-radius:10px;font-weight:600">📅 Last 30 days</span>
     <input class="fi2" id="rl_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="rl_fd2" type="date"/>
-    <select class="fs2" id="rl_fu">
+    ${isSuperLead()?`<select class="fs2" id="rl_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.release2.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="rl_fu" value="${CU.name}">`}
     <select class="fs2" id="rl_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.release2.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -20400,7 +20714,7 @@ function renderRelease2(c){
     ${isAdmin()?'<button onclick="bulkFixReleaseTAT()" style="padding:8px 14px;background:#fff7ed;border:1.5px solid rgba(245,158,11,.4);color:#b45309;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px;" title="Recalculate TAT for ALL Release records using correct date-only rule for Ocean/Air/Rail">⚡ Fix All TAT</button>':''}
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${allMonth.length} records</div></div>
+    <div class="th2"><div class="tt">Release Records</div><div class="tc" id="rlCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th class="client-col" data-col="client">Client</th><th class="hide-client client-name-col" data-col="clientname">Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Profile Code</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>Comments</th><th>⭐ Quality</th>${(CU&&CU.role==='Team Lead'&&CU.task==='Release'&&canEditData())?'<th>🔍 Audit</th><th>✏️ Edit</th>':''}</tr></thead>
       <tbody id="rlTbody"></tbody>
@@ -20413,11 +20727,7 @@ function renderRelease2(c){
   requestAnimationFrame(()=>{
     setTimeout(()=>{
       const _d=_scopeByUser(DB.release2,'user');
-      const _dMonthRL=_d.filter(r=>String(r._created||'').slice(0,7)===_rlYM);
-      const _rfd1=document.getElementById('rl_fd1');const _rfd2=document.getElementById('rl_fd2');
-      if(_rfd1&&!_rfd1.value)_rfd1.value=_rlFirst;
-      if(_rfd2&&!_rfd2.value)_rfd2.value=_rlLast;
-      pgSetData('rl',_dMonthRL);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
+      pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
       if(_restoreFilter('rl')) applyRLFilter();
     },0);
   });
@@ -20568,26 +20878,9 @@ function applyRLFilter(){
 function pgGoRL(p){
   pgGo('rl', p, renderRLRows, 'pg_rl', 'pgGoRL');
 }
-function clearRLFilter(showAll){
+function clearRLFilter(){
   _clearFilter('rl',['rl_fd1','rl_fd2','rl_fu','rl_fteam','rl_fmode','rl_fstatus','rl_search']);
-  let _d=_scopeByUser(DB.release2,'user');
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    _d=_d.filter(r=>String(r._created||'').slice(0,7)===_ym);
-    const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-    const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('rl_fd1');const d2=document.getElementById('rl_fd2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-  }
-  pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
-}
-function setRLMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('rl_fd1');const d2=document.getElementById('rl_fd2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyRLFilter();
+  const _d=_scopeByUser(DB.release2,'user');pgSetData('rl',_d);renderRLRows(pgSlice('rl'));pgRender('rl','pg_rl','pgGoRL');
 }
 
 // ══════════════════════════════════════════
@@ -20926,35 +21219,28 @@ function renderTATIssue(c){
     return tv.includes('not reached')||tv.includes('not-reached');
   });
   const today=todayDateStringET();
-  // Default to present month for cards and table
-  const _tiFilteredMonth = all.filter(r => {
-    const s = String(r._created||'').slice(0,10);
-    return s >= _tiFirst && s <= _tiLast;
-  });
-  const modes=[...new Set(_tiFilteredMonth.map(r=>r.mode||'—').filter(Boolean))].sort();
+  const modes=[...new Set(all.map(r=>r.mode||'—').filter(Boolean))].sort();
   c.innerHTML=`
   <div class="ph">
     <div>
       <div class="pt">🚨 TAT Issue <span class="pbadge">Live</span></div>
-      <div class="ps">Release records where TAT Not Reached — present month · use date filter to see all</div>
+      <div class="ps">All Release records where TAT Not Reached — across all modes</div>
     </div>
   </div>
   <div class="sg">
-    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${_tiFilteredMonth.length}</div><div class="sf">This Month</div></div>
+    <div class="sc c-ro"><div class="sc-top"></div><div class="si">⚠️</div><div class="sl">TAT Not Reached</div><div class="sv" id="tiTotalCard">${all.length}</div></div>
     <div class="sc c-am"><div class="sc-top"></div><div class="si">📅</div><div class="sl">Today</div><div class="sv">${all.filter(r=>String(r._created||'').slice(0,10)===today).length}</div></div>
-    ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${_tiFilteredMonth.filter(r=>r.mode===m).length}</div></div>`).join('')}
+    ${modes.map(m=>`<div class="sc c-vi"><div class="sc-top"></div><div class="si">🚢</div><div class="sl">${m}</div><div class="sv">${all.filter(r=>r.mode===m).length}</div></div>`).join('')}
   </div>
   <div class="fb">
     <span class="flbl">🔍 Filter</span>
-    <button class="btn-f" style="background:var(--primary);color:#fff;border-color:var(--primary)" onclick="setTIMonthFilter()">📅 This Month</button>
-    ${(isAdmin()||CU.role==='Supervisor')?`<button class="btn-cl" onclick="clearTIFilter(true)">🗂️ All Data</button>`:''}
     <input class="fi2" id="ti_fd1" type="date" placeholder="From"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="ti_fd2" type="date" placeholder="To"/>
-    <select class="fs2" id="ti_fu">
+    ${isSuperLead()?`<select class="fs2" id="ti_fu">
       <option value="">All Users</option>
       ${[...new Set((DB.release2||[]).map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="ti_fu" value="${CU.name}">`}
     <select class="fs2" id="ti_fteam">
       <option value="">All Teams</option>
       ${[...new Set((DB.release2||[]).map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -20968,7 +21254,7 @@ function renderTATIssue(c){
     <button class="btn-cl" onclick="clearTIFilter()">Clear</button>
   </div>
   <div class="tw">
-    <div class="th2"><div class="tt">TAT Not Reached — Release Records</div><div class="tc" id="tiCount">${_tiFilteredMonth.length} records</div></div>
+    <div class="th2"><div class="tt">TAT Not Reached — Release Records</div><div class="tc" id="tiCount">${all.length} records</div></div>
     <div style="overflow-x:auto"><table class="dt">
       <thead><tr><th>#</th><th>Txn</th><th>Trans Created</th><th>ETA</th><th>Client</th><th>Client Name</th><th>Team</th><th>Mode</th><th>Doc Rcvd</th><th>Lines</th><th>Status</th><th>User</th><th>Start</th><th>Submitted</th><th>Duration</th><th>TAT</th><th>TAT Reason / Comments</th>${isAdmin()?'<th>✏️ Edit</th>':''}</tr></thead>
       <tbody id="tiTbody"></tbody>
@@ -20980,8 +21266,12 @@ function renderTATIssue(c){
   const _tiD2 = document.getElementById('ti_fd2');
   if(_tiD1 && !_tiD1.value) _tiD1.value = _tiFirst;
   if(_tiD2 && !_tiD2.value) _tiD2.value = _tiLast;
-  // Use already-computed month-filtered data (cards and table must match)
-  pgSetData('ti', _tiFilteredMonth);
+  // Filter to present month by default
+  const _tiFiltered = all.filter(r => {
+    const s = String(r._created||'').slice(0,10);
+    return s >= _tiFirst && s <= _tiLast;
+  });
+  pgSetData('ti', _tiFiltered);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
 }
@@ -21041,27 +21331,12 @@ function applyTIFilter(){
   pgRender('ti','pg_ti','pgGoTI');
 }
 function pgGoTI(p){ pgGo('ti', p, renderTIRows, 'pg_ti', 'pgGoTI'); }
-function clearTIFilter(showAll){
+function clearTIFilter(){
   ['ti_fd1','ti_fd2','ti_fu','ti_fteam','ti_fmode','ti_search'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
-  let data=(DB.release2||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');});
-  if(!showAll){
-    const _n=nowET();const _ym=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0');
-    const _f=_ym+'-01';const _l=_ym+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-    const d1=document.getElementById('ti_fd1');const d2=document.getElementById('ti_fd2');
-    if(d1)d1.value=_f;if(d2)d2.value=_l;
-    data=data.filter(r=>String(r._created||'').slice(0,7)===_ym);
-  }
+  const data=(DB.release2||[]).filter(r=>{const tv=(r.tat||'').toLowerCase();return tv.includes('not reached')||tv.includes('not-reached');});
   pgSetData('ti', data);
   renderTIRows(pgSlice('ti'));
   pgRender('ti','pg_ti','pgGoTI');
-}
-function setTIMonthFilter(){
-  const _n=nowET();
-  const _f=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-01';
-  const _l=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(new Date(_n.getFullYear(),_n.getMonth()+1,0).getDate()).padStart(2,'0');
-  const d1=document.getElementById('ti_fd1');const d2=document.getElementById('ti_fd2');
-  if(d1)d1.value=_f;if(d2)d2.value=_l;
-  applyTIFilter();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -21237,10 +21512,10 @@ function renderDCIssue(c){
     <input class="fi2" id="dc_fd1" type="date" placeholder="From"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="dc_fd2" type="date" placeholder="To"/>
-    <select class="fs2" id="dc_fu">
+    ${isSuperLead()?`<select class="fs2" id="dc_fu">
       <option value="">All Users</option>
       ${[...new Set((DB.parsDocs||[]).map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${_esc(u)}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="dc_fu" value="${CU.name}">`}
     <select class="fs2" id="dc_fteam">
       <option value="">All Teams</option>
       ${[...new Set((DB.parsDocs||[]).map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${_esc(t)}</option>`).join('')}
@@ -25237,10 +25512,10 @@ function renderOceanTT(c){
     <input class="fi2" id="ott_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="ott_fd2" type="date"/>
-    <select class="fs2" id="ott_fu">
+    ${isSuperLead()?`<select class="fs2" id="ott_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.oceanTT.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="ott_fu" value="${CU.name}">`}
     <select class="fs2" id="ott_fteam">
       <option value="">All Teams</option>
       ${[...new Set(DB.oceanTT.map(r=>r.team).filter(Boolean))].sort().map(t=>`<option>${t}</option>`).join('')}
@@ -25472,10 +25747,10 @@ function renderB2Entries(c){
     <input class="fi2" id="b2_fd1" type="date"/>
     <span style="font-size:12px;color:var(--text3);font-weight:600">to</span>
     <input class="fi2" id="b2_fd2" type="date"/>
-    <select class="fs2" id="b2_fu">
+    ${isSuperLead()?`<select class="fs2" id="b2_fu">
       <option value="">All Users</option>
       ${[...new Set(DB.b2entries.map(r=>r.user).filter(Boolean))].sort().map(u=>`<option>${u}</option>`).join('')}
-    </select>
+    </select>`:`<input type="hidden" id="b2_fu" value="${CU.name}">`}
     <select class="fs2" id="b2_fstatus">
       <option value="">All Status</option>
       <option>Ready to Submit</option><option>Hold</option><option>Waiting for Info</option>
@@ -27228,5 +27503,15 @@ function _buildLvsErrPopup(clientNo){
   });
 })();
 </script>
+<!-- Cloudflare Web Analytics beacon REMOVED.
+     /cdn-cgi/rum returns 404 because Web Analytics is not enabled on this Cloudflare account.
+     To re-enable: Cloudflare Dashboard -> your domain -> Analytics -> Web Analytics -> Enable,
+     then paste the beacon script back here. Keeping it active with no feature enabled
+     only generates a noisy 404 on every page load with zero benefit. -->
+<!-- CF beacon removed integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9f4165867f41c19c',t:'MTc3NzQ5ODEwNw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><!-- CF beacon removed integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fa4ad7609dcea32',t:'MTc3ODUzOTE0NA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7f7b0fd8732c4326aae4b9d58d5c514a","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fdd00d19a20dc75',t:'MTc3OTEyOTc2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
